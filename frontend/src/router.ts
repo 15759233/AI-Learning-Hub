@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { courses } from './data/mock'
+import { getLabDefinition } from './labs/registry'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -18,7 +20,9 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  document.title = `${String(to.meta.title)}｜AI数智化学习平台`
+  const courseTitle = to.name === 'course' ? courses.find((course) => course.id === to.params.courseId)?.title : ''
+  const labTitle = to.name === 'lab' ? getLabDefinition(String(to.params.labId))?.title : ''
+  document.title = `${courseTitle || labTitle || String(to.meta.title)}｜AI MAKER CAMPUS`
 })
 
 export default router

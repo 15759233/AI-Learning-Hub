@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { assets } from '../data/mock'
 import { useLearningStore } from '../stores/learning'
+import type { FavoriteType } from '../types'
 
 const props = withDefaults(defineProps<{
   id: string
@@ -16,7 +17,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ action: [] }>()
 const store = useLearningStore()
-const favorite = computed(() => store.favorites.includes(props.id))
+const favoriteType = computed<FavoriteType>(() => props.kind === 'lab' ? 'lab' : props.kind)
+const favorite = computed(() => store.isFavorite(favoriteType.value, props.id))
 const cover = computed(() => props.image || (props.kind === 'lab' ? assets.labCover : assets.learningCover))
 </script>
 
@@ -33,7 +35,7 @@ const cover = computed(() => props.image || (props.kind === 'lab' ? assets.labCo
       <div class="card-actions">
         <RouterLink v-if="to" class="text-link" :to="to">{{ action }} →</RouterLink>
         <button v-else class="text-link" type="button" @click="emit('action')">{{ action }} →</button>
-        <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${title}` : `收藏${title}`" @click="store.toggleFavorite(id)">{{ favorite ? '★' : '☆' }}</button>
+        <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${title}` : `收藏${title}`" @click="store.toggleFavorite(favoriteType, id)">{{ favorite ? '★' : '☆' }}</button>
       </div>
     </div>
   </article>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import CourseCard from '../components/CourseCard.vue'
-import ContentCard from '../components/ContentCard.vue'
+import CategoryCover from '../components/base/CategoryCover.vue'
+import LabCard from '../components/cards/LabCard.vue'
+import ProjectCard from '../components/cards/ProjectCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { articles, assets, courses, labs, makerProjects, resources, studentActivities } from '../data/mock'
 import { quizBridge } from '../services/quizBridge'
@@ -61,32 +63,27 @@ const directions = ['大模型 LLM', 'AI Agent', '图像生成', '模型部署',
     <section>
       <div class="section-heading"><div><span class="eyebrow">模拟实训</span><h2>真正动手，而不仅仅是看视频</h2></div><RouterLink to="/labs">查看全部实验 →</RouterLink></div>
       <div class="four-grid">
-        <ContentCard v-for="(lab, index) in labs.slice(0, 4)" :key="lab.id" :id="lab.id" :title="`${String(index + 1).padStart(2, '0')} ${lab.title}`" :description="lab.description" :meta="`${lab.level} · ${lab.minutes} 分钟 · ${lab.steps} 步 · 完成率 ${lab.completion}% · ${lab.learners.toLocaleString()} 人`" :to="`/labs/${lab.id}`" kind="lab" action="开始实验" />
+        <LabCard v-for="lab in labs.slice(0, 4)" :key="lab.id" :lab="lab" />
       </div>
     </section>
 
     <section>
       <div class="section-heading"><div><span class="eyebrow">创客项目</span><h2>把知识组合成一个作品</h2></div><RouterLink to="/labs">查看全部项目 →</RouterLink></div>
-      <div class="three-grid maker-projects">
-        <article v-for="project in makerProjects" :key="project.id">
-          <img :src="assets.learningCover" :alt="`${project.title}项目封面`" loading="lazy" />
-          <div><span class="tag purple">综合项目</span><h3>{{ project.title }}</h3><p>{{ project.description }}</p><small>{{ project.skills }} · {{ project.steps }} 步 · {{ project.duration }}</small><RouterLink :to="`/labs/${project.id}`">查看项目 →</RouterLink></div>
-        </article>
-      </div>
+      <div class="three-grid maker-projects"><ProjectCard v-for="project in makerProjects" :key="project.id" :project="project" /></div>
     </section>
 
     <section>
       <div class="section-heading"><div><span class="eyebrow">AI 世界</span><h2>本周更新</h2></div><RouterLink to="/frontier">进入 AI 前沿 →</RouterLink></div>
       <div class="home-frontier-grid">
-        <article class="home-focus-article"><img :src="assets.learningCover" alt="本周 AI 前沿焦点文章封面" loading="lazy" /><div><span class="tag orange">焦点文章</span><h3>{{ articles[0].title }}</h3><p>{{ articles[0].summary }}</p><RouterLink to="/frontier">阅读更多 →</RouterLink></div></article>
-        <div class="article-list"><RouterLink v-for="article in articles.slice(1, 4)" :key="article.id" to="/frontier"><span class="tag">{{ article.category }}</span><strong>{{ article.title }}</strong><small>{{ article.readMinutes }} 分钟阅读</small></RouterLink></div>
+        <article class="home-focus-article"><CategoryCover :title="articles[0].title" :variant="articles[0].coverVariant" :icon="articles[0].icon" /><div><span class="tag orange">焦点文章</span><h3>{{ articles[0].title }}</h3><p>{{ articles[0].summary }}</p><RouterLink :to="{ path: '/frontier', query: { article: articles[0].id } }">阅读更多 →</RouterLink></div></article>
+        <div class="article-list"><RouterLink v-for="article in articles.slice(1, 4)" :key="article.id" :to="{ path: '/frontier', query: { article: article.id } }"><span class="tag">{{ article.category }}</span><strong>{{ article.title }}</strong><small>{{ article.readMinutes }} 分钟阅读</small></RouterLink></div>
         <aside class="frontier-topic-card"><span class="eyebrow">专题推荐</span><h3>本周值得了解的 AI Agent 技术</h3><ol><li>工具调用</li><li>记忆与上下文</li><li>任务规划</li><li>多智能体协作</li></ol><RouterLink class="button secondary" to="/frontier">深入了解</RouterLink></aside>
       </div>
     </section>
 
     <section>
       <div class="section-heading"><div><span class="eyebrow">知识工具箱</span><h2>工具、模板和资料，都放在这里</h2></div><RouterLink to="/resources">进入资源中心 →</RouterLink></div>
-      <div class="home-tools-grid"><div class="resource-strip"><RouterLink v-for="resource in resources.slice(0, 6)" :key="resource.id" to="/resources"><span :class="`format ${resource.format.toLowerCase()}`">{{ resource.format }}</span><strong>{{ resource.title }}</strong><small>{{ resource.category }}</small></RouterLink></div><aside class="challenge-card"><span class="eyebrow">本周 AI 能力挑战</span><h2>用 30 道题检验学习效果</h2><p>预计 20 分钟 · 演示挑战入口</p><button class="button primary" type="button" @click="quizBridge.startChallenge('weekly-ai')">开始挑战</button></aside></div>
+      <div class="home-tools-grid"><div class="resource-strip"><RouterLink v-for="resource in resources.slice(0, 6)" :key="resource.id" :to="{ path: '/resources', query: { preview: resource.id } }"><span :class="`format ${resource.format.toLowerCase()}`">{{ resource.format }}</span><strong>{{ resource.title }}</strong><small>{{ resource.category }}</small></RouterLink></div><aside class="challenge-card"><span class="eyebrow">本周 AI 能力挑战</span><h2>用 30 道题检验学习效果</h2><p>预计 20 分钟 · 演示挑战入口</p><button class="button primary" type="button" @click="quizBridge.startChallenge('weekly-ai')">开始挑战</button></aside></div>
     </section>
 
     <section class="growth-section">

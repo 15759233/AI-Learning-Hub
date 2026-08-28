@@ -1,0 +1,218 @@
+.workspace-type {
+  min-width: 0;
+  min-height: 560px;
+  color: var(--lab-text);
+}
+
+.workspace-type:fullscreen {
+  padding: 20px;
+  overflow: auto;
+  background: var(--lab-bg);
+}
+
+.workspace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 62px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--lab-border);
+}
+
+.workspace-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-heading small {
+  color: var(--lab-muted);
+}
+
+.simulation-boundary {
+  padding: 12px 16px;
+  color: #f1c279;
+  border-top: 1px solid var(--lab-border);
+  background: #2b271d;
+  font-size: .72rem;
+  line-height: 1.6;
+}
+
+.deployment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+
+.deployment-grid > label,
+.deployment-grid > div,
+.service-status span,
+.sensor-grid > *,
+.project-stage-grid button,
+.project-output span {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  color: var(--lab-muted);
+  border: 1px solid var(--lab-border);
+  border-radius: 9px;
+  background: var(--lab-surface-raised);
+  font-size: .78rem;
+}
+
+.deployment-grid input,
+.deployment-grid select,
+.project-workspace select {
+  color: var(--lab-text);
+  border-color: #3b4b58;
+  background: #0f1c26;
+}
+
+.deployment-grid code {
+  overflow-wrap: anywhere;
+  color: #8ce5ae;
+}
+
+.service-status {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.service-status strong {
+  color: var(--lab-text);
+}
+
+.command-workspace > .terminal-host {
+  height: 260px;
+}
+
+.command-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+}
+
+.command-input input {
+  min-width: 0;
+  color: #d8e6ef;
+  border-color: #344653;
+  background: #0a1620;
+}
+
+.learning-feedback {
+  margin: 0 12px 12px;
+  padding: 10px;
+  color: #b9d6c5;
+  border-radius: 8px;
+  background: #163126;
+}
+
+.hardware-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  max-width: 620px;
+  min-height: 230px;
+  margin: 20px auto;
+  padding: 32px;
+  border: 2px solid #af7a12;
+  border-radius: 26px;
+  background: linear-gradient(145deg, #4a3711, #171f20);
+}
+
+.hardware-board > span {
+  padding: 14px;
+  border: 1px solid #6d5b31;
+  border-radius: 9px;
+  background: rgba(0,0,0,.24);
+}
+
+.board-chip {
+  grid-column: 1 / -1;
+  place-self: center;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  color: #ffc952;
+  border: 2px solid #c89020;
+  border-radius: 14px;
+  background: #151a1f;
+  font-weight: 900;
+}
+
+.hardware-light {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #5e6870;
+}
+
+.hardware-light.on {
+  background: var(--green);
+  box-shadow: 0 0 18px rgba(39, 184, 107, .85);
+}
+
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px;
+}
+
+.sensor-grid input[type="range"] {
+  min-height: auto;
+}
+
+.sensor-result {
+  margin: 0 16px 16px;
+  padding: 15px;
+  border: 1px solid #315846;
+  border-radius: 9px;
+  background: #173326;
+}
+
+.sensor-result.warning {
+  color: #ffcf8f;
+  border-color: #8a4e2e;
+  background: #44271e;
+}
+
+.sensor-result p {
+  margin: 5px 0 0;
+}
+
+.project-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 16px;
+}
+
+.project-stage-grid button {
+  color: var(--lab-text);
+  text-align: left;
+  cursor: default;
+}
+
+.project-stage-grid span {
+  color: var(--brand);
+}
+
+.project-output {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px;
+  border-top: 1px solid var(--lab-border);
+}
+
+.project-output strong {
+  grid-column: 1 / -1;
+}

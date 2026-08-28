@@ -1,0 +1,65 @@
+@media (max-width: 991px) {
+  .service-status,
+  .sensor-grid,
+  .project-output {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .project-stage-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .workspace-type {
+    min-height: 480px;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-dialog {
+    padding: 10px;
+  }
+
+  .app-dialog .dialog-card {
+    max-height: calc(100dvh - 20px);
+    padding: 18px;
+  }
+
+  .featured-resource-row .category-cover {
+    width: 100px;
+  }
+
+  .focus-article > .category-cover,
+  .editorial-list .category-cover {
+    height: 210px;
+  }
+
+  .deployment-grid,
+  .service-status,
+  .sensor-grid,
+  .project-stage-grid,
+  .project-output {
+    grid-template-columns: 1fr;
+  }
+
+  .command-input {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .command-input .button {
+    grid-column: 1 / -1;
+  }
+
+  .hardware-board {
+    grid-template-columns: 1fr;
+    margin-inline: 12px;
+    padding: 20px;
+  }
+
+  .workspace-heading {
+    align-items: flex-start;
+  }
+
+  .lab-hero > .category-cover {
+    order: -1;
+  }
+}

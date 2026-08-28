@@ -5,9 +5,11 @@ import CourseCard from '../components/CourseCard.vue'
 import PageHero from '../components/PageHero.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { assets, courses } from '../data/mock'
+import { useLearningStore } from '../stores/learning'
 
 const route = useRoute()
 const router = useRouter()
+const store = useLearningStore()
 const query = ref(String(route.query.q || ''))
 const category = ref(String(route.query.category || '全部主题'))
 const level = ref(String(route.query.level || '全部难度'))
@@ -16,6 +18,13 @@ const mode = ref(String(route.query.mode || '全部方式'))
 const sort = ref(String(route.query.sort || '综合排序'))
 const categories = ['全部主题', '大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全']
 const pathSteps = ['了解 AI 基础', 'Python 入门', '大模型应用', '构建 AI 应用', '部署与优化', '进阶与创新']
+const overallProgress = computed(() => {
+  const values = Object.values(store.courseProgress)
+  return values.length ? Math.round(values.reduce((total, value) => total + value, 0) / values.length) : 0
+})
+const recentCourses = computed(() => store.recentCourses
+  .map((id) => courses.find((course) => course.id === id))
+  .filter((course): course is (typeof courses)[number] => !!course))
 
 const filtered = computed(() => {
   const keyword = query.value.trim().toLowerCase()
@@ -40,7 +49,16 @@ watch([query, category, level, duration, mode, sort], () => {
   if (duration.value !== '全部时长') params.duration = duration.value
   if (mode.value !== '全部方式') params.mode = mode.value
   if (sort.value !== '综合排序') params.sort = sort.value
-  router.replace({ query: params })
+  if (new URLSearchParams(params).toString() !== new URLSearchParams(route.query as Record<string, string>).toString()) router.push({ query: params })
+})
+
+watch(() => route.query, (params) => {
+  query.value = String(params.q || '')
+  category.value = String(params.category || '全部主题')
+  level.value = String(params.level || '全部难度')
+  duration.value = String(params.duration || '全部时长')
+  mode.value = String(params.mode || '全部方式')
+  sort.value = String(params.sort || '综合排序')
 })
 
 const reset = () => {
@@ -76,10 +94,10 @@ const reset = () => {
         <div v-else class="inline-empty"><h3>没有找到匹配课程</h3><p>试试清空筛选条件。</p><button class="button secondary" type="button" @click="reset">重置筛选</button></div>
       </section>
       <aside class="study-aside">
-        <h3>我的学习进度</h3><div class="progress-ring"><strong>42%</strong><span>总进度</span></div><ProgressBar :value="42" label="本周目标" />
-        <div class="mini-stats"><span><strong>16</strong>已学课程</span><span><strong>28.6h</strong>学习时长</span><span><strong>3</strong>获得证书</span></div>
+        <h3>我的学习进度</h3><div class="progress-ring"><strong>{{ overallProgress }}%</strong><span>总进度</span></div><ProgressBar :value="overallProgress" label="演示学习进度" />
+        <div class="mini-stats"><span><strong>{{ Object.keys(store.courseProgress).length }}</strong>已学课程</span><span><strong>{{ store.recentCourses.length }}</strong>最近学习</span><span><strong>{{ Object.values(store.courseProgress).filter((value) => value === 100).length }}</strong>已完成</span></div>
         <h3>本周学习活跃度</h3><div class="activity-heatmap" aria-label="本周学习活跃度"><span v-for="index in 28" :key="index" :class="`level-${index % 5}`" :title="`学习强度 ${index % 5}`" /></div>
-        <h3>最近学习</h3><RouterLink v-for="course in courses.slice(0, 3)" :key="course.id" :to="`/courses/${course.id}`">{{ course.title }}<small>继续学习 →</small></RouterLink>
+        <h3>最近学习</h3><RouterLink v-for="course in recentCourses" :key="course.id" :to="`/courses/${course.id}`">{{ course.title }}<small>继续学习 →</small></RouterLink>
         <h3>学习成就</h3><div class="mini-achievements"><span><strong>◆</strong>连续学习 7 天</span><span><strong>⬢</strong>课程达人</span><span><strong>✦</strong>实验先锋</span></div><RouterLink to="/profile">查看全部成就 →</RouterLink>
       </aside>
     </div>
