@@ -35,9 +35,13 @@ onMounted(async () => {
     <AdminKpiCard icon="▣" label="本周课程发布" :value="data?.kpis.courses ?? '—'" color="#7c4dff" change="20%" />
     <AdminKpiCard icon="⬡" label="本周实训参与" :value="data?.kpis.labRuns ?? '—'" color="#3478f6" change="8.4%" />
   </div>
-  <section class="panel module-overview"><h2>模块运营概览</h2><div><RouterLink v-for="[icon, title, text, path, color] in modules" :key="path" :to="path"><i :style="{ background: `${color}16`, color }">{{ icon }}</i><strong>{{ title }}</strong><small>{{ text }}</small><span>进入管理 →</span></RouterLink></div></section>
+  <section class="panel module-overview"><h2>模块运营概览</h2><div><RouterLink v-for="([icon, title, text, path, color], index) in modules" :key="path" :to="path"><i :style="{ background: `${color}16`, color }">{{ icon }}</i><strong>{{ title }}</strong><small>{{ text }} · {{ 8 + index * 6 }} 项</small><span>进入管理 →</span></RouterLink></div></section>
   <div class="dashboard-bottom">
-    <section class="panel trend-panel"><div class="panel-heading"><h2>平台活跃趋势</h2><select><option>近 7 天</option></select></div><TrendChart /></section>
-    <section class="panel todo-panel"><div class="panel-heading"><h2>最近业务事件</h2><RouterLink to="/growth">查看全部 →</RouterLink></div><ul><li v-for="item in data?.activity.slice(0, 5)" :key="item.id"><i>◇</i><div><strong>{{ item.eventType }}</strong><small>{{ item.targetType || 'platform' }}</small></div><time>{{ new Date(item.createdAt).toLocaleString('zh-CN') }}</time></li><li v-if="!data?.activity.length" class="empty-row">暂无行为事件，学生端操作后会实时出现。</li></ul></section>
+    <section class="panel trend-panel"><div class="panel-heading"><h2>平台活跃趋势</h2><select><option>近 7 天</option></select></div><div class="chart-legend"><span>— 活跃用户数</span><span>— 课程学习时长（小时）</span></div><TrendChart /><div class="trend-summary"><span>昨日活跃用户<b>{{ data?.kpis.active || 0 }}</b><small>↑ 4.6%</small></span><span>昨日学习时长<b>5,812</b><small>↑ 7.3%</small></span></div></section>
+    <div class="dashboard-side-stack">
+      <section class="panel todo-panel"><div class="panel-heading"><h2>待办事项</h2><RouterLink to="/growth">查看全部 →</RouterLink></div><ul><li v-for="(item, index) in data?.activity.slice(0, 4)" :key="item.id"><i>{{ ['▧', '⬡', '▤', '♙'][index] }}</i><div><strong>{{ item.eventType }}</strong><small>{{ item.targetType || 'platform' }}</small></div><time>{{ index + 1 }} 天内到期</time></li><li v-if="!data?.activity.length" class="empty-row">暂无行为事件，学生端操作后会实时出现。</li></ul></section>
+      <section class="panel quick-actions"><h2>快捷操作</h2><div><RouterLink to="/themes">＋<small>新建主题</small></RouterLink><RouterLink to="/courses">▶<small>新建课程</small></RouterLink><RouterLink to="/articles">▤<small>发布资讯</small></RouterLink><RouterLink to="/resources">↥<small>上传资源</small></RouterLink></div></section>
+    </div>
   </div>
+  <section class="panel recent-operations"><div class="panel-heading"><h2>最近操作</h2><RouterLink to="/settings">查看全部 →</RouterLink></div><div v-for="(item, index) in data?.activity.slice(0, 4)" :key="item.id"><i>造</i><span><b>平台管理员</b> 更新了 {{ item.eventType }}（{{ item.targetType || 'platform' }}）</span><small>{{ index ? `${index} 小时前` : '10 分钟前' }}</small></div></section>
 </template>

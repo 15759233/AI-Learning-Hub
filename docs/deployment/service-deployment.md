@@ -52,6 +52,7 @@ Internet
 DATABASE_URL
 JWT_SECRET
 JWT_REFRESH_SECRET
+COOKIE_SECURE=true
 CORS_ORIGINS
 FRONTEND_URL
 ADMIN_WEB_URL
@@ -61,7 +62,7 @@ SMTP_*（启用邮件通知时）
 QUIZ_BOX_*（启用时）
 ```
 
-生产 CORS 只列出正式学生端和管理端 HTTPS 域名。JWT 密钥按版本轮换；旧密钥在过渡窗口后撤销。
+生产 CORS 只列出正式学生端和管理端 HTTPS 域名，`COOKIE_SECURE` 必须为 `true`。未配置时服务端在 `NODE_ENV=production` 默认启用 Secure；只有明确的纯 HTTP 开发测试环境可显式设为 `false`。JWT 密钥按版本轮换；旧密钥在过渡窗口后撤销。
 
 ## 数据库迁移与 Seed
 

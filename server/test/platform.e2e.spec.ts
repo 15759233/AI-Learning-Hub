@@ -74,6 +74,33 @@ describe('真实 PostgreSQL 数据闭环', () => {
     expect(quizBoxImport.status).toBe(503)
   })
 
+  it('Refresh Cookie 按环境配置并完成轮换、撤销与注销', async () => {
+    const session = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+    })
+    const firstSetCookie = session.headers.get('set-cookie') || ''
+    expect(firstSetCookie).toContain('refresh_token=')
+    expect(firstSetCookie).toContain('HttpOnly')
+    expect(firstSetCookie).toContain('SameSite=Lax')
+    expect(firstSetCookie).toContain('Path=/api/v1/auth')
+    expect(/;\s*Secure/i.test(firstSetCookie)).toBe(process.env.E2E_COOKIE_SECURE === 'true')
+    const firstCookie = firstSetCookie.split(';')[0]
+
+    const rotated = await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: firstCookie } })
+    expect(rotated.status).toBe(201)
+    const secondSetCookie = rotated.headers.get('set-cookie') || ''
+    const secondCookie = secondSetCookie.split(';')[0]
+    expect(secondCookie).not.toBe(firstCookie)
+    expect((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: firstCookie } })).status).toBe(401)
+
+    const logout = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie: secondCookie } })
+    expect(logout.status).toBe(201)
+    expect(logout.headers.get('set-cookie')).toMatch(/refresh_token=;.*(Expires=Thu, 01 Jan 1970|Max-Age=0)/)
+    expect((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: secondCookie } })).status).toBe(401)
+  })
+
   it('学校院系和登录审计来自真实数据库', async () => {
     const schools = await call<Array<{ departments: unknown[] }>>('/admin/schools', {}, adminToken)
     expect(schools[0].departments.length).toBeGreaterThan(0)

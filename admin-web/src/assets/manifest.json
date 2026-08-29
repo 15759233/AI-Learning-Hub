@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "path": "hero-campus.webp",
+      "usage": "首页运营桌面预览、课程封面与资源预览",
+      "dimensions": "1448x1086",
+      "format": "WebP",
+      "source": "复用学生端正式 Image2 生成资源 frontend/src/assets/hero-campus.webp",
+      "sha256": "a67ad1d33a582bfc9fe88552264344b3534c070e65050e4a098a9b98e70ee5ca"
+    },
+    {
+      "path": "lab-cover.webp",
+      "usage": "实训、AI 前沿与挑战详情封面",
+      "dimensions": "1672x941",
+      "format": "WebP",
+      "source": "复用学生端正式 Image2 生成资源 frontend/src/assets/lab-cover.webp",
+      "sha256": "9358f3632320ff002ea3e212937a3eb91c173363556521a532fa9c51d50fbcbe"
+    },
+    {
+      "path": "learning-cover.webp",
+      "usage": "学习主题、课程与用户推荐卡片",
+      "dimensions": "1672x941",
+      "format": "WebP",
+      "source": "复用学生端正式 Image2 生成资源 frontend/src/assets/learning-cover.webp",
+      "sha256": "b61d0b02f8f3f1c028062cf00371cbbb617bd01dce2cee0ced6833b84aeb90ee"
+    }
+  ]
+}

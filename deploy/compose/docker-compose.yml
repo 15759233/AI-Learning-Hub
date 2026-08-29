@@ -37,6 +37,7 @@ services:
       APP_COMMIT_SHA: ${APP_COMMIT_SHA:?APP_COMMIT_SHA required}
       PORT: 3000
       NODE_ENV: production
+      COOKIE_SECURE: "false"
       STORAGE_LOCAL_PATH: /workspace/server/var/uploads
     volumes:
       - uploads_data:/workspace/server/var/uploads

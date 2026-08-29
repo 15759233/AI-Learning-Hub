@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from './auth.guard'
@@ -9,12 +10,19 @@ import type { AuthUser } from './auth.types'
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(private readonly auth: AuthService, private readonly config: ConfigService) {}
+
+  private cookieSecure() {
+    const configured = this.config.get<string>('COOKIE_SECURE')
+    if (configured === 'true') return true
+    if (configured === 'false') return false
+    return this.config.get<string>('NODE_ENV') === 'production'
+  }
 
   private setRefreshCookie(response: Response, token: string) {
     response.cookie('refresh_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: this.cookieSecure(),
       sameSite: 'lax',
       path: '/api/v1/auth',
       maxAge: 7 * 86_400_000,
@@ -47,7 +55,12 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
     await this.auth.logout(request.cookies?.refresh_token as string | undefined)
-    response.clearCookie('refresh_token', { path: '/api/v1/auth' })
+    response.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: this.cookieSecure(),
+      sameSite: 'lax',
+      path: '/api/v1/auth',
+    })
     return { loggedOut: true }
   }
 }

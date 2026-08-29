@@ -15,7 +15,7 @@ Compose 文件位于 `deploy/compose/docker-compose.yml`，包含 PostgreSQL、�
 ## 首次部署
 
 1. 从已验证 Git SHA 构建 `linux/amd64` 三个镜像并加载到 NAS。
-2. 在项目专用目录复制 Compose，创建权限受限的 `.env`。
+2. 在项目专用目录复制 Compose，创建权限受限的 `.env`；本环境为纯 HTTP，Compose 显式设置 `COOKIE_SECURE=false`。
 3. `.env` 设置同一 SHA 的 `SERVER_IMAGE`、`STUDENT_IMAGE`、`ADMIN_IMAGE` 和 `APP_COMMIT_SHA`。
 4. 运行：
 
