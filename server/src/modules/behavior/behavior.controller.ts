@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query, Sse, UseGuards } from '@nestjs/common'
-import { interval, map, startWith, type Observable } from 'rxjs'
+import { Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Put, Query, Sse, UseGuards } from '@nestjs/common'
+import { from, mergeMap, of, switchMap, timer, type Observable } from 'rxjs'
 import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
@@ -85,8 +85,33 @@ export class BehaviorController {
 
   @Sse('lab-runs/:runId/events')
   @RawResponse()
-  events(@Param('runId') runId: string): Observable<MessageEvent> {
-    return interval(3000).pipe(startWith(0), map((sequence) => ({ data: { type: 'heartbeat', sequence, runId, timestamp: new Date().toISOString() } }) as MessageEvent))
+  async events(@CurrentUser() user: AuthUser, @Param('runId') runId: string): Promise<Observable<MessageEvent>> {
+    const run = await this.prisma.labRun.findFirst({ where: { id: runId, userId: user.id }, select: { id: true } })
+    if (!run) throw new NotFoundException('实训运行不存在')
+    let lastSequence = 0
+    let heartbeatSequence = 0
+    return timer(0, 3000).pipe(
+      switchMap(() => from(this.prisma.labRunEvent.findMany({
+        where: { runId, sequence: { gt: lastSequence } },
+        orderBy: { sequence: 'asc' },
+      }))),
+      mergeMap((events) => {
+        if (!events.length) {
+          heartbeatSequence += 1
+          return of({ data: { type: 'heartbeat', sequence: heartbeatSequence, runId, timestamp: new Date().toISOString() } } as MessageEvent)
+        }
+        lastSequence = events.at(-1)?.sequence || lastSequence
+        return from(events.map((event) => ({
+          data: {
+            type: event.type,
+            sequence: event.sequence,
+            step: event.step,
+            message: event.message,
+            timestamp: event.createdAt.toISOString(),
+          },
+        }) as MessageEvent))
+      }),
+    )
   }
 
   @Post('favorites')

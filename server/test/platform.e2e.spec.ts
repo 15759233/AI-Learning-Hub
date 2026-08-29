@@ -166,6 +166,19 @@ describe('真实 PostgreSQL 数据闭环', () => {
     expect((await call<{ stepsDetail: unknown[] }>(`/labs/e2e-lab-${suffix}`)).stepsDetail.length).toBe(2)
     const run = await call<{ id: string }>(`/labs/e2e-lab-${suffix}/runs`, { method: 'POST' }, studentToken)
     await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'start' }) }, studentToken)
+    const stream = await fetch(`${base}/lab-runs/${run.id}/events`, {
+      headers: { authorization: `Bearer ${studentToken}` },
+      signal: AbortSignal.timeout(3000),
+    })
+    expect(stream.headers.get('content-type')).toContain('text/event-stream')
+    const reader = stream.body?.getReader()
+    let eventText = ''
+    for (let index = 0; index < 5 && !eventText.includes('受控实训环境已准备'); index += 1) {
+      const event = await reader?.read()
+      eventText += new TextDecoder().decode(event?.value)
+    }
+    await reader?.cancel()
+    expect(eventText).toContain('受控实训环境已准备')
     await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'complete' }) }, studentToken)
     await call(`/lab-runs/${run.id}/submit`, { method: 'POST' }, studentToken)
     const runs = await call<Array<{ id: string }>>(`/admin/labs/${labId}/runs`, {}, adminToken)
