@@ -5,6 +5,7 @@ export interface StudentUser {
   email: string
   displayName: string
   roles: string[]
+  permissions: string[]
 }
 
 export const authApi = {

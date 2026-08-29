@@ -11,8 +11,8 @@ const favorite = computed(() => store.isFavorite('article', props.article.id))
 </script>
 
 <template>
-  <BaseContentCard :title="article.title" :cover-variant="article.coverVariant" :icon="article.icon" tag="AI 阅读">
-    <span class="meta">{{ article.category }} · {{ article.readMinutes }} 分钟阅读</span>
+  <BaseContentCard :title="article.title" :image="article.cover" :cover-variant="article.coverVariant" :icon="article.icon" tag="AI 阅读">
+    <span class="meta">{{ article.category }} · {{ article.readMinutes == null ? '阅读时长 —' : `${article.readMinutes} 分钟阅读` }}</span>
     <h3>{{ article.title }}</h3>
     <p>{{ article.summary }}</p>
     <div class="card-actions">

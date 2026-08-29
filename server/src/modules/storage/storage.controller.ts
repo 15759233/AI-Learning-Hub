@@ -9,14 +9,14 @@ import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
-import { Roles } from '../auth/roles.decorator'
-import { RolesGuard } from '../auth/roles.guard'
+import { Permissions } from '../auth/permissions.decorator'
+import { PermissionsGuard } from '../auth/permissions.guard'
 import type { AuthUser } from '../auth/auth.types'
 import { STORAGE_SERVICE, type StorageService, type UploadedFile as StoredUpload } from './storage.types'
 
 @Controller('admin/files')
-@UseGuards(AuthGuard, RolesGuard)
-@Roles('admin', 'editor')
+@UseGuards(AuthGuard, PermissionsGuard)
+@Permissions('resource.write')
 export class StorageController {
   constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService) {}
 

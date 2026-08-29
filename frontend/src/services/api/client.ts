@@ -9,10 +9,25 @@ interface Envelope<T> {
 }
 
 let refreshPromise: Promise<boolean> | null = null
+export const AUTH_SESSION_CLEARED_EVENT = 'student-auth-session-cleared'
+
+const clearSession = () => {
+  sessionStorage.removeItem('student-access-token')
+  sessionStorage.removeItem('student-user')
+  window.dispatchEvent(new CustomEvent(AUTH_SESSION_CLEARED_EVENT))
+}
+
 const refresh = async () => {
   const response = await fetch(`${baseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' })
-  if (!response.ok) return false
-  const body = await response.json() as Envelope<{ accessToken: string }>
+  if (!response.ok) {
+    clearSession()
+    return false
+  }
+  const body = await response.json().catch(() => null) as Envelope<{ accessToken: string }> | null
+  if (!body || body.code !== 0 || !body.data.accessToken) {
+    clearSession()
+    return false
+  }
   sessionStorage.setItem('student-access-token', body.data.accessToken)
   return true
 }
@@ -33,7 +48,7 @@ export async function request<T>(path: string, init: RequestInit = {}, retry = t
   } catch {
     throw new Error('真实 API 当前不可用，未回退到 Mock 数据')
   }
-  if (response.status === 401 && retry && token) {
+  if (response.status === 401 && retry) {
     refreshPromise ||= refresh().finally(() => { refreshPromise = null })
     if (await refreshPromise) return request<T>(path, init, false)
   }

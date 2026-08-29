@@ -27,6 +27,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
   let studentToken = ''
   let studentId = ''
   let courseId = ''
+  let lessonId = ''
   let themeId = ''
   let labId = ''
   let resourceId = ''
@@ -35,9 +36,10 @@ describe('真实 PostgreSQL 数据闭环', () => {
   let originalHeroTitle = ''
   let heroModuleId = ''
   let homepageItemId = ''
+  let homepageThemeItemId = ''
   let notificationId = ''
   const suffix = Date.now()
-  const slug = `e2e-course-${suffix}`
+  const slug = `e2ecourse${suffix}`
 
   beforeAll(async () => {
     const admin = await login(adminEmail, adminPassword)
@@ -72,6 +74,12 @@ describe('真实 PostgreSQL 数据闭环', () => {
       headers: { authorization: `Bearer ${adminToken}` },
     })
     expect(quizBoxImport.status).toBe(503)
+    const legacyPayload = await fetch(`${base}/admin/themes`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: `legacy-payload-${suffix}`, title: '旧写入契约', summary: '必须被显式领域 DTO 拒绝。', payload: { cover: 'legacy' } }),
+    })
+    expect(legacyPayload.status).toBe(400)
   })
 
   it('Refresh Cookie 按环境配置并完成轮换、撤销与注销', async () => {
@@ -113,7 +121,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('管理端创建发布后学生公开接口读取同一记录', async () => {
     const created = await call<{ databaseId: string; id: string }>('/admin/courses', {
       method: 'POST',
-      body: JSON.stringify({ slug, title: '端到端数据闭环课程', summary: '由管理端创建并由学生端读取。', payload: { category: '大模型 LLM', level: '入门', hours: 1, learners: 0, mode: '图文' } }),
+      body: JSON.stringify({ slug, title: '端到端数据闭环课程', summary: '由管理端创建并由学生端读取。', category: '大模型 LLM', level: '入门', hours: 1, mode: '图文' }),
     }, adminToken)
     courseId = created.databaseId
     const chapter = await call<{ id: string }>(`/admin/courses/${courseId}/chapters`, {
@@ -124,6 +132,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
       method: 'POST',
       body: JSON.stringify({ title: '端到端课时', summary: '真实结构化课时', durationMinutes: 15, sortOrder: 1 }),
     }, adminToken)
+    lessonId = lesson.id
     const block = await call<{ id: string }>(`/admin/lessons/${lesson.id}/blocks`, {
       method: 'POST',
       body: JSON.stringify({ blockType: 'paragraph', content: { text: '由后台写入的结构化内容块。' }, sortOrder: 1 }),
@@ -131,8 +140,13 @@ describe('真实 PostgreSQL 数据闭环', () => {
     await call(`/admin/courses/${courseId}/chapters/reorder`, { method: 'PUT', body: JSON.stringify({ items: [{ id: chapter.id, sortOrder: 1 }] }) }, adminToken)
     await call(`/admin/lessons/${lesson.id}/blocks/reorder`, { method: 'PUT', body: JSON.stringify({ items: [{ id: block.id, sortOrder: 1 }] }) }, adminToken)
     await call(`/admin/courses/${courseId}/publish`, { method: 'POST' }, adminToken)
-    const publicCourse = await call<{ slug: string; title: string; chapters: Array<{ lessons: Array<{ blocks: Array<{ content: { text: string } }> }> }> }>(`/courses/${slug}`)
+    const publicCourse = await call<{ slug: string; title: string; databaseId?: string; themeId?: string; currentDraftVersionId?: string; chapters: Array<{ lessons: Array<{ blocks: Array<{ content: { text: string } }> }> }>; relatedResources: unknown[]; relatedLabs: unknown[] }>(`/courses/${slug}`)
     expect(publicCourse).toMatchObject({ slug, title: '端到端数据闭环课程' })
+    expect(publicCourse.databaseId).toBeUndefined()
+    expect(publicCourse.themeId).toBeUndefined()
+    expect(publicCourse.currentDraftVersionId).toBeUndefined()
+    expect(publicCourse.relatedResources).toEqual([])
+    expect(publicCourse.relatedLabs).toEqual([])
     expect(publicCourse.chapters[0].lessons[0].blocks[0].content.text).toBe('由后台写入的结构化内容块。')
     await call(`/admin/courses/${courseId}`, {
       method: 'PATCH',
@@ -140,8 +154,15 @@ describe('真实 PostgreSQL 数据闭环', () => {
     }, adminToken)
     expect((await call<{ title: string }>(`/courses/${slug}`)).title).toBe('端到端数据闭环课程')
     await call(`/admin/courses/${courseId}/publish`, { method: 'POST' }, adminToken)
-    expect((await call<{ title: string }>(`/courses/${slug}`)).title).toBe('尚未发布的新标题')
-    await call(`/courses/${slug}/progress`, { method: 'PUT', body: JSON.stringify({ progress: 50 }) }, studentToken)
+    const republishedCourse = await call<{ title: string; chapters: Array<{ lessons: Array<{ id: string }> }> }>(`/courses/${slug}`)
+    expect(republishedCourse.title).toBe('尚未发布的新标题')
+    lessonId = republishedCourse.chapters[0].lessons[0].id
+    const beforeGrowth = await call<{ points: number }>(`/admin/users/${studentId}/growth`, {}, adminToken)
+    const firstProgress = await call<{ courseProgress: { percentage: number } }>(`/lessons/${lessonId}/progress`, { method: 'PUT', body: JSON.stringify({ completed: true, positionSeconds: 120 }) }, studentToken)
+    await call(`/lessons/${lessonId}/progress`, { method: 'PUT', body: JSON.stringify({ completed: true, positionSeconds: 180 }) }, studentToken)
+    const afterGrowth = await call<{ points: number }>(`/admin/users/${studentId}/growth`, {}, adminToken)
+    expect(firstProgress.courseProgress.percentage).toBe(100)
+    expect(afterGrowth.points - beforeGrowth.points).toBe(10)
     const myCourses = await call<Array<{ course: { slug: string } }>>('/me/courses', {}, studentToken)
     expect(myCourses.some((item) => item.course.slug === slug)).toBe(true)
   })
@@ -149,16 +170,20 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('主题路径与首页发布由学生公开接口读取', async () => {
     const theme = await call<{ databaseId: string }>('/admin/themes', {
       method: 'POST',
-      body: JSON.stringify({ slug: `e2e-theme-${suffix}`, title: '端到端主题', summary: '统一主题路径。', payload: {} }),
+      body: JSON.stringify({ slug: `e2e-theme-${suffix}`, title: '端到端主题', summary: '统一主题路径。' }),
     }, adminToken)
     themeId = theme.databaseId
     await call(`/admin/themes/${themeId}/path`, {
       method: 'PUT',
-      body: JSON.stringify({ name: '端到端路径', stages: [{ name: '入门', stageType: 'intro', targetType: 'course', targetId: courseId }] }),
+      body: JSON.stringify({ name: '端到端路径', description: '可视化路径', stages: [{ stageKey: 'intro', name: '入门', description: '第一阶段', stageType: 'learning', unlockRule: {}, targetType: 'course', targetId: courseId }] }),
     }, adminToken)
     await call(`/admin/themes/${themeId}/publish`, { method: 'POST' }, adminToken)
     const publicTheme = await call<{ paths: Array<{ stages: Array<{ name: string }> }> }>(`/themes/e2e-theme-${suffix}`)
     expect(publicTheme.paths[0].stages[0].name).toBe('入门')
+    await call(`/admin/themes/${themeId}`, { method: 'PATCH', body: JSON.stringify({ title: '主题未发布新标题' }) }, adminToken)
+    expect((await call<{ title: string }>(`/themes/e2e-theme-${suffix}`)).title).toBe('端到端主题')
+    await call(`/admin/themes/${themeId}/publish`, { method: 'POST' }, adminToken)
+    expect((await call<{ title: string }>(`/themes/e2e-theme-${suffix}`)).title).toBe('主题未发布新标题')
 
     const modules = await call<Array<{ id: string; moduleKey: string; config: Record<string, unknown> }>>('/admin/homepage/modules', {}, adminToken)
     const hero = modules.find((item) => item.moduleKey === 'hero_banner')
@@ -170,6 +195,22 @@ describe('真实 PostgreSQL 数据闭环', () => {
       body: JSON.stringify({ targetType: 'course', targetId: courseId, sortOrder: 1 }),
     }, adminToken)
     homepageItemId = homepageItem.id
+    const homepageThemeItem = await call<{ id: string }>(`/admin/homepage/modules/${heroModuleId}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ targetType: 'theme', targetId: themeId, sortOrder: 2 }),
+    }, adminToken)
+    homepageThemeItemId = homepageThemeItem.id
+    const reorderedModules = await call<Array<{ id: string; items: Array<{ id: string }> }>>(`/admin/homepage/modules/${heroModuleId}/items/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ items: [
+        { id: homepageThemeItemId, sortOrder: 0 },
+        { id: homepageItemId, sortOrder: 1 },
+      ] }),
+    }, adminToken)
+    const createdItemOrder = reorderedModules.find((item) => item.id === heroModuleId)?.items
+      .map((item) => item.id)
+      .filter((id) => id === homepageThemeItemId || id === homepageItemId)
+    expect(createdItemOrder).toEqual([homepageThemeItemId, homepageItemId])
     await call(`/admin/homepage/modules/${hero?.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ config: { ...hero?.config, title: '端到端首页发布标题' } }),
@@ -190,25 +231,33 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('实训步骤由后台发布并形成服务端运行记录', async () => {
     const lab = await call<{ databaseId: string }>('/admin/labs', {
       method: 'POST',
-      body: JSON.stringify({ slug: `e2e-lab-${suffix}`, title: '端到端实训', summary: '受控实训数据闭环。', payload: { labType: 'deployment', category: '模型部署' } }),
+      body: JSON.stringify({ slug: `e2e-lab-${suffix}`, title: '端到端实训', summary: '受控实训数据闭环。', labType: 'deployment', category: '模型部署', typeConfig: { runtime: 'docker', port: 8080, healthPath: '/health' } }),
     }, adminToken)
     labId = lab.databaseId
     await call(`/admin/labs/${labId}/steps`, {
       method: 'POST',
-      body: JSON.stringify({ stepKey: 'prepare', title: '准备环境', description: '只执行受控状态机。', sortOrder: 1, instruction: { type: 'guided' }, validator: { allowed: true }, score: 20 }),
+      body: JSON.stringify({ stepKey: 'prepare', title: '准备环境', description: '只执行受控状态机。', sortOrder: 1, instruction: { action: 'confirm' }, validator: {}, score: 50 }),
+    }, adminToken)
+    await call(`/admin/labs/${labId}/tools`, {
+      method: 'PUT',
+      body: JSON.stringify({ tools: [{ name: '受控部署工具', toolType: 'deployment', description: '只暴露发布定义。', enabled: true }] }),
     }, adminToken)
     await call(`/admin/labs/${labId}/publish`, { method: 'POST' }, adminToken)
-    const detail = await call<{ stepsDetail: Array<{ stepKey: string }> }>(`/labs/e2e-lab-${suffix}`)
-    expect(detail.stepsDetail[0].stepKey).toBe('prepare')
+    const detail = await call<{ data: { typeConfig: { runtime: string } }; steps: Array<{ stepKey: string }>; tools: Array<{ id?: string; name: string }> }>(`/labs/e2e-lab-${suffix}`)
+    expect(detail.steps[0].stepKey).toBe('prepare')
+    expect(detail.data.typeConfig.runtime).toBe('docker')
+    expect(detail.tools).toEqual([{ name: '受控部署工具', toolType: 'deployment', description: '只暴露发布定义。' }])
     await call(`/admin/labs/${labId}/steps`, {
       method: 'POST',
-      body: JSON.stringify({ stepKey: 'draft-only', title: '草稿步骤', description: '发布前不可见。', sortOrder: 2, instruction: {}, validator: {}, score: 10 }),
+      body: JSON.stringify({ stepKey: 'draft-only', title: '草稿步骤', description: '发布前不可见。', sortOrder: 2, instruction: { action: 'confirm' }, validator: {}, score: 50 }),
     }, adminToken)
-    expect((await call<{ stepsDetail: unknown[] }>(`/labs/e2e-lab-${suffix}`)).stepsDetail.length).toBe(1)
+    expect((await call<{ steps: unknown[] }>(`/labs/e2e-lab-${suffix}`)).steps.length).toBe(1)
     await call(`/admin/labs/${labId}/publish`, { method: 'POST' }, adminToken)
-    expect((await call<{ stepsDetail: unknown[] }>(`/labs/e2e-lab-${suffix}`)).stepsDetail.length).toBe(2)
+    expect((await call<{ steps: unknown[] }>(`/labs/e2e-lab-${suffix}`)).steps.length).toBe(2)
     const run = await call<{ id: string }>(`/labs/e2e-lab-${suffix}/runs`, { method: 'POST' }, studentToken)
-    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'start' }) }, studentToken)
+    const sameRun = await call<{ id: string }>(`/labs/e2e-lab-${suffix}/runs`, { method: 'POST' }, studentToken)
+    expect(sameRun.id).toBe(run.id)
+    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'run' }) }, studentToken)
     const stream = await fetch(`${base}/lab-runs/${run.id}/events`, {
       headers: { authorization: `Bearer ${studentToken}` },
       signal: AbortSignal.timeout(3000),
@@ -222,8 +271,12 @@ describe('真实 PostgreSQL 数据闭环', () => {
     }
     await reader?.cancel()
     expect(eventText).toContain('受控实训环境已准备')
-    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'complete' }) }, studentToken)
-    await call(`/lab-runs/${run.id}/submit`, { method: 'POST' }, studentToken)
+    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'confirm' }) }, studentToken)
+    const successful = await call<{ status: string; score: number }>(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'confirm' }) }, studentToken)
+    expect(successful).toMatchObject({ status: 'success', score: 100 })
+    const submitted = await call<{ status: string }>(`/lab-runs/${run.id}/submit`, { method: 'POST' }, studentToken)
+    expect(submitted.status).toBe('submitted')
+    expect((await call<{ status: string }>(`/lab-runs/${run.id}/submit`, { method: 'POST' }, studentToken)).status).toBe('submitted')
     const runs = await call<Array<{ id: string }>>(`/admin/labs/${labId}/runs`, {}, adminToken)
     expect(runs.some((item) => item.id === run.id)).toBe(true)
   })
@@ -242,14 +295,30 @@ describe('真实 PostgreSQL 数据闭环', () => {
         slug: `e2e-resource-${suffix}`,
         title: '端到端资源',
         summary: '真实文件与资源元数据。',
-        payload: { category: '学习手册', format: 'TXT', visibility: 'public', fileId },
+        category: '学习手册',
+        format: 'TXT',
+        visibility: 'public',
+        fileId,
       }),
     }, adminToken)
     resourceId = resource.databaseId
+    const draft = await call<{ title: string; versions: Array<{ id: string }> }>(`/admin/resources/${resourceId}`, {}, adminToken)
+    await call(`/admin/resources/${resourceId}`, { method: 'PATCH', body: JSON.stringify({ title: '资源待恢复标题' }) }, adminToken)
+    const restored = await call<{ title: string; versions: unknown[] }>(`/admin/resources/${resourceId}/versions/${draft.versions.at(-1)?.id}/restore`, { method: 'POST' }, adminToken)
+    expect(restored.title).toBe(draft.title)
+    expect(restored.versions.length).toBeGreaterThan(draft.versions.length)
     await call(`/admin/resources/${resourceId}/publish`, { method: 'POST' }, adminToken)
-    const detail = await call<{ fileId: string; views: number }>(`/resources/e2e-resource-${suffix}`)
-    expect(detail.fileId).toBe(fileId)
-    expect(detail.views).toBeGreaterThan(0)
+    const detail = await call<{ file: { id: string }; views: number }>(`/resources/e2e-resource-${suffix}`)
+    expect(detail.file.id).toBe(fileId)
+    await call(`/admin/resources/${resourceId}`, { method: 'PATCH', body: JSON.stringify({ title: '资源未发布新标题' }) }, adminToken)
+    expect((await call<{ title: string }>(`/resources/e2e-resource-${suffix}`)).title).toBe(draft.title)
+    await call(`/admin/resources/${resourceId}/publish`, { method: 'POST' }, adminToken)
+    expect((await call<{ title: string }>(`/resources/e2e-resource-${suffix}`)).title).toBe('资源未发布新标题')
+    const unchanged = await call<{ views: number }>(`/resources/e2e-resource-${suffix}`)
+    expect(unchanged.views).toBe(detail.views)
+    expect((await call<{ counted: boolean }>('/events/view', { method: 'POST', body: JSON.stringify({ targetType: 'resource', targetSlug: `e2e-resource-${suffix}` }) }, studentToken)).counted).toBe(true)
+    expect((await call<{ counted: boolean }>('/events/view', { method: 'POST', body: JSON.stringify({ targetType: 'resource', targetSlug: `e2e-resource-${suffix}` }) }, studentToken)).counted).toBe(false)
+    expect((await call<{ views: number }>(`/resources/e2e-resource-${suffix}`)).views).toBe(detail.views + 1)
     const download = await fetch(`${base}/files/${fileId}/download`, { headers: { authorization: `Bearer ${studentToken}` } })
     expect(download.status).toBe(200)
     expect(await download.text()).toBe('端到端资源内容')
@@ -258,21 +327,20 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('资讯发布与阅读计数写回 PostgreSQL', async () => {
     const article = await call<{ databaseId: string }>('/admin/articles', {
       method: 'POST',
-      body: JSON.stringify({ slug: `e2e-article-${suffix}`, title: '端到端资讯', summary: '真实资讯阅读统计。', payload: { category: 'AI 安全', content: ['正文'] } }),
+      body: JSON.stringify({ slug: `e2e-article-${suffix}`, title: '端到端资讯', summary: '真实资讯阅读统计。', category: 'AI 安全', blocks: [{ type: 'paragraph', text: '正文' }] }),
     }, adminToken)
     articleId = article.databaseId
     await call(`/admin/articles/${articleId}/recommendations`, {
       method: 'PUT',
       body: JSON.stringify({ items: [{ positionKey: 'frontier_hero', sortOrder: 1, enabled: true }] }),
     }, adminToken)
-    await call(`/admin/articles/${articleId}/schedule`, {
-      method: 'POST',
-      body: JSON.stringify({ scheduledAt: new Date(Date.now() - 1000).toISOString() }),
-    }, adminToken)
+    await call(`/admin/articles/${articleId}/publish`, { method: 'POST' }, adminToken)
     const first = await call<{ views: number }>(`/articles/e2e-article-${suffix}`)
     const second = await call<{ views: number; recommendations: unknown[] }>(`/articles/e2e-article-${suffix}`)
-    expect(second.views).toBe(first.views + 1)
+    expect(second.views).toBe(first.views)
     expect(second.recommendations.length).toBe(1)
+    expect((await call<{ counted: boolean }>('/events/view', { method: 'POST', body: JSON.stringify({ targetType: 'article', targetSlug: `e2e-article-${suffix}` }) }, studentToken)).counted).toBe(true)
+    expect((await call<{ views: number }>(`/articles/e2e-article-${suffix}`)).views).toBe(first.views + 1)
     await call(`/admin/articles/${articleId}`, { method: 'PATCH', body: JSON.stringify({ title: '资讯未发布新标题' }) }, adminToken)
     expect((await call<{ title: string }>(`/articles/e2e-article-${suffix}`)).title).toBe('端到端资讯')
     await call(`/admin/articles/${articleId}/publish`, { method: 'POST' }, adminToken)
@@ -286,14 +354,19 @@ describe('真实 PostgreSQL 数据闭环', () => {
   })
 
   it('实训运行与提交写入真实记录并累积成长积分', async () => {
+    const definition = await call<{ steps: Array<{ instruction: { action?: string } }> }>('/labs/model-service')
     const run = await call<{ id: string }>('/labs/model-service/runs', { method: 'POST' }, studentToken)
-    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'start' }) }, studentToken)
-    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'complete' }) }, studentToken)
+    await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'run' }) }, studentToken)
+    for (const step of definition.steps) {
+      await call(`/lab-runs/${run.id}/actions`, { method: 'POST', body: JSON.stringify({ action: step.instruction.action || 'confirm' }) }, studentToken)
+    }
     const submitted = await call<{ status: string }>(`/lab-runs/${run.id}/submit`, { method: 'POST' }, studentToken)
     expect(submitted.status).toBe('submitted')
   })
 
   it('统一题库公开接口不含答案，服务端事务计算成绩', async () => {
+    const challengeList = await call<{ items: Array<{ slug: string; targetScore: number; rewardPoints: number }> }>('/challenges?pageSize=100')
+    expect(challengeList.items.find((item) => item.slug === 'weekly-ai')).toMatchObject({ targetScore: 80, rewardPoints: 300 })
     const challengePage = await call<{ items: Array<{ slug: string; databaseId: string }> }>('/admin/challenges?pageSize=100', {}, adminToken)
     const challenge = challengePage.items.find((item) => item.slug === 'weekly-ai')
     const banks = await call<Array<{ id: string }>>('/admin/question-banks', {}, adminToken)
@@ -307,6 +380,10 @@ describe('真实 PostgreSQL 数据闭环', () => {
       body: JSON.stringify({ items: bankQuestions.map((item, index) => ({ questionId: item.id, sortOrder: index + 1, score: 100 / bankQuestions.length })) }),
     }, adminToken)
     await call(`/admin/challenges/${challenge?.databaseId}/paper`, { method: 'PUT', body: JSON.stringify({ paperId: paper.id }) }, adminToken)
+    await call(`/admin/challenges/${challenge?.databaseId}`, { method: 'PATCH', body: JSON.stringify({ targetScore: 90 }) }, adminToken)
+    expect((await call<{ targetScore: number }>('/challenges/weekly-ai')).targetScore).toBe(80)
+    await call(`/admin/challenges/${challenge?.databaseId}/publish`, { method: 'POST' }, adminToken)
+    expect((await call<{ targetScore: number }>('/challenges/weekly-ai')).targetScore).toBe(90)
     const questions = await call<Array<Record<string, unknown>>>('/challenges/weekly-ai/questions', {}, studentToken)
     expect(questions.length).toBeGreaterThan(0)
     expect(questions.every((question) => !('standardAnswer' in question))).toBe(true)
@@ -316,13 +393,20 @@ describe('真实 PostgreSQL 数据闭环', () => {
     await call(`/admin/questions/${questions[0].id}`, { method: 'PATCH', body: JSON.stringify({ status: 'published' }) }, adminToken)
     expect(String((await call<Array<Record<string, unknown>>>('/challenges/weekly-ai/questions', {}, studentToken))[0].stem)).toBe('未发布题目新题干')
     const answers = questions.map((question) => ({ questionId: question.id, answer: question.questionType === 'true_false' ? false : 'B' }))
-    const result = await call<{ score: number; total: number }>('/challenges/weekly-ai/submit', {
+    const idempotencyKey = `e2e-${Date.now()}`
+    const result = await call<{ challengeId: string; score: number; total: number; correct: number; passed: boolean }>('/challenges/weekly-ai/submit', {
       method: 'POST',
-      headers: { 'idempotency-key': `e2e-${Date.now()}` },
+      headers: { 'idempotency-key': idempotencyKey },
       body: JSON.stringify({ answers }),
     }, studentToken)
     expect(result.total).toBe(questions.length)
     expect(result.score).toBe(100)
+    const duplicate = await call<typeof result>('/challenges/weekly-ai/submit', {
+      method: 'POST',
+      headers: { 'idempotency-key': idempotencyKey },
+      body: JSON.stringify({ answers }),
+    }, studentToken)
+    expect(duplicate).toEqual(result)
     const growth = await call<{ achievements: unknown[]; certificates: unknown[]; knowledgeStats: unknown[] }>(`/admin/users/${studentId}/growth`, {}, adminToken)
     expect(growth.achievements.length).toBeGreaterThan(0)
     expect(growth.certificates.length).toBeGreaterThan(0)
@@ -332,6 +416,11 @@ describe('真实 PostgreSQL 数据闭环', () => {
   })
 
   it('通知发布、学生已读与操作日志真实可查', async () => {
+    await call('/admin/settings', { method: 'PATCH', body: JSON.stringify({ key: 'notification_enabled', value: false }) }, adminToken)
+    await call('/admin/settings', { method: 'PATCH', body: JSON.stringify({ key: 'allowed_login_domains', value: ['example.edu'] }) }, adminToken)
+    const settings = await call<Array<{ key: string; value: unknown }>>('/admin/settings', {}, adminToken)
+    expect(settings.find((item) => item.key === 'notification_enabled')?.value).toBe(false)
+    expect(settings.find((item) => item.key === 'allowed_login_domains')?.value).toEqual(['example.edu'])
     const notification = await call<{ id: string }>('/admin/notifications', {
       method: 'POST',
       body: JSON.stringify({ title: `端到端通知 ${suffix}`, content: '真实通知内容。', audience: 'all' }),
@@ -356,6 +445,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
     const homepage = await call<{ modules: Array<{ moduleKey: string; items: Array<{ id: string }> }> }>('/public/homepage')
     expect(homepage.modules.find((item) => item.moduleKey === 'hero_banner')?.items.some((item) => item.id === homepageItemId)).toBe(false)
     await call(`/admin/homepage/modules/${heroModuleId}/items/${homepageItemId}`, { method: 'DELETE' }, adminToken)
+    await call(`/admin/homepage/modules/${heroModuleId}/items/${homepageThemeItemId}`, { method: 'DELETE' }, adminToken)
     await call(`/admin/themes/${themeId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/labs/${labId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/resources/${resourceId}/archive`, { method: 'POST' }, adminToken)

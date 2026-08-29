@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { dataMode } from '../../services/api/client'
 import { useLearningStore } from '../../stores/learning'
 import type { Lab } from '../../types'
 import BaseContentCard from '../base/BaseContentCard.vue'
@@ -10,8 +11,8 @@ const favorite = computed(() => store.isFavorite('lab', props.lab.id))
 </script>
 
 <template>
-  <BaseContentCard :title="lab.title" :to="`/labs/${lab.id}`" :cover-variant="lab.coverVariant" :icon="lab.icon" tag="模拟实训">
-    <span class="meta">{{ lab.category }} · {{ lab.level }} · {{ lab.minutes }} 分钟</span>
+  <BaseContentCard :title="lab.title" :to="`/labs/${lab.id}`" :image="lab.cover" :cover-variant="lab.coverVariant" :icon="lab.icon" :tag="dataMode === 'api' ? '实训项目' : '模拟实训'">
+    <span class="meta">{{ lab.category }} · {{ lab.level }} · {{ lab.minutes == null ? '时长 —' : `${lab.minutes} 分钟` }}</span>
     <h3>{{ lab.title }}</h3>
     <p>{{ lab.description }}</p>
     <div class="card-actions">

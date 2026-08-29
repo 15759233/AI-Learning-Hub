@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { resources } from '../../data/mock'
+import { dataMode } from '../../services/api/client'
 import { useLearningStore } from '../../stores/learning'
 import type { LabDefinition, LabRunState } from '../../labs/types'
 import CategoryCover from '../base/CategoryCover.vue'
@@ -41,14 +42,14 @@ const related = computed(() => props.definition.relatedResourceIds
           <span class="tag purple">{{ definition.category }} · {{ definition.level }}</span>
           <h1>{{ definition.title }}</h1>
           <p>{{ definition.subtitle }}</p>
-          <div class="meta"><span>预计 {{ definition.duration }} 分钟</span><span>浏览器内受控模拟</span></div>
+          <div class="meta"><span>{{ definition.duration ? `预计 ${definition.duration} 分钟` : '预计时长 —' }}</span><span>{{ dataMode === 'api' ? '服务端受控状态机' : '浏览器内受控模拟' }}</span></div>
           <ProgressBar :value="progress" label="学习进度" dark />
         </div>
         <CategoryCover :title="definition.title" :variant="definition.coverVariant" :icon="definition.type.toUpperCase()" />
         <div class="lab-hero-actions">
           <button class="button lab-secondary" type="button" @click="emit('reset')">重新开始</button>
           <button class="button lab-secondary" type="button" @click="store.toggleFavorite('lab', definition.id)">{{ favorite ? '已收藏' : '收藏实验' }}</button>
-          <button class="button primary" type="button" :disabled="state === 'running'" @click="emit('run')">{{ state === 'success' || state === 'submitted' ? '重新运行' : '开始模拟' }}</button>
+          <button class="button primary" type="button" :disabled="state === 'success' || state === 'submitted' || (dataMode === 'api' && state === 'running')" @click="emit('run')">{{ state === 'running' ? (dataMode === 'api' ? '请提交当前步骤动作' : '完成当前步骤') : (dataMode === 'api' ? '开始运行' : '开始模拟') }}</button>
         </div>
       </section>
 
@@ -58,7 +59,7 @@ const related = computed(() => props.definition.relatedResourceIds
           <button v-for="(step, index) in definition.steps" :key="step.id" type="button" :class="{ active: activeStep === index + 1, done: index + 1 < activeStep || state === 'success' || state === 'submitted' }" @click="emit('update:activeStep', index + 1)">
             <strong>{{ String(index + 1).padStart(2, '0') }}</strong>
             <span>{{ step.title }}</span>
-            <small>{{ index + 1 < activeStep || state === 'success' || state === 'submitted' ? '已完成' : `${step.minutes} 分钟` }}</small>
+            <small>{{ index + 1 < activeStep || state === 'success' || state === 'submitted' ? '已完成' : (step.minutes ? `${step.minutes} 分钟` : '时长 —') }}</small>
           </button>
           <button class="report-link" type="button" :disabled="state !== 'success'" @click="emit('submit')">▤ 提交实验报告</button>
         </aside>
@@ -66,14 +67,15 @@ const related = computed(() => props.definition.relatedResourceIds
         <section class="workspace-main">
           <slot />
           <div class="terminal-header">
-            <strong>模拟运行日志</strong>
+            <strong>{{ dataMode === 'api' ? '服务端运行日志' : '模拟运行日志' }}</strong>
             <span :class="`status ${state}`">{{ state }}</span>
+            <button v-if="state === 'running' && dataMode === 'mock'" type="button" @click="emit('run')">✓ 完成当前步骤</button>
             <button v-if="state === 'running'" type="button" @click="emit('stop')">■ 停止</button>
-            <button v-else type="button" @click="emit('run')">▶ 运行</button>
+            <button v-else type="button" :disabled="state === 'success' || state === 'submitted'" @click="emit('run')">▶ 运行</button>
             <button type="button" @click="emit('reset')">重置</button>
           </div>
-          <LabTerminal :lines="logs" :label="`${definition.title}模拟运行日志`" />
-          <div class="simulation-boundary">所有运行、地址、设备、数据与报告均为前端演示，不连接真实服务器、Shell、硬件或模型服务。</div>
+          <LabTerminal :lines="logs" :label="`${definition.title}${dataMode === 'api' ? '服务端' : '模拟'}运行日志`" />
+          <div class="simulation-boundary">{{ dataMode === 'api' ? '前端只提交发布版本允许的动作，状态、校验与评分以服务端结果为准。' : '所有命令与设备操作均在受控模拟器中执行，不连接真实服务器、Shell、硬件或模型服务。' }}</div>
         </section>
 
         <aside class="guidance-panel">
@@ -87,7 +89,9 @@ const related = computed(() => props.definition.relatedResourceIds
 
       <section class="lab-related">
         <div class="section-heading"><div><span class="eyebrow">学习辅助</span><h2>相关资源</h2></div><RouterLink to="/resources">查看全部资源 →</RouterLink></div>
-        <div class="five-resource-grid"><RouterLink v-for="resource in related" :key="resource.id" :to="{ path: '/resources', query: { preview: resource.id } }"><span :class="`format ${resource.format.toLowerCase()}`">{{ resource.format }}</span><strong>{{ resource.title }}</strong><p>{{ resource.theme }} · {{ resource.difficulty }}</p><small>演示资源 · 查看详情 →</small></RouterLink></div>
+        <div v-if="dataMode === 'mock'" class="five-resource-grid"><RouterLink v-for="resource in related" :key="resource.id" :to="{ path: '/resources', query: { preview: resource.id } }"><span :class="`format ${resource.format.toLowerCase()}`">{{ resource.format }}</span><strong>{{ resource.title }}</strong><p>{{ resource.theme }} · {{ resource.difficulty }}</p><small>演示资源 · 查看详情 →</small></RouterLink></div>
+        <div v-else-if="definition.relatedResourceIds.length" class="five-resource-grid"><RouterLink v-for="slug in definition.relatedResourceIds" :key="slug" :to="{ path: '/resources', query: { preview: slug } }"><strong>{{ slug }}</strong><small>查看已发布资源 →</small></RouterLink></div>
+        <p v-else>尚未关联已发布资源。</p>
       </section>
 
       <section class="lab-result">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { dataMode } from '../services/api/client'
 import type { Article } from '../types'
 import { useLearningStore } from '../stores/learning'
 import AppDialog from './base/AppDialog.vue'
@@ -17,7 +18,8 @@ const favorite = computed(() => !!props.article && store.isFavorite('article', p
       <CategoryCover :title="article.title" :variant="article.coverVariant" :icon="article.icon" />
       <div class="meta"><span>{{ article.category }}</span><span>{{ article.readMinutes }} 分钟阅读</span><span>{{ article.publishedAt }}</span></div>
       <p v-for="paragraph in article.content" :key="paragraph">{{ paragraph }}</p>
-      <div class="notice">当前为前端演示文章，不代表实时新闻；资讯服务接口待接入。</div>
+      <div v-if="dataMode === 'mock'" class="notice">当前为前端演示文章，不代表实时新闻。</div>
+      <div v-else-if="!article.content.length" class="notice">文章正文尚未配置。</div>
       <button class="button secondary" type="button" @click="store.toggleFavorite('article', article.id)">{{ favorite ? '取消收藏' : '收藏文章' }}</button>
     </template>
     <div v-else-if="missing" class="inline-empty small-empty">

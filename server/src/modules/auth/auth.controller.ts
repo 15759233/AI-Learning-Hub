@@ -7,6 +7,7 @@ import { AuthService } from './auth.service'
 import { CurrentUser } from './current-user.decorator'
 import { LoginDto, UpdateProfileDto, WechatCodeDto } from './auth.dto'
 import type { AuthUser } from './auth.types'
+import { durationMs } from './auth-ttl'
 
 @Controller('auth')
 export class AuthController {
@@ -25,7 +26,10 @@ export class AuthController {
       secure: this.cookieSecure(),
       sameSite: 'lax',
       path: '/api/v1/auth',
-      maxAge: 7 * 86_400_000,
+      maxAge: durationMs(
+        this.config.get<string>('REFRESH_TOKEN_TTL') || `${this.config.get('REFRESH_TOKEN_DAYS') || '7'}d`,
+        '7d',
+      ),
     })
   }
 

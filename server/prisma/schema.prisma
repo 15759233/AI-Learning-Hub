@@ -95,6 +95,7 @@ model User {
   resourceDownloads ResourceDownload[]
   resourceViews     ResourceView[]
   articleViews      ArticleView[]
+  challengeScores   ChallengeBestScore[]
   school            School?              @relation(fields: [schoolId], references: [id], onDelete: SetNull)
   department        Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
@@ -263,33 +264,39 @@ model HomepageItem {
 }
 
 model Theme {
-  id          String         @id @default(cuid())
-  slug        String         @unique
-  title       String
-  summary     String
-  status      PublishStatus  @default(draft)
-  sortOrder   Int            @default(0) @map("sort_order")
-  publishedAt DateTime?      @map("published_at")
-  payload     Json           @default("{}")
-  version     Int            @default(1)
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  deletedAt   DateTime?      @map("deleted_at")
-  courses     Course[]
-  paths       LearningPath[]
-  versions    ThemeVersion[]
+  id                    String        @id @default(cuid())
+  slug                  String        @unique
+  title                 String
+  summary               String
+  status                PublishStatus @default(draft)
+  sortOrder             Int           @default(0) @map("sort_order")
+  publishedAt           DateTime?     @map("published_at")
+  payload               Json          @default("{}")
+  version               Int           @default(1)
+  currentDraftVersionId String?       @map("current_draft_version_id")
+  publishedVersionId    String?       @map("published_version_id")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  deletedAt             DateTime?     @map("deleted_at")
+  courses               Course[]
+  paths                 LearningPath[]
+  versions              ThemeVersion[] @relation("ThemeVersions")
+  currentDraftVersion   ThemeVersion?  @relation("ThemeDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      ThemeVersion?  @relation("ThemePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
 
   @@index([status, sortOrder])
   @@map("learning_themes")
 }
 
 model ThemeVersion {
-  id        String   @id @default(cuid())
-  themeId   String   @map("theme_id")
-  versionNo Int      @map("version_no")
-  snapshot  Json
-  createdAt DateTime @default(now()) @map("created_at")
-  theme     Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  themeId      String   @map("theme_id")
+  versionNo    Int      @map("version_no")
+  snapshot     Json
+  createdAt    DateTime @default(now()) @map("created_at")
+  theme        Theme    @relation("ThemeVersions", fields: [themeId], references: [id], onDelete: Cascade)
+  draftFor     Theme[]  @relation("ThemeDraftVersion")
+  publishedFor Theme[]  @relation("ThemePublishedVersion")
 
   @@unique([themeId, versionNo])
   @@map("learning_theme_versions")
@@ -313,6 +320,7 @@ model LearningPath {
 model LearningPathStage {
   id          String        @id @default(cuid())
   pathId      String        @map("path_id")
+  stageKey    String        @map("stage_key")
   name        String
   stageType   String        @map("stage_type")
   description String        @default("")
@@ -321,7 +329,8 @@ model LearningPathStage {
   path        LearningPath  @relation(fields: [pathId], references: [id], onDelete: Cascade)
   contents    PathContent[]
 
-  @@unique([pathId, stageType])
+  @@unique([pathId, stageKey])
+  @@index([pathId, sortOrder])
   @@map("learning_path_stages")
 }
 
@@ -441,6 +450,7 @@ model CourseLesson {
   chapter         CourseChapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   blocks          LessonBlock[]
   progress        LessonProgress[]
+  notes           LearningNote[]
 
   @@map("course_lessons")
 }
@@ -457,16 +467,17 @@ model LessonBlock {
 }
 
 model LessonProgress {
-  id          String        @id @default(cuid())
-  userId      String        @map("user_id")
-  courseId    String        @map("course_id")
-  lessonId    String?       @map("lesson_id")
-  progress    Int           @default(0)
-  completedAt DateTime?     @map("completed_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course      Course        @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  lesson      CourseLesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  courseId        String        @map("course_id")
+  lessonId        String?       @map("lesson_id")
+  progress        Int           @default(0)
+  positionSeconds Int           @default(0) @map("position_seconds")
+  completedAt     DateTime?     @map("completed_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  lesson          CourseLesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
 
   @@unique([userId, courseId, lessonId])
   @@index([userId, updatedAt])
@@ -474,16 +485,20 @@ model LessonProgress {
 }
 
 model LearningNote {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  courseId  String   @map("course_id")
+  id        String        @id @default(cuid())
+  userId    String        @map("user_id")
+  courseId  String        @map("course_id")
+  lessonId  String?       @map("lesson_id")
+  scopeKey  String        @default("course") @map("scope_key")
   content   String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course        @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  lesson    CourseLesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, courseId])
+  @@unique([userId, courseId, scopeKey])
+  @@index([userId, updatedAt])
   @@map("learning_notes")
 }
 
@@ -587,25 +602,26 @@ model LabStep {
 }
 
 model LabRun {
-  id           String           @id @default(cuid())
-  userId       String           @map("user_id")
-  labId        String           @map("lab_id")
-  labVersion   Int              @map("lab_version")
-  labVersionId String?          @map("lab_version_id")
-  status       LabRunStatus     @default(ready)
-  currentStep  Int              @default(0) @map("current_step")
-  progress     Int              @default(0)
-  score        Int              @default(0)
-  result       Json             @default("{}") @map("result_json")
-  startedAt    DateTime         @default(now()) @map("started_at")
-  completedAt  DateTime?        @map("completed_at")
-  submittedAt  DateTime?        @map("submitted_at")
-  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
-  lab          Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)
-  version      LabVersion?      @relation(fields: [labVersionId], references: [id], onDelete: Restrict)
-  events       LabRunEvent[]
-  snapshots    LabRunSnapshot[]
-  report       LabReport?
+  id                String           @id @default(cuid())
+  userId            String           @map("user_id")
+  labId             String           @map("lab_id")
+  labVersion        Int              @map("lab_version")
+  labVersionId      String?          @map("lab_version_id")
+  status            LabRunStatus     @default(ready)
+  currentStep       Int              @default(0) @map("current_step")
+  nextEventSequence Int              @default(1) @map("next_event_sequence")
+  progress          Int              @default(0)
+  score             Int              @default(0)
+  result            Json             @default("{}") @map("result_json")
+  startedAt         DateTime         @default(now()) @map("started_at")
+  completedAt       DateTime?        @map("completed_at")
+  submittedAt       DateTime?        @map("submitted_at")
+  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lab               Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)
+  version           LabVersion?      @relation(fields: [labVersionId], references: [id], onDelete: Restrict)
+  events            LabRunEvent[]
+  snapshots         LabRunSnapshot[]
+  report            LabReport?
 
   @@index([userId, startedAt])
   @@map("lab_runs")
@@ -667,26 +683,30 @@ model FileRecord {
 }
 
 model Resource {
-  id            String             @id @default(cuid())
-  slug          String             @unique
-  title         String
-  summary       String
-  category      String
-  format        String
-  visibility    String             @default("public")
-  fileId        String?            @map("file_id")
-  status        PublishStatus      @default(draft)
-  sortOrder     Int                @default(0) @map("sort_order")
-  downloadCount Int                @default(0) @map("download_count")
-  viewCount     Int                @default(0) @map("view_count")
-  publishedAt   DateTime?          @map("published_at")
-  payload       Json               @default("{}")
-  version       Int                @default(1)
-  createdAt     DateTime           @default(now()) @map("created_at")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
-  deletedAt     DateTime?          @map("deleted_at")
-  file          FileRecord?        @relation(fields: [fileId], references: [id], onDelete: SetNull)
-  versions      ResourceVersion[]
+  id                    String             @id @default(cuid())
+  slug                  String             @unique
+  title                 String
+  summary               String
+  category              String
+  format                String
+  visibility            String             @default("public")
+  fileId                String?            @map("file_id")
+  status                PublishStatus      @default(draft)
+  sortOrder             Int                @default(0) @map("sort_order")
+  downloadCount         Int                @default(0) @map("download_count")
+  viewCount             Int                @default(0) @map("view_count")
+  publishedAt           DateTime?          @map("published_at")
+  payload               Json               @default("{}")
+  version               Int                @default(1)
+  currentDraftVersionId String?            @map("current_draft_version_id")
+  publishedVersionId    String?            @map("published_version_id")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  deletedAt             DateTime?          @map("deleted_at")
+  file                  FileRecord?        @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  versions              ResourceVersion[]  @relation("ResourceVersions")
+  currentDraftVersion   ResourceVersion?   @relation("ResourceDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      ResourceVersion?   @relation("ResourcePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   tags          ResourceTag[]
   downloads     ResourceDownload[]
   views         ResourceView[]
@@ -708,12 +728,14 @@ model ResourceCategory {
 }
 
 model ResourceVersion {
-  id         String   @id @default(cuid())
-  resourceId String   @map("resource_id")
-  versionNo  Int      @map("version_no")
-  snapshot   Json
-  createdAt  DateTime @default(now()) @map("created_at")
-  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  id           String     @id @default(cuid())
+  resourceId   String     @map("resource_id")
+  versionNo    Int        @map("version_no")
+  snapshot     Json
+  createdAt    DateTime   @default(now()) @map("created_at")
+  resource     Resource   @relation("ResourceVersions", fields: [resourceId], references: [id], onDelete: Cascade)
+  draftFor     Resource[] @relation("ResourceDraftVersion")
+  publishedFor Resource[] @relation("ResourcePublishedVersion")
 
   @@unique([resourceId, versionNo])
   @@map("resource_versions")
@@ -869,31 +891,51 @@ model ArticleRecommendation {
 }
 
 model Challenge {
-  id             String              @id @default(cuid())
-  slug           String              @unique
-  title          String
-  summary        String
-  challengeType  String              @default("assessment") @map("challenge_type")
-  status         PublishStatus       @default(draft)
-  sortOrder      Int                 @default(0) @map("sort_order")
-  targetScore    Int                 @default(60) @map("target_score")
-  rewardPoints   Int                 @default(0) @map("reward_points")
-  questionBankId String?             @map("question_bank_id")
-  paperId        String?             @map("paper_id")
-  publishedAt    DateTime?           @map("published_at")
-  payload        Json                @default("{}")
-  version        Int                 @default(1)
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  deletedAt      DateTime?           @map("deleted_at")
-  attempts       AssessmentAttempt[]
-  questionBank   QuestionBank?       @relation(fields: [questionBankId], references: [id], onDelete: SetNull)
-  paper          Paper?              @relation(fields: [paperId], references: [id], onDelete: SetNull)
-  rankings       RankingSnapshot[]
-  rules          ChallengeRule[]
+  id                    String               @id @default(cuid())
+  slug                  String               @unique
+  title                 String
+  summary               String
+  challengeType         String               @default("assessment") @map("challenge_type")
+  status                PublishStatus        @default(draft)
+  sortOrder             Int                  @default(0) @map("sort_order")
+  targetScore           Int                  @default(60) @map("target_score")
+  rewardPoints          Int                  @default(0) @map("reward_points")
+  questionBankId        String?              @map("question_bank_id")
+  paperId               String?              @map("paper_id")
+  publishedAt           DateTime?            @map("published_at")
+  payload               Json                 @default("{}")
+  version               Int                  @default(1)
+  currentDraftVersionId String?              @map("current_draft_version_id")
+  publishedVersionId    String?              @map("published_version_id")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  deletedAt             DateTime?            @map("deleted_at")
+  attempts              AssessmentAttempt[]
+  questionBank          QuestionBank?        @relation(fields: [questionBankId], references: [id], onDelete: SetNull)
+  paper                 Paper?               @relation(fields: [paperId], references: [id], onDelete: SetNull)
+  rankings              RankingSnapshot[]
+  bestScores            ChallengeBestScore[]
+  rules                 ChallengeRule[]
+  versions              ChallengeVersion[]   @relation("ChallengeVersions")
+  currentDraftVersion   ChallengeVersion?    @relation("ChallengeDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      ChallengeVersion?    @relation("ChallengePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
 
   @@index([status, sortOrder])
   @@map("challenges")
+}
+
+model ChallengeVersion {
+  id           String      @id @default(cuid())
+  challengeId  String      @map("challenge_id")
+  versionNo    Int         @map("version_no")
+  snapshot     Json
+  createdAt    DateTime    @default(now()) @map("created_at")
+  challenge    Challenge   @relation("ChallengeVersions", fields: [challengeId], references: [id], onDelete: Cascade)
+  draftFor     Challenge[] @relation("ChallengeDraftVersion")
+  publishedFor Challenge[] @relation("ChallengePublishedVersion")
+
+  @@unique([challengeId, versionNo])
+  @@map("challenge_versions")
 }
 
 model ChallengeRule {
@@ -945,10 +987,11 @@ model Question {
 }
 
 model KnowledgePoint {
-  id        String     @id @default(cuid())
-  code      String     @unique
+  id        String              @id @default(cuid())
+  code      String              @unique
   name      String
   questions Question[]
+  userStats UserKnowledgeStat[]
 
   @@map("knowledge_points")
 }
@@ -1009,16 +1052,17 @@ model PaperQuestion {
 }
 
 model AssessmentAttempt {
-  id            String             @id @default(cuid())
-  userId        String             @map("user_id")
-  challengeId   String             @map("challenge_id")
+  id            String               @id @default(cuid())
+  userId        String               @map("user_id")
+  challengeId   String               @map("challenge_id")
   score         Int
   answers       Json
-  submittedAt   DateTime           @default(now()) @map("submitted_at")
-  user          User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  challenge     Challenge          @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  submittedAt   DateTime             @default(now()) @map("submitted_at")
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  challenge     Challenge            @relation(fields: [challengeId], references: [id], onDelete: Restrict)
   answerRecords AssessmentAnswer[]
   wrongRecords  WrongQuestion[]
+  bestFor       ChallengeBestScore[]
 
   @@index([userId, submittedAt])
   @@map("assessment_attempts")
@@ -1058,17 +1102,33 @@ model WrongQuestion {
 }
 
 model UserKnowledgeStat {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  knowledgeKey String   @map("knowledge_key")
-  total        Int      @default(0)
-  correct      Int      @default(0)
-  accuracy     Int      @default(0)
-  updatedAt    DateTime @updatedAt @map("updated_at")
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  knowledgePointId String         @map("knowledge_point_id")
+  total            Int            @default(0)
+  correct          Int            @default(0)
+  accuracy         Int            @default(0)
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, knowledgeKey])
+  @@unique([userId, knowledgePointId])
   @@map("user_knowledge_stats")
+}
+
+model ChallengeBestScore {
+  userId      String            @map("user_id")
+  challengeId String            @map("challenge_id")
+  attemptId   String            @map("attempt_id")
+  score       Int
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge   Challenge         @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@id([userId, challengeId])
+  @@index([challengeId, score])
+  @@map("challenge_best_scores")
 }
 
 model RankingSnapshot {
@@ -1136,6 +1196,7 @@ model GrowthPoint {
   createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, eventType, reference])
   @@index([userId, createdAt])
   @@map("growth_points")
 }
@@ -1342,12 +1403,24 @@ model SyncJob {
 
 model IdempotencyKey {
   id        String   @id @default(cuid())
-  key       String   @unique
+  key       String
   scope     String
   response  Json
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([scope, key])
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+model LoginThrottle {
+  identityKey  String    @id @map("identity_key")
+  failures     Int       @default(0)
+  blockedUntil DateTime? @map("blocked_until")
+  expiresAt    DateTime  @map("expires_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("login_throttles")
 }

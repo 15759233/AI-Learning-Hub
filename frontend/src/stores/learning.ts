@@ -2,19 +2,30 @@ import { defineStore } from 'pinia'
 import { behaviorApi } from '../services/api/behavior'
 import { dataMode } from '../services/api/client'
 import { loadDemoState, saveDemoState } from '../services/demoStorage'
-import type { DemoAppState, FavoriteType, LearningPlan } from '../types'
+import type { FavoriteType, LearningPlan } from '../types'
+import { createEmptyLearningState } from './learningState'
 
 const clamp = (value: number) => Math.min(100, Math.max(0, Math.round(value)))
-const labRunIds = new Map<string, string>()
 const notifyError = (error: unknown) => window.dispatchEvent(new CustomEvent('api-error', {
   detail: { message: error instanceof Error ? error.message : '真实 API 操作失败' },
 }))
 
+export type AccountSyncState = 'mock' | 'anonymous' | 'syncing' | 'synced' | 'sync-error'
+
 export const useLearningStore = defineStore('learning', {
-  state: (): DemoAppState => loadDemoState(),
+  state: () => ({
+    ...(dataMode === 'mock' ? loadDemoState() : createEmptyLearningState()),
+    accountSyncState: (dataMode === 'mock' ? 'mock' : 'anonymous') as AccountSyncState,
+  }),
   actions: {
     persist() {
-      saveDemoState(this.$state)
+      if (dataMode === 'mock') saveDemoState(this.$state)
+    },
+    clearAccountState(nextState: Exclude<AccountSyncState, 'mock' | 'synced'> = 'anonymous') {
+      if (dataMode === 'api') {
+        this.$reset()
+        this.accountSyncState = nextState
+      }
     },
     isFavorite(type: FavoriteType, id: string) {
       return this.favorites.some((item) => item.type === type && item.id === id)
@@ -35,18 +46,24 @@ export const useLearningStore = defineStore('learning', {
       if (dataMode === 'mock') this.persist()
       return true
     },
-    async saveNote(courseId: string, note: string) {
+    async saveNote(courseId: string, note: string, lessonId?: string) {
       if (dataMode === 'api') {
-        try { await behaviorApi.saveCourseNote(courseId, note) } catch (error) { notifyError(error); return false }
+        try {
+          if (lessonId) await behaviorApi.saveLessonNote(lessonId, note)
+          else await behaviorApi.saveCourseNote(courseId, note)
+        } catch (error) { notifyError(error); return false }
       }
-      this.notes[courseId] = note
+      this.notes[lessonId ? `${courseId}:${lessonId}` : courseId] = note
       if (dataMode === 'mock') this.persist()
       return true
     },
-    async completeCourseStep(courseId: string, lesson: number, total: number) {
-      const progress = clamp((lesson / total) * 100)
+    async completeCourseStep(courseId: string, lessonId: string | number, total = 1) {
+      let progress = clamp((Number(lessonId) / total) * 100)
       if (dataMode === 'api') {
-        try { await behaviorApi.saveCourseProgress(courseId, progress) } catch (error) { notifyError(error); return false }
+        try {
+          const result = await behaviorApi.saveLessonProgress(String(lessonId), true)
+          progress = result.courseProgress.percentage
+        } catch (error) { notifyError(error); return false }
       }
       this.courseProgress[courseId] = progress
       this.recentCourses = [courseId, ...this.recentCourses.filter((id) => id !== courseId)].slice(0, 6)
@@ -54,33 +71,12 @@ export const useLearningStore = defineStore('learning', {
       return true
     },
     async setLabProgress(labId: string, value: number) {
-      if (dataMode === 'api' && value >= 80 && !labRunIds.has(labId)) {
-        try {
-          const run = await behaviorApi.startLab(labId)
-          labRunIds.set(labId, run.id)
-          await behaviorApi.actOnLab(run.id, 'start')
-          await behaviorApi.actOnLab(run.id, 'complete')
-        } catch (error) { notifyError(error); return false }
-      }
       this.labProgress[labId] = clamp(value)
       this.recentLabs = [labId, ...this.recentLabs.filter((id) => id !== labId)].slice(0, 6)
       if (dataMode === 'mock') this.persist()
       return true
     },
     async submitLab(labId: string) {
-      if (dataMode === 'api') {
-        try {
-          let runId = labRunIds.get(labId)
-          if (!runId) {
-            const run = await behaviorApi.startLab(labId)
-            runId = run.id
-            labRunIds.set(labId, runId)
-            await behaviorApi.actOnLab(runId, 'start')
-            await behaviorApi.actOnLab(runId, 'complete')
-          }
-          await behaviorApi.submitLab(runId)
-        } catch (error) { notifyError(error); return false }
-      }
       if (!this.submittedLabs.includes(labId)) this.submittedLabs.push(labId)
       this.labProgress[labId] = 100
       this.recentLabs = [labId, ...this.recentLabs.filter((id) => id !== labId)].slice(0, 6)
@@ -88,15 +84,25 @@ export const useLearningStore = defineStore('learning', {
       return true
     },
     saveProfile(nickname: string, bio: string) {
+      if (dataMode !== 'mock') return
       this.profile = { nickname: nickname.trim(), bio: bio.trim() }
       this.persist()
     },
     async addPlan(plan: LearningPlan) {
       if (dataMode === 'api') {
-        try { await behaviorApi.addPlan(plan.name, plan.targetDate) } catch (error) { notifyError(error); return false }
+        try {
+          const created = await behaviorApi.addPlan(plan.name, plan.targetDate) as { id: string; title: string; targetDate: string; status: string }
+          this.plans.unshift({
+            id: created.id,
+            name: created.title,
+            targetDate: created.targetDate.slice(0, 10),
+            status: created.status === 'completed' ? '已完成' : '进行中',
+          })
+          return true
+        } catch (error) { notifyError(error); return false }
       }
       this.plans.unshift(plan)
-      if (dataMode === 'mock') this.persist()
+      this.persist()
       return true
     },
     async togglePlan(planId: string) {
@@ -111,12 +117,14 @@ export const useLearningStore = defineStore('learning', {
       return true
     },
     recordAssessment(kind: 'challenge' | 'assessment' | 'practice', id: string) {
+      if (dataMode === 'api') return
       this.assessmentRecords.unshift({ id, kind, createdAt: new Date().toISOString() })
       this.assessmentRecords = this.assessmentRecords.slice(0, 20)
       this.persist()
     },
     async syncFromApi() {
-      if (dataMode !== 'api') return
+      if (dataMode !== 'api') return false
+      this.clearAccountState('syncing')
       try {
         const [favorites, plans, growth] = await Promise.all([behaviorApi.favorites(), behaviorApi.plans(), behaviorApi.growth()]) as [
           Array<{ targetType: FavoriteType; targetId: string }>,
@@ -124,7 +132,7 @@ export const useLearningStore = defineStore('learning', {
           {
             points: number
             courseProgress: Array<{ progress: number; course: { slug: string }; updatedAt: string }>
-            notes: Array<{ content: string; course: { slug: string } }>
+            notes: Array<{ content: string; lessonId: string | null; course: { slug: string } }>
             labRuns: Array<{ status: string; progress: number; lab: { slug: string }; startedAt: string }>
             assessmentAttempts: Array<{ id: string; submittedAt: string }>
             achievements: unknown[]
@@ -132,21 +140,25 @@ export const useLearningStore = defineStore('learning', {
             knowledgeStats: Array<{ accuracy: number }>
           },
         ]
-        this.favorites = favorites.map((item) => ({ type: item.targetType, id: item.targetId }))
-        this.plans = plans.map((plan) => ({
+        const next = createEmptyLearningState()
+        next.favorites = favorites.map((item) => ({ type: item.targetType, id: item.targetId }))
+        next.plans = plans.map((plan) => ({
           id: String(plan.id),
           name: String(plan.title),
           targetDate: String(plan.targetDate).slice(0, 10),
           status: plan.status === 'completed' ? '已完成' : '进行中',
         }))
-        this.courseProgress = Object.fromEntries(growth.courseProgress.map((item) => [item.course.slug, item.progress]))
-        this.notes = Object.fromEntries(growth.notes.map((item) => [item.course.slug, item.content]))
-        this.labProgress = Object.fromEntries(growth.labRuns.map((item) => [item.lab.slug, item.progress]))
-        this.recentCourses = growth.courseProgress.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).map((item) => item.course.slug)
-        this.recentLabs = growth.labRuns.map((item) => item.lab.slug)
-        this.submittedLabs = growth.labRuns.filter((item) => item.status === 'submitted').map((item) => item.lab.slug)
-        this.assessmentRecords = growth.assessmentAttempts.map((item) => ({ id: item.id, kind: 'assessment' as const, createdAt: item.submittedAt }))
-        this.serverGrowth = {
+        next.courseProgress = Object.fromEntries(growth.courseProgress.map((item) => [item.course.slug, item.progress]))
+        next.notes = Object.fromEntries(growth.notes.map((item) => [
+          item.lessonId ? `${item.course.slug}:${item.lessonId}` : item.course.slug,
+          item.content,
+        ]))
+        next.labProgress = Object.fromEntries(growth.labRuns.map((item) => [item.lab.slug, item.progress]))
+        next.recentCourses = [...growth.courseProgress].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).map((item) => item.course.slug)
+        next.recentLabs = growth.labRuns.map((item) => item.lab.slug)
+        next.submittedLabs = growth.labRuns.filter((item) => item.status === 'submitted').map((item) => item.lab.slug)
+        next.assessmentRecords = growth.assessmentAttempts.map((item) => ({ id: item.id, kind: 'assessment' as const, createdAt: item.submittedAt }))
+        next.serverGrowth = {
           points: growth.points,
           achievements: growth.achievements.length,
           certificates: growth.certificates.length,
@@ -154,7 +166,14 @@ export const useLearningStore = defineStore('learning', {
             ? Math.round(growth.knowledgeStats.reduce((total, item) => total + item.accuracy, 0) / growth.knowledgeStats.length)
             : 0,
         }
-      } catch (error) { notifyError(error) }
+        this.$patch(next)
+        this.accountSyncState = 'synced'
+        return true
+      } catch (error) {
+        this.clearAccountState('sync-error')
+        notifyError(error)
+        return false
+      }
     },
   },
 })

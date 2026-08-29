@@ -1,38 +1,29 @@
 <script setup lang="ts">
+import type { CourseDetailDto } from '@ai-learning-hub/contracts'
+import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CourseCard from '../components/CourseCard.vue'
 import AppDialog from '../components/base/AppDialog.vue'
 import NotFoundState from '../components/NotFoundState.vue'
 import ProgressBar from '../components/ProgressBar.vue'
-import { assets, courses } from '../data/mock'
+import { assets } from '../data/mock'
 import { dataMode } from '../services/api/client'
-import { contentApi } from '../services/api/content'
+import { useAuthStore } from '../stores/auth'
+import { mapCourse, useCoursesStore } from '../stores/content/courses'
 import { useLearningStore } from '../stores/learning'
-
-interface ApiLessonBlock {
-  id: string
-  blockType: string
-  sortOrder: number
-  content: { text?: string; items?: string[]; language?: string; code?: string }
-}
-
-interface ApiLesson {
-  id: string
-  title: string
-  summary: string
-  durationMinutes: number
-  blocks: ApiLessonBlock[]
-}
-
-interface ApiCourseDetail {
-  chapters: Array<{ id: string; title: string; lessons: ApiLesson[] }>
-}
 
 const route = useRoute()
 const router = useRouter()
 const store = useLearningStore()
-const course = computed(() => courses.find((item) => item.id === route.params.courseId))
+const auth = useAuthStore()
+const courseStore = useCoursesStore()
+const { items: courses } = storeToRefs(courseStore)
+const course = computed(() => {
+  const listed = courses.value.find((item) => item.id === route.params.courseId)
+  if (listed || courseStore.selected?.slug !== route.params.courseId) return listed
+  return mapCourse(courseStore.selected)
+})
 const courseId = computed(() => String(route.params.courseId))
 const currentLesson = ref(Math.min(5, Math.max(1, Number(route.query.lesson) || 2)))
 const expanded = ref(true)
@@ -42,7 +33,7 @@ const copyMessage = ref('复制代码')
 const followed = ref(false)
 const noteOpen = ref(false)
 const noteDraft = ref(store.notes[courseId.value] || '')
-const courseDetail = ref<ApiCourseDetail | null>(null)
+const courseDetail = ref<CourseDetailDto | null>(null)
 const detailLoading = ref(false)
 const detailError = ref('')
 const videoMessage = ref('▶ 12:40 · 演示视频占位')
@@ -52,6 +43,13 @@ const lessons = ['AI 与语言模型', 'Transformer 核心结构', '训练与微
 const apiLessons = computed(() => courseDetail.value?.chapters.flatMap((chapter) => chapter.lessons) || [])
 const displayLessons = computed(() => dataMode === 'api' ? apiLessons.value.map((lesson) => lesson.title) : lessons)
 const currentApiLesson = computed(() => apiLessons.value[currentLesson.value - 1])
+const noteKey = computed(() => currentApiLesson.value ? `${courseId.value}:${currentApiLesson.value.id}` : courseId.value)
+const chapterCount = computed(() => dataMode === 'api' ? (courseDetail.value?.chapters.length || 0) : 5)
+const accountDataReady = computed(() => dataMode === 'mock' || store.accountSyncState === 'synced')
+const accountDataMessage = computed(() => {
+  if (!auth.user) return '登录后查看课程进度。'
+  return store.accountSyncState === 'sync-error' ? '账号课程进度暂不可用。' : '正在同步账号课程进度…'
+})
 const code = `from transformers import pipeline\n\nassistant = pipeline("text-generation")\nresult = assistant("解释注意力机制：", max_new_tokens=80)\nprint(result[0]["generated_text"])`
 
 const submitQuiz = () => {
@@ -67,21 +65,27 @@ const copyCode = async () => {
   window.setTimeout(() => { copyMessage.value = '复制代码' }, 1800)
 }
 const saveNote = async () => {
-  if (await store.saveNote(courseId.value, noteDraft.value)) noteOpen.value = false
+  if (await store.saveNote(courseId.value, noteDraft.value, dataMode === 'api' ? currentApiLesson.value?.id : undefined)) noteOpen.value = false
 }
-const recommendations = computed(() => courses.filter((item) => item.id !== courseId.value).slice(0, 4))
+const completeCurrentLesson = () => {
+  const lessonId = dataMode === 'api' ? currentApiLesson.value?.id : currentLesson.value
+  if (lessonId) void store.completeCourseStep(courseId.value, lessonId, displayLessons.value.length)
+}
+const recommendations = computed(() => courses.value.filter((item) => item.id !== courseId.value).slice(0, 4))
 watch(currentLesson, (lesson) => {
   router.replace({ query: { ...route.query, lesson: String(lesson) } })
+  noteDraft.value = store.notes[noteKey.value] || ''
 })
 watch(courseId, async () => {
   currentLesson.value = Math.min(5, Math.max(1, Number(route.query.lesson) || 1))
-  noteDraft.value = store.notes[courseId.value] || ''
+  noteDraft.value = store.notes[noteKey.value] || ''
   if (dataMode !== 'api') return
   detailLoading.value = true
   detailError.value = ''
   courseDetail.value = null
   try {
-    courseDetail.value = await contentApi.course(courseId.value) as unknown as ApiCourseDetail
+    await courseStore.load()
+    courseDetail.value = await courseStore.detail(courseId.value)
     currentLesson.value = Math.min(Math.max(1, currentLesson.value), Math.max(1, apiLessons.value.length))
   } catch (error) {
     detailError.value = error instanceof Error ? error.message : '课程详情加载失败'
@@ -95,16 +99,16 @@ watch(courseId, async () => {
   <NotFoundState v-if="!course" title="没有找到这门课程" description="未知 courseId 不会回退到其他课程，请返回学习主题重新选择。" back-to="/topics" back-label="返回学习主题" />
   <div v-else class="page-container">
     <section class="course-hero">
-      <div class="hero-copy"><span class="tag purple">{{ course.category }}</span><h1>{{ course.title }}</h1><p>{{ course.description }} 从核心概念出发，逐步走向受控实践。</p><div class="meta"><span>{{ course.level }}</span><span>5 章 · 18 节</span><span>{{ course.learners.toLocaleString() }} 人学习</span><span>4.9 分</span></div><div class="teacher"><span class="avatar">林</span><div><strong>林知远老师</strong><small>高校 AI 应用课程讲师</small></div><button class="button secondary small" type="button" @click="followed = !followed">{{ followed ? '已关注' : '关注' }}</button></div></div>
-      <img :src="assets.learningCover" :alt="`${course.title}课程插画`" />
-      <aside class="hero-progress"><ProgressBar :value="store.courseProgress[course.id] ?? course.progress ?? 0" label="学习进度" /><strong>已学 {{ currentLesson }} / {{ displayLessons.length }} 课时</strong><button class="button primary full-width" type="button" :disabled="!displayLessons.length" @click="store.completeCourseStep(course.id, currentLesson, displayLessons.length)">完成本节</button><button class="button secondary full-width" type="button" @click="store.toggleFavorite('course', course.id)">{{ store.isFavorite('course', course.id) ? '已收藏' : '收藏课程' }}</button></aside>
+      <div class="hero-copy"><span class="tag purple">{{ course.category }}</span><h1>{{ course.title }}</h1><p>{{ course.description }}{{ dataMode === 'mock' ? ' 从核心概念出发，逐步走向受控实践。' : '' }}</p><div class="meta"><span>{{ course.level }}</span><span>{{ chapterCount }} 章 · {{ displayLessons.length }} 节</span><span>{{ course.learners === undefined ? '学习人数 —' : `${course.learners.toLocaleString()} 人学习` }}</span><span>{{ dataMode === 'api' ? (courseDetail?.data.rating ? `${courseDetail.data.rating} 分` : '评分 —') : '4.9 分' }}</span></div><div class="teacher"><span class="avatar">{{ String(courseDetail?.data.instructor?.name || '讲师').slice(0, 1) }}</span><div><strong>{{ courseDetail?.data.instructor?.name || (dataMode === 'api' ? '讲师待配置' : '林知远老师') }}</strong><small>{{ courseDetail?.data.instructor?.title || (dataMode === 'api' ? '信息待配置' : '高校 AI 应用课程讲师') }}</small></div><button v-if="dataMode === 'mock'" class="button secondary small" type="button" @click="followed = !followed">{{ followed ? '已关注' : '关注' }}</button></div></div>
+      <img v-if="course.cover || dataMode === 'mock'" :src="course.cover || assets.learningCover" :alt="`${course.title}课程插画`" />
+      <aside class="hero-progress"><ProgressBar v-if="accountDataReady" :value="store.courseProgress[course.id] ?? course.progress ?? 0" label="学习进度" /><p v-else class="notice">{{ accountDataMessage }}</p><strong>当前第 {{ currentLesson }} / {{ displayLessons.length }} 课时</strong><button class="button primary full-width" type="button" :disabled="!displayLessons.length" @click="completeCurrentLesson">完成本节</button><button class="button secondary full-width" type="button" @click="store.toggleFavorite('course', course.id)">{{ store.isFavorite('course', course.id) ? '已收藏' : '收藏课程' }}</button></aside>
     </section>
     <div class="learning-layout">
       <aside class="outline-panel sticky">
         <button class="outline-title" type="button" @click="expanded = !expanded"><strong>课程大纲</strong><span>{{ expanded ? '收起' : '展开' }}</span></button>
         <div v-if="expanded && displayLessons.length" class="lesson-list"><button v-for="(lesson, index) in displayLessons" :key="lesson" type="button" :class="{ done: index < currentLesson - 1, active: index === currentLesson - 1 }" @click="currentLesson = index + 1"><span>{{ index < currentLesson - 1 ? '✓' : String(index + 1).padStart(2, '0') }}</span>{{ lesson }}</button></div>
         <p v-else-if="expanded && dataMode === 'api'">课程尚未发布结构化课时。</p>
-        <div class="certificate-card">完成全部课程可获得<br /><strong>大模型基础证书</strong></div>
+        <div class="certificate-card">完成全部课程可获得<br /><strong>{{ courseDetail?.data.certificate || (dataMode === 'api' ? '证书待配置' : '大模型基础证书') }}</strong></div>
       </aside>
       <article class="lesson-content">
         <div class="lesson-nav"><button type="button" :disabled="currentLesson === 1" @click="currentLesson--">← 上一节</button><strong>第 {{ currentLesson }} 节</strong><button type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">下一节 →</button></div>
@@ -133,17 +137,17 @@ watch(courseId, async () => {
         <div class="key-grid"><article><strong>并行计算</strong><p>减少序列处理的依赖。</p></article><article><strong>上下文关联</strong><p>学习远距离信息关系。</p></article><article><strong>规模扩展</strong><p>支持更大数据与模型。</p></article></div>
         <section class="quiz-card"><span class="eyebrow">知识小测</span><h3>注意力机制主要解决什么问题？</h3><label v-for="answer in ['捕捉序列中不同位置的关联', '直接连接真实服务器', '替代所有数据清洗']" :key="answer" :class="{ selected: selectedAnswer === answer }"><input v-model="selectedAnswer" type="radio" name="answer" :value="answer" />{{ answer }}</label><button class="button primary" type="button" :disabled="!selectedAnswer || submitted" @click="submitQuiz">{{ submitted ? '已提交' : '提交答案' }}</button><p v-if="submitted" :class="selectedAnswer.startsWith('捕捉') ? 'answer-correct' : 'answer-wrong'"><strong>本题得分：{{ selectedAnswer.startsWith('捕捉') ? 100 : 0 }}</strong><br />{{ selectedAnswer.startsWith('捕捉') ? '回答正确。注意力会计算不同位置之间的相关程度。' : '回答不正确。请回顾“上下文关联”部分。' }}</p></section>
         </template>
-        <div class="lesson-actions"><button type="button" @click="noteOpen = true">记录笔记</button><button type="button" @click="questionSent = !questionSent">{{ questionSent ? '问题已记录' : '向老师提问' }}</button><button type="button" :class="{ active: liked }" @click="liked = !liked">{{ liked ? '已点赞' : '点赞本节' }}</button></div>
+        <div class="lesson-actions"><button type="button" @click="noteOpen = true">记录笔记</button><template v-if="dataMode === 'mock'"><button type="button" @click="questionSent = !questionSent">{{ questionSent ? '问题已记录' : '向老师提问' }}</button><button type="button" :class="{ active: liked }" @click="liked = !liked">{{ liked ? '已点赞' : '点赞本节' }}</button></template></div>
       </article>
       <aside class="lesson-aside sticky">
-        <section><div class="panel-title"><strong>我的笔记</strong><button type="button" @click="noteOpen = true">编辑</button></div><p>{{ store.notes[course.id] || '还没有笔记，记录一个关键想法吧。' }}</p></section>
-        <section><h3>相关资料</h3><RouterLink to="/resources">Transformer 图解 · PDF</RouterLink><RouterLink to="/resources">注意力机制学习手册</RouterLink><RouterLink to="/resources">课程视频索引 · 视频</RouterLink><RouterLink to="/resources">示例代码仓库 · GitHub</RouterLink></section>
-        <section><h3>学习进度</h3><ProgressBar :value="store.courseProgress[course.id] || 0" /><small>完成本节会同步更新课程进度。</small></section>
-        <section><h3>学习成就</h3><div class="mini-achievements"><span><strong>◆</strong>模型入门</span><span><strong>⬢</strong>连续学习</span><span><strong>✦</strong>小测达人</span></div></section>
+        <section><div class="panel-title"><strong>我的笔记</strong><button type="button" @click="noteOpen = true">编辑</button></div><p>{{ store.notes[noteKey] || '还没有笔记，记录一个关键想法吧。' }}</p></section>
+        <section><h3>相关资料</h3><template v-if="dataMode === 'api'"><RouterLink v-for="resource in courseDetail?.relatedResources || []" :key="resource.slug" :to="{ path: '/resources', query: { preview: resource.slug } }">{{ resource.title }}</RouterLink><p v-if="!courseDetail?.relatedResources.length">尚未关联已发布资源。</p></template><template v-else><RouterLink to="/resources">Transformer 图解 · PDF</RouterLink><RouterLink to="/resources">注意力机制学习手册</RouterLink><RouterLink to="/resources">课程视频索引 · 视频</RouterLink><RouterLink to="/resources">示例代码仓库 · GitHub</RouterLink></template></section>
+        <section><h3>学习进度</h3><template v-if="accountDataReady"><ProgressBar :value="store.courseProgress[course.id] || 0" /><small>完成本节会同步更新课程进度。</small></template><p v-else class="notice">{{ accountDataMessage }}</p></section>
+        <section><h3>学习成就</h3><div v-if="dataMode === 'mock'" class="mini-achievements"><span><strong>◆</strong>模型入门</span><span><strong>⬢</strong>连续学习</span><span><strong>✦</strong>小测达人</span></div><p v-else>课程成就规则尚未配置。</p></section>
         <section><h3>下一节预告</h3><strong>{{ displayLessons[Math.min(currentLesson, displayLessons.length - 1)] || '暂无下一节' }}</strong><p v-if="currentApiLesson">预计 {{ currentApiLesson.durationMinutes }} 分钟</p><button class="button primary full-width" type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">继续下一节</button></section>
       </aside>
     </div>
-    <section><div class="section-heading"><h2>相关推荐课程</h2></div><div class="four-grid"><CourseCard v-for="item in recommendations" :key="item.id" :course="item" compact /></div></section>
+    <section><div class="section-heading"><h2>相关推荐课程</h2></div><div v-if="dataMode === 'mock'" class="four-grid"><CourseCard v-for="item in recommendations" :key="item.id" :course="item" compact /></div><p v-else>相关推荐尚未配置。</p></section>
   </div>
   <AppDialog v-model="noteOpen" title="本节学习笔记"><form class="dialog-form" @submit.prevent="saveNote"><textarea v-model="noteDraft" rows="7" placeholder="记录关键概念和待解决的问题…" autofocus /><button class="button primary" type="submit">{{ dataMode === 'api' ? '保存到学习账号' : '保存到本地' }}</button></form></AppDialog>
 </template>

@@ -6,21 +6,34 @@ interface AdminUser {
   email: string
   displayName: string
   roles: string[]
+  permissions: string[]
 }
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
-    user: JSON.parse(sessionStorage.getItem('admin-user') || 'null') as AdminUser | null,
+    user: null as AdminUser | null,
+    initialized: false,
     loading: false,
     error: '',
   }),
   actions: {
+    async restore() {
+      try {
+        const user = await api<AdminUser>('/me')
+        this.user = user.permissions.length ? user : null
+      } catch {
+        this.user = null
+        sessionStorage.removeItem('admin-access-token')
+      } finally {
+        this.initialized = true
+      }
+    },
     async login(email: string, password: string) {
       this.loading = true
       this.error = ''
       try {
         const result = await api<{ user: AdminUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
-        if (!result.user.roles.includes('admin')) throw new Error('该账号没有管理后台权限')
+        if (!result.user.permissions.length) throw new Error('该账号没有管理后台权限')
         this.user = result.user
         sessionStorage.setItem('admin-user', JSON.stringify(result.user))
         sessionStorage.setItem('admin-access-token', result.accessToken)
@@ -29,6 +42,7 @@ export const useSessionStore = defineStore('session', {
         throw error
       } finally {
         this.loading = false
+        this.initialized = true
       }
     },
     async logout() {

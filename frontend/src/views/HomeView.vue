@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { onMounted } from 'vue'
 import CourseCard from '../components/CourseCard.vue'
 import CategoryCover from '../components/base/CategoryCover.vue'
 import LabCard from '../components/cards/LabCard.vue'
 import ProjectCard from '../components/cards/ProjectCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { articles, assets, courses, labs, makerProjects, resources, studentActivities } from '../data/mock'
+import HomepageRenderer from '../homepage/HomepageRenderer.vue'
 import { dataMode } from '../services/api/client'
-import { homepageModules, publicThemes } from '../services/api/content'
 import { quizBridge } from '../services/quizBridge'
+import { useHomepageStore } from '../stores/content/homepage'
 
 const abilities = [
   ['01', '理解', '建立 AI 概念与方法的结构化认知。'],
@@ -16,22 +17,30 @@ const abilities = [
   ['03', '实践', '在受控环境完成操作与项目。'],
   ['04', '验证', '用测评和成果检查学习效果。'],
 ]
-const directions = computed(() => dataMode === 'api'
-  ? publicThemes.map((theme) => theme.title)
-  : ['大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全'])
-const heroModule = computed(() => homepageModules.find((module) => module.moduleKey === 'hero_banner'))
-const heroTitle = computed(() => String(heroModule.value?.config.title || '学 AI，不止是听懂。还要亲手做出来。'))
+const directions = ['大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全']
+const homepage = useHomepageStore()
+
+onMounted(() => {
+  if (dataMode === 'api') void homepage.load()
+})
 </script>
 
 <template>
   <div class="page-container home-page">
+    <template v-if="dataMode === 'api'">
+      <p v-if="homepage.loading" class="empty-state">正在加载首页内容…</p>
+      <p v-else-if="homepage.error" class="empty-state">{{ homepage.error }}</p>
+      <HomepageRenderer v-else-if="homepage.value" :homepage="homepage.value" />
+      <p v-else class="empty-state">首页暂未发布内容。</p>
+    </template>
+    <template v-else>
     <section class="home-hero">
       <div class="hero-copy">
         <span class="eyebrow">面向高校学生的 AI 学习与实训平台</span>
-        <h1>{{ heroTitle }}</h1>
+        <h1>学 AI，不止是听懂。还要亲手做出来。</h1>
         <p>从基础知识、前沿趋势，到模型部署、AI Agent、命令行与智能硬件实践，在低门槛环境中完成“学习—实践—验证”。</p>
         <div class="hero-actions"><RouterLink class="button primary" to="/topics">开始学习</RouterLink><RouterLink class="button secondary" to="/labs">查看实训项目</RouterLink></div>
-        <small>{{ dataMode === 'api' ? '内容由统一 API 与 PostgreSQL 提供' : '演示数据：已有 25,642 名同学加入学习' }}</small>
+        <small>演示数据：已有 25,642 名同学加入学习</small>
       </div>
       <div class="hero-visual">
         <img :src="assets.heroCampus" alt="AI 学习、工作流与算力模块组成的 3D 插画" />
@@ -105,5 +114,6 @@ const heroTitle = computed(() => String(heroModule.value?.config.title || '学 A
     </section>
 
     <section class="bottom-cta"><div><span>从学会一个概念，</span><h2>到做出一个 AI 项目</h2><p>今天开始，建立属于你的 AI 能力路径。</p></div><div><RouterLink class="button primary" to="/topics">免费开始学习</RouterLink><RouterLink class="button secondary" to="/labs">浏览实训项目</RouterLink></div></section>
+    </template>
   </div>
 </template>

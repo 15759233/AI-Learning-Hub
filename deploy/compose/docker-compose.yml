@@ -59,6 +59,8 @@ services:
     build:
       context: ../..
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_ADMIN_PREVIEW_ORIGINS: ${ADMIN_PREVIEW_ORIGINS:-}
     restart: unless-stopped
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${STUDENT_PORT:-8080}:80"
@@ -77,6 +79,8 @@ services:
     build:
       context: ../..
       dockerfile: admin-web/Dockerfile
+      args:
+        VITE_STUDENT_PREVIEW_URL: ${STUDENT_PREVIEW_URL:-}
     restart: unless-stopped
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${ADMIN_PORT:-8081}:80"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { dataMode } from '../../services/api/client'
 import { useLearningStore } from '../../stores/learning'
 import type { ResourceItem } from '../../types'
 import BaseContentCard from '../base/BaseContentCard.vue'
@@ -11,7 +12,7 @@ const favorite = computed(() => store.isFavorite('resource', props.resource.id))
 </script>
 
 <template>
-  <BaseContentCard :title="resource.title" :cover-variant="resource.coverVariant" :icon="resource.icon" tag="演示资源">
+  <BaseContentCard :title="resource.title" :image="resource.cover" :cover-variant="resource.coverVariant" :icon="resource.icon" :tag="dataMode === 'api' ? resource.category : '演示资源'">
     <span class="meta">{{ resource.theme }} · {{ resource.downloads.toLocaleString() }} 次下载</span>
     <h3>{{ resource.title }}</h3>
     <p>{{ resource.format }} · {{ resource.difficulty }} · 更新于 {{ resource.updatedAt }}</p>

@@ -1,0 +1,2 @@
+<script setup lang="ts">import type { PublicHomepageModuleDto } from '@ai-learning-hub/contracts'; defineProps<{ module: PublicHomepageModuleDto }>()</script>
+<template><section class="homepage-module panel"><span class="eyebrow">学习成长</span><h2>{{ module.name }}</h2><p>{{ String(module.config.description || '尚未配置成长模块说明') }}</p><RouterLink class="button secondary" to="/profile">查看个人中心</RouterLink></section></template>

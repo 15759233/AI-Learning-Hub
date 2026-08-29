@@ -1,9 +1,9 @@
-<script setup lang="ts">
-import type { CatalogItemDto } from '@ai-learning-hub/contracts'
+<script setup lang="ts" generic="T extends AdminCatalogItemDto<object>">
+import type { AdminCatalogItemDto } from '@ai-learning-hub/contracts'
 import AdminStatusTag from './AdminStatusTag.vue'
 
-defineProps<{ items: CatalogItemDto[]; selected?: string; icon?: string; emptyText?: string }>()
-defineEmits<{ select: [item: CatalogItemDto] }>()
+defineProps<{ items: T[]; selected?: string; icon?: string; emptyText?: string }>()
+defineEmits<{ select: [item: T] }>()
 </script>
 
 <template>

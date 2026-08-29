@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { CatalogItemDto } from '@ai-learning-hub/contracts'
+import type { AdminCatalogItemDto } from '@ai-learning-hub/contracts'
 import { reactive, watch } from 'vue'
 import AdminStatusTag from './AdminStatusTag.vue'
 
-const props = defineProps<{ item: CatalogItemDto | null; busy?: boolean; noun: string }>()
+const props = defineProps<{ item: AdminCatalogItemDto | null; busy?: boolean; noun: string }>()
 const emit = defineEmits<{ save: [value: { title: string; summary: string; sortOrder: number }]; publish: []; archive: [] }>()
 const form = reactive({ title: '', summary: '', sortOrder: 0 })
 watch(() => props.item, (item) => {

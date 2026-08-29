@@ -30,7 +30,7 @@ const submitSearch = () => {
 }
 const login = async () => {
   await auth.login(loginEmail.value, loginPassword.value)
-  await learning.syncFromApi()
+  if (!await learning.syncFromApi()) return
   loginPassword.value = ''
   loginOpen.value = false
 }

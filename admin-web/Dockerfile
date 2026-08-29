@@ -6,7 +6,9 @@ COPY admin-web/package.json admin-web/package-lock.json admin-web/
 RUN cd admin-web && npm ci
 COPY admin-web admin-web
 ARG VITE_API_BASE_URL=/api/v1
+ARG VITE_STUDENT_PREVIEW_URL
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_STUDENT_PREVIEW_URL=${VITE_STUDENT_PREVIEW_URL}
 RUN cd admin-web && npm run build
 
 FROM nginx@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46

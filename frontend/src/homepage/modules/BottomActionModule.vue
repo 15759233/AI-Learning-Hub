@@ -1,0 +1,2 @@
+<script setup lang="ts">import type { PublicHomepageModuleDto } from '@ai-learning-hub/contracts'; defineProps<{ module: PublicHomepageModuleDto }>()</script>
+<template><section class="bottom-cta"><div><h2>{{ String(module.config.title || module.name) }}</h2><p>{{ String(module.config.subtitle || '尚未配置行动模块说明') }}</p></div><div><RouterLink class="button primary" to="/topics">开始学习</RouterLink><RouterLink class="button secondary" to="/labs">浏览实训项目</RouterLink></div></section></template>

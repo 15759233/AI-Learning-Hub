@@ -5,11 +5,11 @@ export interface Course {
   title: string
   description: string
   category: Category
-  level: '入门' | '初级' | '中级' | '高级'
-  hours: number
-  learners: number
+  level: '入门' | '初级' | '中级' | '高级' | '尚未配置'
+  hours?: number
+  learners?: number
   progress?: number
-  mode: '视频' | '图文' | '实战项目' | '互动实验'
+  mode: '视频' | '图文' | '实战项目' | '互动实验' | '尚未配置'
   cover?: string
   coverVariant?: string
   accent?: string
@@ -21,11 +21,11 @@ export interface Lab {
   title: string
   description: string
   category: '模型部署' | 'AI Agent' | 'Linux 命令' | '智能硬件'
-  level: '入门' | '中级' | '进阶'
-  minutes: number
-  steps: number
-  completion: number
-  learners: number
+  level: '入门' | '中级' | '进阶' | '尚未配置'
+  minutes?: number
+  steps?: number
+  completion?: number
+  learners?: number
   cover?: string
   coverVariant?: string
   accent?: string
@@ -36,8 +36,8 @@ export interface ResourceItem {
   id: string
   title: string
   category: string
-  theme: '大模型' | 'Agent' | '编程工具' | '智能硬件'
-  difficulty: '入门' | '中级' | '进阶'
+  theme: '大模型' | 'Agent' | '编程工具' | '智能硬件' | '尚未配置'
+  difficulty: '入门' | '中级' | '进阶' | '尚未配置'
   format: 'PDF' | 'DOCX' | 'PPTX' | 'ZIP' | 'TXT'
   featured: boolean
   downloads: number
@@ -54,9 +54,10 @@ export interface Article {
   title: string
   summary: string
   category: '大模型' | 'Agent' | '多模态' | '机器人' | 'AI 安全'
-  readMinutes: number
+  readMinutes?: number
   publishedAt: string
   content: string[]
+  recommendations?: string[]
   cover?: string
   coverVariant?: string
   accent?: string

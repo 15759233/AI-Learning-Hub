@@ -4,11 +4,11 @@ import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
-import { Roles } from '../auth/roles.decorator'
-import { RolesGuard } from '../auth/roles.guard'
+import { Permissions } from '../auth/permissions.decorator'
+import { PermissionsGuard } from '../auth/permissions.guard'
 import type { AuthUser } from '../auth/auth.types'
 import { BehaviorService } from './behavior.service'
-import { CreatePlanDto, FavoriteDto, LabActionDto, NoteDto, ProgressDto, SubmitAssessmentDto, UpdatePlanDto } from './behavior.dto'
+import { CreatePlanDto, FavoriteDto, LabActionDto, LessonProgressDto, NoteDto, SubmitAssessmentDto, UpdatePlanDto, ViewEventDto } from './behavior.dto'
 
 @Controller()
 @UseGuards(AuthGuard)
@@ -23,19 +23,14 @@ export class BehaviorController {
     return { enrolled: true, courseId: course.id }
   }
 
-  @Put('courses/:courseId/progress')
-  courseProgress(@CurrentUser() user: AuthUser, @Param('courseId') courseId: string, @Body() input: ProgressDto) {
-    return this.behavior.setCourseProgress(user.id, courseId, input.progress)
-  }
-
   @Put('courses/:courseId/note')
   courseNote(@CurrentUser() user: AuthUser, @Param('courseId') courseId: string, @Body() input: NoteDto) {
     return this.behavior.saveCourseNote(user.id, courseId, input.content)
   }
 
   @Put('lessons/:lessonId/progress')
-  progress(@CurrentUser() user: AuthUser, @Param('lessonId') lessonId: string, @Body() input: ProgressDto) {
-    return this.behavior.setProgress(user.id, lessonId, input.progress)
+  progress(@CurrentUser() user: AuthUser, @Param('lessonId') lessonId: string, @Body() input: LessonProgressDto) {
+    return this.behavior.setProgress(user.id, lessonId, input.completed, input.positionSeconds)
   }
 
   @Put('lessons/:lessonId/note')
@@ -66,6 +61,17 @@ export class BehaviorController {
   @Post('labs/:labId/runs')
   startLab(@CurrentUser() user: AuthUser, @Param('labId') labId: string) {
     return this.behavior.startLab(user.id, labId)
+  }
+
+  @Get('labs/:labId/my-active-run')
+  async activeRun(@CurrentUser() user: AuthUser, @Param('labId') labId: string) {
+    const lab = await this.prisma.lab.findFirst({ where: { OR: [{ id: labId }, { slug: labId }], status: 'published' } })
+    if (!lab) throw new NotFoundException('实训不存在')
+    return this.prisma.labRun.findFirst({
+      where: { userId: user.id, labId: lab.id, status: { in: ['ready', 'running'] } },
+      include: { events: { orderBy: { sequence: 'asc' } } },
+      orderBy: { startedAt: 'desc' },
+    })
   }
 
   @Get('lab-runs/:runId')
@@ -123,6 +129,11 @@ export class BehaviorController {
     })
   }
 
+  @Post('events/view')
+  view(@CurrentUser() user: AuthUser, @Body() input: ViewEventDto) {
+    return this.behavior.recordView(user.id, input.targetType, input.targetSlug)
+  }
+
   @Delete('favorites/:targetType/:targetId')
   unfavorite(@CurrentUser() user: AuthUser, @Param('targetType') targetType: any, @Param('targetId') targetId: string) {
     return this.prisma.favorite.deleteMany({ where: { userId: user.id, targetType, targetId } })
@@ -137,7 +148,10 @@ export class BehaviorController {
   async growth(@CurrentUser() user: AuthUser) {
     const [points, progress, notes, labs, attempts, plans, favorites, achievements, certificates, knowledgeStats] = await this.prisma.$transaction([
       this.prisma.growthPoint.aggregate({ where: { userId: user.id }, _sum: { points: true } }),
-      this.prisma.lessonProgress.findMany({ where: { userId: user.id }, include: { course: { select: { slug: true } } } }),
+      this.prisma.lessonProgress.findMany({
+        where: { userId: user.id },
+        include: { course: { select: { id: true, slug: true, publishedVersionId: true } } },
+      }),
       this.prisma.learningNote.findMany({ where: { userId: user.id }, include: { course: { select: { slug: true } } } }),
       this.prisma.labRun.findMany({ where: { userId: user.id }, include: { lab: { select: { slug: true } } }, orderBy: { startedAt: 'desc' }, take: 20 }),
       this.prisma.assessmentAttempt.findMany({ where: { userId: user.id }, orderBy: { submittedAt: 'desc' }, take: 20 }),
@@ -147,7 +161,23 @@ export class BehaviorController {
       this.prisma.userCertificate.findMany({ where: { userId: user.id }, include: { certificate: true } }),
       this.prisma.userKnowledgeStat.findMany({ where: { userId: user.id } }),
     ])
-    return { points: points._sum.points || 0, courseProgress: progress, notes, labRuns: labs, assessmentAttempts: attempts, plans, favorites, achievements, certificates, knowledgeStats }
+    const courseGroups = new Map<string, typeof progress>()
+    for (const item of progress) courseGroups.set(item.courseId, [...(courseGroups.get(item.courseId) || []), item])
+    const courseProgress = await Promise.all([...courseGroups.values()].map(async (items) => {
+      const course = items[0].course
+      const total = course.publishedVersionId
+        ? await this.prisma.courseLesson.count({ where: { chapter: { courseVersionId: course.publishedVersionId } } })
+        : 0
+      const completed = items.filter((item) => item.completedAt).length
+      return {
+        course: { slug: course.slug },
+        completedLessons: completed,
+        totalLessons: total,
+        progress: total ? Math.round((completed / total) * 100) : 0,
+        updatedAt: items.reduce((latest, item) => item.updatedAt > latest ? item.updatedAt : latest, items[0].updatedAt),
+      }
+    }))
+    return { points: points._sum.points || 0, courseProgress, notes, labRuns: labs, assessmentAttempts: attempts, plans, favorites, achievements, certificates, knowledgeStats }
   }
 
   @Get('me/learning-plans')
@@ -189,30 +219,7 @@ export class BehaviorController {
   }
 
   @Get('challenges/:slug/questions')
-  async questions(@Param('slug') slug: string) {
-    const challenge = await this.prisma.challenge.findFirst({ where: { slug, status: 'published' } })
-    if (!challenge?.questionBankId && !challenge?.paperId) return []
-    if (challenge.paperId) {
-      const items = await this.prisma.paperQuestion.findMany({
-        where: { paperId: challenge.paperId, question: { status: 'published' } },
-        orderBy: { sortOrder: 'asc' },
-        include: { question: { include: { publishedVersion: true } } },
-      })
-      return items.map((item) => {
-        const snapshot = item.question.publishedVersion?.snapshot && typeof item.question.publishedVersion.snapshot === 'object' && !Array.isArray(item.question.publishedVersion.snapshot)
-          ? item.question.publishedVersion.snapshot as Record<string, unknown>
-          : {}
-        return { id: item.question.id, questionType: item.question.questionType, difficulty: item.question.difficulty, stem: snapshot.stem || item.question.stem, options: snapshot.options || item.question.options }
-      })
-    }
-    const questions = await this.prisma.question.findMany({ where: { bankId: challenge.questionBankId!, status: 'published' }, include: { publishedVersion: true } })
-    return questions.map((question) => {
-      const snapshot = question.publishedVersion?.snapshot && typeof question.publishedVersion.snapshot === 'object' && !Array.isArray(question.publishedVersion.snapshot)
-        ? question.publishedVersion.snapshot as Record<string, unknown>
-        : {}
-      return { id: question.id, questionType: question.questionType, difficulty: question.difficulty, stem: snapshot.stem || question.stem, options: snapshot.options || question.options }
-    })
-  }
+  questions(@Param('slug') slug: string) { return this.behavior.challengeQuestions(slug) }
 
   @Post('challenges/:slug/submit')
   assessment(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Body() input: SubmitAssessmentDto, @Headers('idempotency-key') key?: string) {
@@ -223,14 +230,24 @@ export class BehaviorController {
   async ranking(@Param('slug') slug: string) {
     const challenge = await this.prisma.challenge.findFirst({ where: { slug, status: 'published' } })
     if (!challenge) return []
-    const snapshot = await this.prisma.rankingSnapshot.findFirst({ where: { challengeId: challenge.id }, orderBy: { periodEnd: 'desc' } })
-    return snapshot?.rankings || []
+    const rows = await this.prisma.challengeBestScore.findMany({
+      where: { challengeId: challenge.id },
+      include: { user: { select: { displayName: true } } },
+      orderBy: [{ score: 'desc' }, { updatedAt: 'asc' }],
+      take: 100,
+    })
+    return rows.map((item, index) => ({
+      rank: index + 1,
+      userId: item.userId,
+      displayName: item.user.displayName,
+      score: item.score,
+    }))
   }
 }
 
 @Controller('admin/users')
-@UseGuards(AuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(AuthGuard, PermissionsGuard)
+@Permissions('growth.read')
 export class AdminUserController {
   constructor(private readonly prisma: PrismaService) {}
 

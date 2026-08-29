@@ -44,6 +44,6 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
     <div class="flow-toolbar"><strong>Agent 工作流设计</strong><span /><button type="button" @click="autoLayout">自动布局</button><button type="button" @click="zoomOut()">－</button><button type="button" @click="zoomIn()">＋</button><button type="button" @click="fitView({ padding: 0.16 })">适应画布</button><button type="button" @click="toggleFullscreen">全屏</button></div>
     <div class="flow-canvas"><VueFlow v-model:nodes="nodes" v-model:edges="edges" :min-zoom="0.5" :max-zoom="1.8" fit-view-on-init /></div>
     <div class="io-grid"><label>用户输入<textarea v-model="input" rows="4" maxlength="500" /><small>{{ input.length }}/500 · 仅用于模拟</small></label><div><strong>Agent 输出</strong><p>{{ state === 'success' || state === 'submitted' ? definition.result : '等待运行 Agent…' }}</p></div></div>
-    <div class="toolbox"><strong>工具白名单</strong><span v-for="tool in definition.tools" :key="tool.id">{{ tool.label }} · 模拟</span><button type="button" disabled>＋ 添加工具</button></div>
+    <div class="toolbox"><strong>工具白名单</strong><span v-for="tool in definition.tools" :key="tool.id">{{ tool.label }} · 模拟</span></div>
   </div>
 </template>

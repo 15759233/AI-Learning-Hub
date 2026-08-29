@@ -29,7 +29,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
       ...init.headers,
     },
   })
-  if (response.status === 401 && retry && token) {
+  if (response.status === 401 && retry) {
     refreshPromise ||= refresh().finally(() => { refreshPromise = null })
     if (await refreshPromise) return api<T>(path, init, false)
   }

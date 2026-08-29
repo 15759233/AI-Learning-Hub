@@ -1,24 +1,29 @@
 <script setup lang="ts">
 import { Chart } from '@antv/g2'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+const props = defineProps<{ data: Array<{ date: string; activeUsers: number; learningMinutes: number }> }>()
 const host = ref<HTMLDivElement | null>(null)
 let chart: Chart | null = null
-onMounted(() => {
+const render = async () => {
   if (!host.value) return
+  chart?.destroy()
   chart = new Chart({ container: host.value, autoFit: true, height: 210 })
   chart.options({
     type: 'line',
-    data: [
-      { day: '周一', value: 1120 }, { day: '周二', value: 980 }, { day: '周三', value: 1380 },
-      { day: '周四', value: 1460 }, { day: '周五', value: 1290 }, { day: '周六', value: 1340 }, { day: '周日', value: 1580 },
-    ],
-    encode: { x: 'day', y: 'value' },
-    style: { stroke: '#ff4d1f', lineWidth: 3 },
+    data: props.data.flatMap((item) => [
+      { date: item.date.slice(5), metric: '活跃用户', value: item.activeUsers },
+      { date: item.date.slice(5), metric: '学习分钟', value: item.learningMinutes },
+    ]),
+    encode: { x: 'date', y: 'value', color: 'metric' },
+    scale: { color: { range: ['#ff4d1f', '#7c4dff'] } },
+    style: { lineWidth: 3 },
     axis: { y: { grid: true, label: false }, x: { title: false } },
   })
-  void chart.render()
-})
+  await chart.render()
+}
+onMounted(render)
+watch(() => props.data, () => { void nextTick(render) }, { deep: true })
 onBeforeUnmount(() => chart?.destroy())
 </script>
 

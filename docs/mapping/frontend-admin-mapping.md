@@ -2,19 +2,21 @@
 
 | 管理端 | 学生端 | 数据/API |
 | --- | --- | --- |
-| 首页运营 | `/` | `homepage_modules`、`GET /public/homepage` |
-| 学习主题 | `/topics` | `learning_themes`、`GET /themes` |
-| 课程内容 | `/courses/:courseId` | `courses`、课程版本/章节/内容块、`GET /courses/:slug` |
-| 实训项目 | `/labs`、`/labs/:labId` | `labs`、步骤与运行记录、SSE |
-| 资源中心 | `/resources` | `resources`、`files` |
-| AI 前沿 | `/frontier` | `articles` |
-| 挑战测评 | `/assessments` | `challenges`、题库、测评提交 |
-| 用户成长 | `/profile` | 进度、收藏、计划、积分、实训与测评记录 |
+| 首页运营 | `/` | 已发布整页快照、允许的 `moduleKey`、`resolvedItems` |
+| 学习主题 | `/topics` | 主题详情、学习路径、稳定 `stageKey` |
+| 课程内容 | `/courses/:courseId` | 课程版本、章节、课时、内容块、课时完成聚合 |
+| 实训项目 | `/labs`、`/labs/:labId` | 已发布步骤、活动运行、动作事件、服务端评分 |
+| 资源中心 | `/resources` | 资源元数据、文件绑定、显式浏览事件 |
+| AI 前沿 | `/frontier` | 文章内容块、受控推荐位、独立定时发布 |
+| 挑战测评 | `/assessments` | 题库、知识点、五题型判分、最好成绩和排行 |
+| 用户成长 | `/profile` | 服务端成长快照、积分、学习/实训/测评记录 |
 
 通用映射：
 
-- 前端 `id` 对应稳定 `slug`；数据库主键通过 `databaseId` 仅供管理操作。
+- 学生端 `id` 使用稳定 `slug`；数据库主键 `databaseId` 仅出现在管理 DTO。
 - 前端 `description` 对应服务端 `summary`。
-- 分类、难度、时长、封面变体等展示字段位于版本化 `payload`。
+- 领域扩展数据位于 `data`，不得覆盖 `id`、`slug`、状态和时间字段。
 - 状态值使用英文枚举，中文标签由界面映射。
-- 后台编辑保存草稿；发布后公开接口才可读取。
+- 后台编辑保存草稿；公开接口只读已发布快照，不承担浏览统计或定时发布写入。
+- 首页管理预览与学生端共用 `HOMEPAGE_MODULE_KEYS` 和 `PublicHomepageDto` 渲染契约；推荐项通过真实内容选择器关联并可排序。
+- 六个领域分别使用 `*.read / *.write / *.publish` 权限；课程结构/关联/预览、五类实训面板、五题型组卷和资源版本恢复均使用专用接口。

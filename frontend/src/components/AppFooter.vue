@@ -1,3 +1,7 @@
+<script setup lang="ts">
+import { dataMode } from '../services/api/client'
+</script>
+
 <template>
   <footer class="app-footer">
     <div class="page-container footer-grid">
@@ -10,6 +14,6 @@
       <div><strong>资源</strong><RouterLink to="/resources">资源中心</RouterLink><RouterLink to="/frontier">AI 前沿</RouterLink></div>
       <div><strong>成长</strong><RouterLink to="/assessments">挑战与测评</RouterLink><RouterLink to="/profile">个人中心</RouterLink></div>
     </div>
-    <p class="copyright">© 2026 AI MAKER CAMPUS · 当前内容为演示数据</p>
+    <p class="copyright">© 2026 AI MAKER CAMPUS · {{ dataMode === 'api' ? '内容来自已发布数据' : '当前内容为演示数据' }}</p>
   </footer>
 </template>

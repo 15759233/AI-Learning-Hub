@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 学生端 `frontend/` | Vue 3、Pinia、Vue Router | 读取已发布内容，回写学习、收藏、实训、测评和成长行为 |
 | 管理端 `admin-web/` | Vue 3、Element Plus、AntV G2 | 内容编辑、发布、撤回、运营配置及业务数据查询 |
-| 服务端 `server/` | NestJS、Prisma | 认证、RBAC、发布、内容、行为、SSE、文件和外部适配 |
+| 服务端 `server/` | NestJS、Prisma | 认证、领域级 RBAC、发布、内容、行为、SSE、文件和外部适配 |
 | 数据库 | PostgreSQL | 内容、版本、用户、行为、统计与审计的唯一正式数据源 |
 | 文件存储 | 本地、MinIO 或 S3 | 文件实体；数据库只保存元数据 |
 | 公共契约 `packages/contracts/` | TypeScript | 状态枚举、响应信封、分页和跨端 DTO |
@@ -29,6 +29,8 @@
 
 - 服务端为模块化单体，不引入微服务、Kubernetes 或 Redis。
 - Refresh Token 可撤销；管理接口由服务端 RBAC 校验。
+- 主题、课程、实训、资源、文章、挑战、题库、成长、首页和设置为独立 NestJS 模块；共享内容层只提供分页、序列化、校验、审计等窄能力。
+- 六个内容领域使用草稿与已发布版本指针；公开接口只读取已发布快照，资源历史恢复会生成新草稿版本。
 - 实训只接受结构化白名单动作，不执行任意 Shell、代码或硬件指令。
 - 公开题目接口不返回标准答案；测评成绩由服务端计算。
 - 《题盒》仅通过 `server/src/integrations/quiz-box/` 接入，不复制其前端答题引擎。

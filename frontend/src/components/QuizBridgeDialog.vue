@@ -2,16 +2,25 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { assessmentApi, type QuizQuestion } from '../services/api/assessments'
 import { useAuthStore } from '../stores/auth'
+import { useLearningStore } from '../stores/learning'
 import AppDialog from './base/AppDialog.vue'
 
 const auth = useAuthStore()
+const learning = useLearningStore()
 const open = ref(false)
 const slug = ref('')
 const questions = ref<QuizQuestion[]>([])
-const answers = ref<Record<string, unknown>>({})
+const answers = ref<Record<string, string | boolean | string[]>>({})
 const loading = ref(false)
 const error = ref('')
 const result = ref<{ score: number; correct: number; total: number; passed: boolean } | null>(null)
+const setTextAnswer = (questionId: string, event: Event) => {
+  answers.value[questionId] = (event.target as HTMLTextAreaElement).value
+}
+const textAnswer = (questionId: string) => {
+  const answer = answers.value[questionId]
+  return typeof answer === 'string' ? answer : ''
+}
 
 const handleOpen = async (event: Event) => {
   const detail = (event as CustomEvent<{ id: string }>).detail
@@ -25,13 +34,26 @@ const handleOpen = async (event: Event) => {
   error.value = ''
   result.value = null
   answers.value = {}
-  try { questions.value = await assessmentApi.questions(detail.id) } catch (reason) { error.value = reason instanceof Error ? reason.message : '题目加载失败' } finally { loading.value = false }
+  try {
+    questions.value = await assessmentApi.questions(detail.id)
+    for (const question of questions.value) if (question.questionType === 'multiple') answers.value[question.id] = []
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : '题目加载失败' } finally { loading.value = false }
 }
 const submit = async () => {
+  if (questions.value.some((question) => answers.value[question.id] === undefined || answers.value[question.id] === '')) {
+    error.value = '请完成全部题目后提交'
+    return
+  }
   loading.value = true
   error.value = ''
   try {
-    result.value = await assessmentApi.submit(slug.value, questions.value.map((question) => ({ questionId: question.id, answer: answers.value[question.id] })))
+    result.value = await assessmentApi.submit(slug.value, questions.value.map((question) => ({
+      questionId: question.id,
+      answer: question.questionType === 'code'
+        ? { outputs: textAnswer(question.id).split('\n').filter(Boolean) }
+        : answers.value[question.id],
+    })))
+    await learning.syncFromApi()
   } catch (reason) { error.value = reason instanceof Error ? reason.message : '测评提交失败' } finally { loading.value = false }
 }
 onMounted(() => window.addEventListener('quiz-bridge-open', handleOpen))
@@ -46,7 +68,15 @@ onBeforeUnmount(() => window.removeEventListener('quiz-bridge-open', handleOpen)
     <form v-else class="dialog-form quiz-form" @submit.prevent="submit">
       <fieldset v-for="(question, index) in questions" :key="question.id">
         <legend>{{ index + 1 }}. {{ question.stem }}</legend>
-        <label v-for="option in question.options" :key="option"><input v-model="answers[question.id]" type="radio" :name="question.id" :value="question.questionType === 'true_false' ? option === '正确' : option.slice(0, 1)" required />{{ option }}</label>
+        <template v-if="question.questionType === 'multiple'">
+          <label v-for="option in question.options" :key="option"><input v-model="answers[question.id]" type="checkbox" :value="option.slice(0, 1)" />{{ option }}</label>
+        </template>
+        <template v-else-if="question.questionType === 'short_answer' || question.questionType === 'code'">
+          <textarea :value="textAnswer(question.id)" required rows="5" :placeholder="question.questionType === 'code' ? '输入受控题目的预期输出或答案' : '输入答案'" @input="setTextAnswer(question.id, $event)" />
+        </template>
+        <template v-else>
+          <label v-for="option in question.options" :key="option"><input v-model="answers[question.id]" type="radio" :name="question.id" :value="question.questionType === 'true_false' ? option === '正确' : option.slice(0, 1)" required />{{ option }}</label>
+        </template>
       </fieldset>
       <button class="button primary" type="submit" :disabled="questions.length === 0">提交测评</button>
     </form>

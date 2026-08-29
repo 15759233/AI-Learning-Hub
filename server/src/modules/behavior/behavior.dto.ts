@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsEnum, IsInt, IsObject, IsOptional, IsString, Length, Max, Min } from 'class-validator'
+import { IsArray, IsBoolean, IsDateString, IsDefined, IsEnum, IsIn, IsInt, IsObject, IsOptional, IsString, Length, Max, Min, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { FavoriteTargetType } from '@prisma/client'
 
@@ -11,12 +11,16 @@ export class FavoriteDto {
   targetId!: string
 }
 
-export class ProgressDto {
+export class LessonProgressDto {
+  @IsBoolean()
+  completed!: boolean
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @Max(100)
-  progress!: number
+  @Max(86_400)
+  positionSeconds = 0
 }
 
 export class NoteDto {
@@ -27,7 +31,8 @@ export class NoteDto {
 
 export class LabActionDto {
   @IsString()
-  action!: 'start' | 'next' | 'complete' | 'stop'
+  @IsIn(['run', 'command', 'input', 'select_tool', 'connect', 'confirm', 'submit_step', 'stop', 'reset'])
+  action!: 'run' | 'command' | 'input' | 'select_tool' | 'connect' | 'confirm' | 'submit_step' | 'stop' | 'reset'
 
   @IsOptional()
   @IsObject()
@@ -58,5 +63,25 @@ export class UpdatePlanDto {
 
 export class SubmitAssessmentDto {
   @IsArray()
-  answers!: Array<{ questionId: string; answer: unknown }>
+  @ValidateNested({ each: true })
+  @Type(() => AssessmentAnswerDto)
+  answers!: AssessmentAnswerDto[]
+}
+
+export class AssessmentAnswerDto {
+  @IsString()
+  questionId!: string
+
+  @IsDefined()
+  answer!: unknown
+}
+
+export class ViewEventDto {
+  @IsString()
+  @IsIn(['resource', 'article'])
+  targetType!: 'resource' | 'article'
+
+  @IsString()
+  @Length(1, 120)
+  targetSlug!: string
 }
