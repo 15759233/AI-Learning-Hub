@@ -370,7 +370,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
     const challengePage = await call<{ items: Array<{ slug: string; databaseId: string }> }>('/admin/challenges?pageSize=100', {}, adminToken)
     const challenge = challengePage.items.find((item) => item.slug === 'weekly-ai')
     const banks = await call<Array<{ id: string }>>('/admin/question-banks', {}, adminToken)
-    const bankQuestions = await call<Array<{ id: string }>>(`/admin/questions?bankId=${banks[0].id}`, {}, adminToken)
+    const bankQuestions = await call<Array<{ id: string; standardAnswer: unknown }>>(`/admin/questions?bankId=${banks[0].id}`, {}, adminToken)
     const paper = await call<{ id: string }>('/admin/papers', {
       method: 'POST',
       body: JSON.stringify({ name: `端到端试卷 ${suffix}`, description: '试卷与题库只保存关联。', durationMinutes: 20, totalScore: 100, passScore: 60 }),
@@ -392,7 +392,14 @@ describe('真实 PostgreSQL 数据闭环', () => {
     expect(String((await call<Array<Record<string, unknown>>>('/challenges/weekly-ai/questions', {}, studentToken))[0].stem)).toBe(originalStem)
     await call(`/admin/questions/${questions[0].id}`, { method: 'PATCH', body: JSON.stringify({ status: 'published' }) }, adminToken)
     expect(String((await call<Array<Record<string, unknown>>>('/challenges/weekly-ai/questions', {}, studentToken))[0].stem)).toBe('未发布题目新题干')
-    const answers = questions.map((question) => ({ questionId: question.id, answer: question.questionType === 'true_false' ? false : 'B' }))
+    const standardAnswers = new Map(bankQuestions.map((question) => [question.id, question.standardAnswer]))
+    const answers = questions.map((question) => {
+      const standard = standardAnswers.get(String(question.id))
+      const answer = question.questionType === 'short_answer' && standard && typeof standard === 'object' && !Array.isArray(standard)
+        ? (standard as { keywords?: unknown[] }).keywords?.join(' ')
+        : standard
+      return { questionId: question.id, answer }
+    })
     const idempotencyKey = `e2e-${Date.now()}`
     const result = await call<{ challengeId: string; score: number; total: number; correct: number; passed: boolean }>('/challenges/weekly-ai/submit', {
       method: 'POST',

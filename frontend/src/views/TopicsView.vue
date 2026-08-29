@@ -6,6 +6,7 @@ import CourseCard from '../components/CourseCard.vue'
 import ContentPagination from '../components/ContentPagination.vue'
 import PageHero from '../components/PageHero.vue'
 import ProgressBar from '../components/ProgressBar.vue'
+import AppIcon from '../components/base/AppIcon.vue'
 import { assets } from '../data/mock'
 import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
@@ -31,9 +32,14 @@ const categories = computed(() => dataMode === 'api'
   ? ['全部主题', ...themes.value.map((theme) => theme.title)]
   : ['全部主题', '大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全'])
 const pathSteps = computed(() => {
-  if (dataMode !== 'api') return ['了解 AI 基础', 'Python 入门', '大模型应用', '构建 AI 应用', '部署与优化', '进阶与创新']
-  return selectedTheme.value?.paths[0]?.stages.map((stage) => stage.name) || []
+  return selectedTheme.value?.paths[0]?.stages || []
 })
+const categoryIcon = (title: string) => themes.value.find((item) => item.title === title)?.data.icon || 'layers'
+const stageMeta = (stage: (typeof pathSteps.value)[number]) => {
+  const count = typeof stage.unlockRule.countLabel === 'string' ? stage.unlockRule.countLabel : `${stage.contents.length} 项内容`
+  const hours = typeof stage.unlockRule.hours === 'number' ? `${stage.unlockRule.hours} 小时` : '时长待配置'
+  return `${count} · ${hours}`
+}
 const overallProgress = computed(() => {
   const values = Object.values(store.courseProgress)
   return values.length ? Math.round(values.reduce((total, value) => total + value, 0) / values.length) : 0
@@ -67,7 +73,6 @@ const filtered = computed(() => {
 })
 
 const loadThemeDetail = async () => {
-  if (dataMode !== 'api') return
   const theme = themes.value.find((item) => item.title === category.value) || themes.value[0]
   if (theme) await themeStore.detail(theme.slug)
 }
@@ -116,9 +121,9 @@ const search = () => courseStore.load({ page: 1, keyword: query.value }, true)
       <form class="hero-search" role="search" @submit.prevent="search"><input v-model="query" aria-label="搜索课程" placeholder="搜索课程、主题或技能…" /><button class="button primary" type="submit">搜索</button></form>
     </PageHero>
     <div class="category-tabs" role="tablist" aria-label="课程主题分类">
-      <button v-for="item in categories" :key="item" type="button" :class="{ active: category === item }" @click="category = item">{{ item }}</button>
+      <button v-for="item in categories" :key="item" type="button" :class="{ active: category === item }" @click="category = item"><AppIcon :name="item === '全部主题' ? 'layers' : categoryIcon(item)" />{{ item }}<small v-if="item !== '全部主题'">{{ themes.find((theme) => theme.title === item)?.data.courseCount || 0 }}</small></button>
     </div>
-    <section class="learning-path"><div class="section-heading"><h2>推荐学习路径</h2><span>从入门到实践，逐步掌握 AI 能力</span><RouterLink to="/profile">查看完整路径 →</RouterLink></div><div v-if="pathSteps.length" class="path-steps"><div v-for="(step, index) in pathSteps" :key="step" :class="{ done: dataMode === 'mock' && index < 2, current: dataMode === 'mock' && index === 2 }"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ step }}</strong></div></div><p v-else>该主题暂未发布学习路径。</p></section>
+    <section class="learning-path"><div class="section-heading"><h2>{{ selectedTheme?.paths[0]?.name || '推荐学习路径' }}</h2><span>{{ selectedTheme?.paths[0]?.description || '从入门到实践，逐步掌握 AI 能力' }}</span><RouterLink to="/profile">查看完整路径 <AppIcon name="arrow-right" :size="15" /></RouterLink></div><div v-if="pathSteps.length" class="path-steps"><div v-for="(step, index) in pathSteps" :key="step.id" :class="{ done: accountDataReady && index < 2, current: accountDataReady && index === 2 }"><span>{{ String(index + 1).padStart(2, '0') }}</span><AppIcon :name="step.stageType === 'project' ? 'tool' : step.stageType === 'assessment' ? 'check' : 'layers'" /><strong>{{ step.name }}</strong><small>{{ stageMeta(step) }}</small></div></div><p v-else>该主题暂未发布学习路径。</p></section>
     <div class="catalog-layout">
       <aside class="filter-panel">
         <div class="panel-title"><strong>筛选条件</strong><button type="button" @click="reset">清空</button></div>
@@ -139,8 +144,8 @@ const search = () => courseStore.load({ page: 1, keyword: query.value }, true)
           <div class="progress-ring"><strong>{{ overallProgress }}%</strong><span>总进度</span></div><ProgressBar :value="overallProgress" :label="dataMode === 'api' ? '账号课程进度' : '演示学习进度'" />
           <div class="mini-stats"><span><strong>{{ Object.keys(store.courseProgress).length }}</strong>已学课程</span><span><strong>{{ store.recentCourses.length }}</strong>最近学习</span><span><strong>{{ Object.values(store.courseProgress).filter((value) => value === 100).length }}</strong>已完成</span></div>
           <template v-if="dataMode === 'mock'"><h3>本周学习活跃度</h3><div class="activity-heatmap" aria-label="本周学习活跃度"><span v-for="index in 28" :key="index" :class="`level-${index % 5}`" :title="`学习强度 ${index % 5}`" /></div></template><p v-else>学习活跃度尚未提供个人聚合数据。</p>
-          <h3>最近学习</h3><RouterLink v-for="course in recentCourses" :key="course.id" :to="`/courses/${course.id}`">{{ course.title }}<small>继续学习 →</small></RouterLink><p v-if="!recentCourses.length">暂无学习记录。</p>
-          <template v-if="dataMode === 'mock'"><h3>学习成就</h3><div class="mini-achievements"><span><strong>◆</strong>连续学习 7 天</span><span><strong>⬢</strong>课程达人</span><span><strong>✦</strong>实验先锋</span></div></template><RouterLink to="/profile">查看全部成就 →</RouterLink>
+          <h3>最近学习</h3><RouterLink v-for="course in recentCourses" :key="course.id" :to="`/courses/${course.id}`">{{ course.title }}<small>继续学习 <AppIcon name="arrow-right" :size="14" /></small></RouterLink><p v-if="!recentCourses.length">暂无学习记录。</p>
+          <template v-if="dataMode === 'mock'"><h3>学习成就</h3><div class="mini-achievements"><span><strong><AppIcon name="achievement" :size="18" /></strong>连续学习 7 天</span><span><strong><AppIcon name="graduation" :size="18" /></strong>课程达人</span><span><strong><AppIcon name="tool" :size="18" /></strong>实验先锋</span></div></template><RouterLink to="/profile">查看全部成就 <AppIcon name="arrow-right" :size="15" /></RouterLink>
         </template>
         <p v-else class="notice">{{ accountDataMessage }}</p>
       </aside>

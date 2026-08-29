@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import AppDialog from '../components/base/AppDialog.vue'
+import AppIcon from '../components/base/AppIcon.vue'
 import ContentPagination from '../components/ContentPagination.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { assessmentAchievements, assets } from '../data/mock'
@@ -76,7 +77,7 @@ watch([challenge, () => auth.user], () => { void loadRanking() }, { immediate: t
 
 <template>
   <div class="page-container assessment-page">
-    <section class="assessment-title"><div><span class="eyebrow">学习 · 实践 · 验证</span><h1>挑战与测评</h1><p>检验学习效果，发现知识盲点，持续突破自我。</p></div><aside><template v-if="accountDataReady"><strong>已记录 {{ store.assessmentRecords.length }} 次测评</strong><ProgressBar :value="store.serverGrowth?.knowledgeAccuracy || 0" label="知识正确率" /></template><p v-else class="notice">{{ accountDataMessage }}</p><button v-if="dataMode === 'mock'" class="text-link" type="button" @click="quizBridge.openReport()">查看学习报告 →</button></aside></section>
+    <section class="assessment-title"><div><span class="eyebrow">学习 · 实践 · 验证</span><h1>挑战与测评</h1><p>检验学习效果，发现知识盲点，持续突破自我。</p></div><aside><template v-if="accountDataReady"><strong>已记录 {{ store.assessmentRecords.length }} 次测评</strong><ProgressBar :value="store.serverGrowth?.knowledgeAccuracy || 0" label="知识正确率" /></template><p v-else class="notice">{{ accountDataMessage }}</p><button v-if="dataMode === 'mock'" class="text-link" type="button" @click="quizBridge.openReport()">查看学习报告 <AppIcon name="arrow-right" :size="16" /></button></aside></section>
     <section v-if="challenge" class="challenge-hero">
       <div><span class="tag purple">已发布挑战</span><h2>{{ challenge.title }}</h2><p>{{ challenge.summary }}</p><div class="meta"><span>目标 {{ challenge.targetScore }} 分</span><span>{{ challenge.data.endAt ? `截止 ${challenge.data.endAt.slice(0, 10)}` : '长期开放' }}</span><span>奖励 {{ challenge.rewardPoints }} 积分</span></div><div class="hero-actions"><button class="button primary" type="button" @click="startChallenge(challenge.slug)">立即参加挑战</button><button class="button secondary" type="button" @click="ruleOpen = true; challengeStore.detail(challenge.slug)">查看挑战规则</button></div></div>
       <img :src="assets.labCover" alt="AI 挑战工作流插画" />
@@ -94,7 +95,7 @@ watch([challenge, () => auth.user], () => { void loadRanking() }, { immediate: t
       <div class="four-grid ability-cards"><article v-for="[title, rate, done] in abilities" :key="title"><span>{{ dimension }}</span><h3>{{ title }}</h3><strong>{{ rate }}%</strong><ProgressBar :value="Number(rate)" /><small>已完成 {{ done }} 道题</small></article></div>
     </section>
     <div class="assessment-grid">
-      <section class="wrong-card"><div class="panel-title"><div><span class="eyebrow">错题回顾</span><h2>注意力机制的主要作用是？</h2></div><button class="text-link" type="button" @click="quizBridge.openWrongQuestions()">查看全部错题 →</button></div><div class="wrong-options"><span>A. 直接提升参数规模</span><span class="correct">B. 捕捉序列中不同位置的关联</span><span>C. 替代全部数据清洗</span></div><p>你的答案：A · 正确答案：B · 本题错误率 38%</p><button class="button secondary" type="button" @click="wrongOpen = true">查看解析</button></section>
+      <section class="wrong-card"><div class="panel-title"><div><span class="eyebrow">错题回顾</span><h2>注意力机制的主要作用是？</h2></div><button class="text-link" type="button" @click="quizBridge.openWrongQuestions()">查看全部错题 <AppIcon name="arrow-right" :size="16" /></button></div><div class="wrong-options"><span>A. 直接提升参数规模</span><span class="correct">B. 捕捉序列中不同位置的关联</span><span>C. 替代全部数据清洗</span></div><p>你的答案：A · 正确答案：B · 本题错误率 38%</p><button class="button secondary" type="button" @click="wrongOpen = true">查看解析</button></section>
       <aside class="study-aside"><h3>近期成绩</h3><div v-for="(item, index) in ['本周 AI 挑战', '大模型专项练习', 'Python 基础测评']" :key="item" class="result-row"><strong>{{ item }}</strong><span>{{ 86 - index * 4 }}% · {{ 18 + index * 4 }} 分钟</span><small>{{ index === 0 ? '第 128 名' : `${82 - index * 3} 分 · ${['A', 'B+', 'B'][index]} 级` }} · {{ index + 1 }} 天前</small></div></aside>
     </div>
     <section><div class="section-heading"><h2>推荐练习</h2></div><div class="three-grid practice-grid"><article v-for="(title, index) in ['强化学习基础', '计算机视觉入门', '模型安全边界']" :key="title"><span>薄弱项推荐</span><h3>{{ title }}</h3><p>{{ 12 + index * 3 }} 道题 · 当前正确率 {{ 62 + index * 4 }}%</p><button class="button secondary" type="button" @click="startPractice(`practice-${index}`)">开始练习</button></article></div></section>

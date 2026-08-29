@@ -20,7 +20,7 @@ export interface Lab {
   id: string
   title: string
   description: string
-  category: '模型部署' | 'AI Agent' | 'Linux 命令' | '智能硬件'
+  category: '模型部署' | 'AI Agent' | 'Linux 命令' | '智能硬件' | '综合项目'
   level: '入门' | '中级' | '进阶' | '尚未配置'
   minutes?: number
   steps?: number
@@ -36,9 +36,9 @@ export interface ResourceItem {
   id: string
   title: string
   category: string
-  theme: '大模型' | 'Agent' | '编程工具' | '智能硬件' | '尚未配置'
-  difficulty: '入门' | '中级' | '进阶' | '尚未配置'
-  format: 'PDF' | 'DOCX' | 'PPTX' | 'ZIP' | 'TXT'
+  theme: string
+  difficulty: '入门' | '中级' | '进阶' | '高级' | '尚未配置'
+  format: string
   featured: boolean
   downloads: number
   updatedAt: string
@@ -53,7 +53,7 @@ export interface Article {
   id: string
   title: string
   summary: string
-  category: '大模型' | 'Agent' | '多模态' | '机器人' | 'AI 安全'
+  category: string
   readMinutes?: number
   publishedAt: string
   content: string[]

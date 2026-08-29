@@ -3,6 +3,8 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contracts/src packages/contracts/src
+COPY packages/demo-fixtures/package.json packages/demo-fixtures/package.json
+COPY packages/demo-fixtures/src packages/demo-fixtures/src
 COPY server/package.json server/package-lock.json server/
 RUN cd server && npm ci
 COPY server server

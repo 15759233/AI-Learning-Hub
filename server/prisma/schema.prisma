@@ -264,20 +264,20 @@ model HomepageItem {
 }
 
 model Theme {
-  id                    String        @id @default(cuid())
-  slug                  String        @unique
+  id                    String         @id @default(cuid())
+  slug                  String         @unique
   title                 String
   summary               String
-  status                PublishStatus @default(draft)
-  sortOrder             Int           @default(0) @map("sort_order")
-  publishedAt           DateTime?     @map("published_at")
-  payload               Json          @default("{}")
-  version               Int           @default(1)
-  currentDraftVersionId String?       @map("current_draft_version_id")
-  publishedVersionId    String?       @map("published_version_id")
-  createdAt             DateTime      @default(now()) @map("created_at")
-  updatedAt             DateTime      @updatedAt @map("updated_at")
-  deletedAt             DateTime?     @map("deleted_at")
+  status                PublishStatus  @default(draft)
+  sortOrder             Int            @default(0) @map("sort_order")
+  publishedAt           DateTime?      @map("published_at")
+  payload               Json           @default("{}")
+  version               Int            @default(1)
+  currentDraftVersionId String?        @map("current_draft_version_id")
+  publishedVersionId    String?        @map("published_version_id")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  deletedAt             DateTime?      @map("deleted_at")
   courses               Course[]
   paths                 LearningPath[]
   versions              ThemeVersion[] @relation("ThemeVersions")
@@ -707,11 +707,11 @@ model Resource {
   versions              ResourceVersion[]  @relation("ResourceVersions")
   currentDraftVersion   ResourceVersion?   @relation("ResourceDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
   publishedVersion      ResourceVersion?   @relation("ResourcePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
-  tags          ResourceTag[]
-  downloads     ResourceDownload[]
-  views         ResourceView[]
-  courseLinks   CourseResource[]
-  labLinks      LabResource[]
+  tags                  ResourceTag[]
+  downloads             ResourceDownload[]
+  views                 ResourceView[]
+  courseLinks           CourseResource[]
+  labLinks              LabResource[]
 
   @@index([status, category, sortOrder])
   @@map("resources")

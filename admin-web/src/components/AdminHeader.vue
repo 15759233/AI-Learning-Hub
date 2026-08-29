@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../services/api'
 import { useSessionStore } from '../stores/session'
+import AdminIcon from './AdminIcon.vue'
 
 const session = useSessionStore()
 const router = useRouter()
@@ -33,18 +34,18 @@ onMounted(async () => {
 
 <template>
   <header class="admin-header">
-    <form role="search" @submit.prevent="submit"><span>⌕</span><input v-model="search" placeholder="搜索用户、课程、项目、资源等…" /></form>
+    <form role="search" @submit.prevent="submit"><span><AdminIcon name="search" :size="18" /></span><input v-model="search" placeholder="搜索用户、课程、项目、资源等…" /></form>
     <div class="header-env"><b></b>{{ runtimeMode }}</div>
     <el-dropdown v-if="canReadNotifications">
-      <button class="header-bell" type="button" aria-label="通知">♧<small>{{ notifications.filter((item) => item.status === 'published').length }}</small></button>
+      <button class="header-bell" type="button" aria-label="通知"><AdminIcon name="notification" :size="19" /><small>{{ notifications.filter((item) => item.status === 'published').length }}</small></button>
       <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="item in notifications.slice(0, 8)" :key="item.id" @click="router.push('/settings')">{{ item.title }}</el-dropdown-item><el-dropdown-item v-if="!notifications.length">暂无通知</el-dropdown-item></el-dropdown-menu></template>
     </el-dropdown>
     <el-dropdown>
-      <button class="admin-user" type="button"><span>{{ session.user?.displayName.slice(0, 1) }}</span><strong>{{ session.user?.displayName }}<small>{{ session.user?.roles.join('、') || '管理账号' }}</small></strong>⌄</button>
+      <button class="admin-user" type="button"><span>{{ session.user?.displayName.slice(0, 1) }}</span><strong>{{ session.user?.displayName }}<small>{{ session.user?.roles.join('、') || '管理账号' }}</small></strong><AdminIcon name="chevron-down" :size="15" /></button>
       <template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout">退出登录</el-dropdown-item></el-dropdown-menu></template>
     </el-dropdown>
     <el-dropdown v-if="quickCreates.length">
-      <button class="quick-create" type="button">＋ 快速创建⌄</button>
+      <button class="quick-create" type="button"><AdminIcon name="plus" :size="15" />快速创建<AdminIcon name="chevron-down" :size="14" /></button>
       <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="[, label, path] in quickCreates" :key="path" @click="router.push(path)">{{ label }}</el-dropdown-item></el-dropdown-menu></template>
     </el-dropdown>
   </header>

@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { useLearningStore } from '../stores/learning'
 import ProgressBar from './ProgressBar.vue'
 import BaseContentCard from './base/BaseContentCard.vue'
+import AppIcon from './base/AppIcon.vue'
 import type { Course } from '../types'
 
 const props = withDefaults(defineProps<{ course: Course; compact?: boolean }>(), { compact: false })
@@ -27,7 +28,7 @@ const accountDataMessage = computed(() => {
       <p v-else class="account-data-placeholder">{{ accountDataMessage }}</p>
       <div class="card-actions">
         <RouterLink class="button primary ghost-primary" :to="`/courses/${course.id}`">{{ store.courseProgress[course.id] || course.progress ? '继续学习' : '开始学习' }}</RouterLink>
-        <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${course.title}` : `收藏${course.title}`" @click="store.toggleFavorite('course', course.id)">{{ favorite ? '★' : '☆' }}</button>
+        <button class="icon-button" type="button" :class="{ active: favorite }" :aria-pressed="favorite" :aria-label="favorite ? `取消收藏${course.title}` : `收藏${course.title}`" @click="store.toggleFavorite('course', course.id)"><AppIcon name="bookmark" :size="18" /></button>
       </div>
   </BaseContentCard>
 </template>

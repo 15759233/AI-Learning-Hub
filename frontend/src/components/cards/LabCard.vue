@@ -4,6 +4,7 @@ import { dataMode } from '../../services/api/client'
 import { useLearningStore } from '../../stores/learning'
 import type { Lab } from '../../types'
 import BaseContentCard from '../base/BaseContentCard.vue'
+import AppIcon from '../base/AppIcon.vue'
 
 const props = defineProps<{ lab: Lab }>()
 const store = useLearningStore()
@@ -16,8 +17,8 @@ const favorite = computed(() => store.isFavorite('lab', props.lab.id))
     <h3>{{ lab.title }}</h3>
     <p>{{ lab.description }}</p>
     <div class="card-actions">
-      <RouterLink class="text-link" :to="`/labs/${lab.id}`">开始实验 →</RouterLink>
-      <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${lab.title}` : `收藏${lab.title}`" @click="store.toggleFavorite('lab', lab.id)">{{ favorite ? '★' : '☆' }}</button>
+      <RouterLink class="text-link" :to="`/labs/${lab.id}`">开始实验 <AppIcon name="arrow-right" :size="15" /></RouterLink>
+      <button class="icon-button" type="button" :class="{ active: favorite }" :aria-pressed="favorite" :aria-label="favorite ? `取消收藏${lab.title}` : `收藏${lab.title}`" @click="store.toggleFavorite('lab', lab.id)"><AppIcon name="bookmark" :size="18" /></button>
     </div>
   </BaseContentCard>
 </template>

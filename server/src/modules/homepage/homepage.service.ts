@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { HomepageModuleKey, HomepageResolvedItemDto, PublicHomepageDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -116,6 +116,14 @@ export class HomepageService {
   }
 
   async publish() {
+    const draftModules = await this.adminModules()
+    const incomplete = draftModules
+      .filter((module) => module.enabled)
+      .map((module) => ({ module, issues: this.readinessIssues(module) }))
+      .filter((item) => item.issues.length)
+    if (incomplete.length) {
+      throw new BadRequestException(`首页存在配置未完成模块：${incomplete.map((item) => `${item.module.name}（${item.issues.join('、')}）`).join('；')}`)
+    }
     return this.prisma.$transaction(async (tx) => {
       const modules = await tx.homepageModule.findMany({
         where: { enabled: true },
@@ -178,7 +186,42 @@ export class HomepageService {
           })))
           .filter((item) => item !== null),
       }))))
-    return { modules: rendered, updatedAt: updatedAt.toISOString(), version }
+    return {
+      modules: version > 0 ? rendered.filter((module) => this.readinessIssues(module).length === 0) : rendered,
+      updatedAt: updatedAt.toISOString(),
+      version,
+    }
+  }
+
+  private readinessIssues(module: {
+    moduleKey: string
+    config: unknown
+    items?: unknown[]
+  }) {
+    const config = module.config && typeof module.config === 'object' && !Array.isArray(module.config)
+      ? module.config as Record<string, unknown>
+      : {}
+    const issues: string[] = []
+    const minimums: Record<string, number> = {
+      theme_direction: 4,
+      weekly_featured: 3,
+      featured_labs: 3,
+      maker_projects: 3,
+      frontier_news: 3,
+      resource_tools: 4,
+      weekly_challenge: 1,
+    }
+    if (module.moduleKey === 'hero_banner') {
+      if (!Array.isArray(config.titleLines) || config.titleLines.length < 2 || !config.subtitle || !config.visualVariant) issues.push('首屏标题、说明或视觉不完整')
+    } else if (!config.title) {
+      issues.push('缺少标题')
+    }
+    const validItems = (module.items || []).filter((item) => {
+      if (!item || typeof item !== 'object' || !('relationValid' in item)) return true
+      return (item as { relationValid?: boolean }).relationValid !== false
+    }).length
+    if ((minimums[module.moduleKey] || 0) > validItems) issues.push(`有效推荐少于 ${minimums[module.moduleKey]} 项`)
+    return issues
   }
 
   private async resolve(targetType: string, targetId: string) {

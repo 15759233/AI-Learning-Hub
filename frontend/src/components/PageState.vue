@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppIcon from './base/AppIcon.vue'
+
 defineProps<{ state: string; errorMessage?: string }>()
 defineEmits<{ retry: [] }>()
 </script>
@@ -9,7 +11,7 @@ defineEmits<{ retry: [] }>()
     <span class="sr-only">正在加载内容</span>
   </div>
   <div v-else-if="state === 'empty'" class="page-container state-message">
-    <span class="state-icon">◇</span><h1>暂时没有内容</h1><p>调整筛选条件或稍后再来看看。</p>
+    <span class="state-icon"><AppIcon name="file" :size="28" /></span><h1>暂时没有内容</h1><p>调整筛选条件或稍后再来看看。</p>
     <RouterLink class="button secondary" to="/">返回首页</RouterLink>
   </div>
   <div v-else-if="state === 'error'" class="page-container state-message" role="alert">

@@ -41,15 +41,15 @@ const createForm = reactive({ type: 'achievement', code: '', name: '', descripti
 const editingModule = ref<GrowthModule | null>(null)
 const moduleMeta: Record<string, [string, string, string]> = {
   overview: ['学习总览', '学习时长、完成课程', '◷'],
-  ability_card: ['AI 能力卡', '知识与实践能力', '⬡'],
+  ability_card: ['AI 能力卡', '知识与实践能力', 'growth'],
   badges: ['微章墙', '成果与荣誉', '♛'],
-  recent_courses: ['最近学习课程', '课程进度与推荐', '▣'],
-  lab_records: ['实验记录', '实训报告与成果', '⌁'],
-  favorites: ['我的收藏', '课程、资讯与资源', '★'],
-  plans: ['学习计划', '目标与进度管理', '▤'],
+  recent_courses: ['最近学习课程', '课程进度与推荐', 'course'],
+  lab_records: ['实验记录', '实训报告与成果', 'lab'],
+  favorites: ['我的收藏', '课程、资讯与资源', 'resource'],
+  plans: ['学习计划', '目标与进度管理', 'theme'],
   growth_stats: ['成长统计', '积分、连续学习', '▥'],
 }
-const moduleView = (item: GrowthModule) => moduleMeta[item.id] || [item.title, '个人中心展示模块', '◇']
+const moduleView = (item: GrowthModule) => moduleMeta[item.id] || [item.title, '个人中心展示模块', 'resource']
 const filtered = computed(() => users.value.filter((item) => `${item.displayName}${item.email}`.toLowerCase().includes(keyword.value.toLowerCase())))
 const loadGrowth = async (user: UserRow) => { selected.value = user; growth.value = await api(`/admin/users/${user.id}/growth`) }
 const toggleModule = async (item: GrowthModule, enabled: boolean) => {
@@ -109,13 +109,13 @@ onMounted(async () => {
 
 <template>
   <AdminPageHeader title="用户成长管理" description="管理用户个人中心与成长体系展示内容及规则">
-    <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="openRules">成长体系设置</button><button class="admin-secondary" type="button" @click="exportUsers">⇩ 数据导出</button><button class="admin-primary" type="button" :disabled="!canWrite" @click="createOpen = true">＋ 新建徽章/证书</button></template>
+    <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="openRules">成长体系设置</button><button class="admin-secondary" type="button" @click="exportUsers">数据导出</button><button class="admin-primary" type="button" :disabled="!canWrite" @click="createOpen = true">新建徽章/证书</button></template>
   </AdminPageHeader>
   <div class="kpi-grid">
-    <AdminKpiCard icon="♟" label="学习者总数" :value="users.length" color="#ff4d1f" />
-    <AdminKpiCard icon="▣" label="学习记录" :value="growth?.progress.length || 0" color="#22b66c" />
-    <AdminKpiCard icon="◇" label="实训记录" :value="growth?.runs.length || 0" color="#7c4dff" />
-    <AdminKpiCard icon="▤" label="测评记录" :value="growth?.attempts.length || 0" color="#3478f6" />
+    <AdminKpiCard icon="users" label="学习者总数" :value="users.length" color="#ff4d1f" />
+    <AdminKpiCard icon="course" label="学习记录" :value="growth?.progress.length || 0" color="#22b66c" />
+    <AdminKpiCard icon="lab" label="实训记录" :value="growth?.runs.length || 0" color="#7c4dff" />
+    <AdminKpiCard icon="challenge" label="测评记录" :value="growth?.attempts.length || 0" color="#3478f6" />
   </div>
   <section class="growth-layout panel">
     <aside class="growth-modules">
@@ -137,9 +137,9 @@ onMounted(async () => {
     <aside v-if="growth" class="learner-detail">
       <div class="learner-profile"><span>{{ growth.user.displayName.slice(0, 1) }}</span><div><h2>{{ growth.user.displayName }} <small>等级 —</small></h2><p>{{ growth.user.email }} · ID {{ growth.user.id.slice(-6) }}</p><AdminStatusTag :status="growth.user.status" /></div></div>
       <h3>学习数据快照</h3>
-      <div class="growth-snapshot"><span><i>◷</i><b>—</b>学习时长</span><span><i>▣</i><b>{{ growth.progress.length }}</b>课时进度</span><span><i>♜</i><b>{{ growth.runs.filter((item) => item.status === 'submitted').length }}</b>实训提交</span><span><i>⬡</i><b>{{ growth.achievements.length }}</b>获得徽章</span><span><i>▤</i><b>{{ growth.certificates.length }}</b>证书获得</span></div>
+      <div class="growth-snapshot"><span><i>时</i><b>—</b>学习时长</span><span><i>课</i><b>{{ growth.progress.length }}</b>课时进度</span><span><i>练</i><b>{{ growth.runs.filter((item) => item.status === 'submitted').length }}</b>实训提交</span><span><i>章</i><b>{{ growth.achievements.length }}</b>获得徽章</span><span><i>证</i><b>{{ growth.certificates.length }}</b>证书获得</span></div>
       <h3>获得的徽章 <small>全部（{{ growth.achievements.length }}）</small></h3>
-      <div v-if="growth.achievements.length" class="badge-row"><span v-for="item in growth.achievements" :key="item.achievement.name"><i>◆</i><small>{{ item.achievement.name }}</small></span></div><p v-else>暂无徽章。</p>
+      <div v-if="growth.achievements.length" class="badge-row"><span v-for="item in growth.achievements" :key="item.achievement.name"><i>章</i><small>{{ item.achievement.name }}</small></span></div><p v-else>暂无徽章。</p>
       <h3>学习计划 <small>全部（{{ growth.plans.length }}）</small></h3>
       <div v-for="plan in growth.plans" :key="plan.id" class="plan-card"><div><b>{{ plan.title }}</b><AdminStatusTag :status="plan.status" /></div><small>进度 {{ plan.progress }}%{{ plan.targetDate ? ` · 目标 ${String(plan.targetDate).slice(0, 10)}` : '' }}</small><i><span :style="{ width: `${plan.progress}%` }"></span></i></div><p v-if="!growth.plans.length">暂无学习计划。</p>
       <h3>智能推荐规则</h3><pre>{{ JSON.stringify(recommendationRules, null, 2) }}</pre>

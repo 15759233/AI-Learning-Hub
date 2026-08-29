@@ -1,15 +1,17 @@
 import type { PublicHomepageDto } from '@ai-learning-hub/contracts'
 import { defineStore } from 'pinia'
-import { request, dataMode } from '../../services/api/client'
+import { ApiHomepageRepository, MockHomepageRepository } from '../../homepage/repositories'
+import { dataMode } from '../../services/api/client'
 
 export const useHomepageStore = defineStore('content-homepage', {
   state: () => ({ value: null as PublicHomepageDto | null, loading: false, error: '' }),
   actions: {
     async load() {
-      if (dataMode !== 'api') return
       this.loading = true
       this.error = ''
-      try { this.value = await request<PublicHomepageDto>('/public/homepage') }
+      try {
+        this.value = await (dataMode === 'api' ? ApiHomepageRepository : MockHomepageRepository).load()
+      }
       catch (error) { this.error = error instanceof Error ? error.message : '首页加载失败'; throw error }
       finally { this.loading = false }
     },

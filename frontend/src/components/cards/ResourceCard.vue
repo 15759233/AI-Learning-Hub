@@ -4,6 +4,7 @@ import { dataMode } from '../../services/api/client'
 import { useLearningStore } from '../../stores/learning'
 import type { ResourceItem } from '../../types'
 import BaseContentCard from '../base/BaseContentCard.vue'
+import AppIcon from '../base/AppIcon.vue'
 
 const props = defineProps<{ resource: ResourceItem }>()
 const emit = defineEmits<{ preview: [resource: ResourceItem] }>()
@@ -17,8 +18,8 @@ const favorite = computed(() => store.isFavorite('resource', props.resource.id))
     <h3>{{ resource.title }}</h3>
     <p>{{ resource.format }} · {{ resource.difficulty }} · 更新于 {{ resource.updatedAt }}</p>
     <div class="card-actions">
-      <button class="text-link" type="button" @click="emit('preview', resource)">预览资源 →</button>
-      <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${resource.title}` : `收藏${resource.title}`" @click="store.toggleFavorite('resource', resource.id)">{{ favorite ? '★' : '☆' }}</button>
+      <button class="text-link" type="button" @click="emit('preview', resource)">预览资源 <AppIcon name="arrow-right" :size="15" /></button>
+      <button class="icon-button" type="button" :class="{ active: favorite }" :aria-pressed="favorite" :aria-label="favorite ? `取消收藏${resource.title}` : `收藏${resource.title}`" @click="store.toggleFavorite('resource', resource.id)"><AppIcon name="bookmark" :size="18" /></button>
     </div>
   </BaseContentCard>
 </template>

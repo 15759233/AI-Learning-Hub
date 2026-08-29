@@ -2,11 +2,13 @@
 import {
   HOMEPAGE_PREVIEW_MESSAGE,
   HOMEPAGE_PREVIEW_READY_MESSAGE,
+  HOMEPAGE_PREVIEW_SIZE_MESSAGE,
   type HomepagePreviewMessage,
   type PublicHomepageDto,
 } from '@ai-learning-hub/contracts'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import HomepageRenderer from '../homepage/HomepageRenderer.vue'
+import HomepageSkeleton from '../homepage/HomepageSkeleton.vue'
 
 const homepage = ref<PublicHomepageDto | null>(null)
 const configuredOrigins = String(import.meta.env.VITE_ADMIN_PREVIEW_ORIGINS || '')
@@ -22,25 +24,40 @@ const parentOrigin = (() => {
     return ''
   }
 })()
+let sizeObserver: ResizeObserver | undefined
+const sendSize = () => {
+  if (window.parent === window || !allowedOrigins.has(parentOrigin)) return
+  window.parent.postMessage({
+    type: HOMEPAGE_PREVIEW_SIZE_MESSAGE,
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }, parentOrigin)
+}
 
 const receivePreview = (event: MessageEvent<HomepagePreviewMessage>) => {
   if (event.source !== window.parent || !allowedOrigins.has(event.origin)) return
   if (event.data?.type !== HOMEPAGE_PREVIEW_MESSAGE || !Array.isArray(event.data.homepage?.modules)) return
   homepage.value = event.data.homepage
+  void nextTick(sendSize)
 }
 
 onMounted(() => {
   window.addEventListener('message', receivePreview)
   if (window.parent !== window && allowedOrigins.has(parentOrigin)) {
     window.parent.postMessage({ type: HOMEPAGE_PREVIEW_READY_MESSAGE }, parentOrigin)
+    sizeObserver = new ResizeObserver(sendSize)
+    sizeObserver.observe(document.documentElement)
   }
 })
-onBeforeUnmount(() => window.removeEventListener('message', receivePreview))
+onBeforeUnmount(() => {
+  window.removeEventListener('message', receivePreview)
+  sizeObserver?.disconnect()
+})
 </script>
 
 <template>
   <div class="page-container home-page">
     <HomepageRenderer v-if="homepage" :homepage="homepage" />
-    <p v-else class="empty-state">正在接收管理端首页草稿…</p>
+    <HomepageSkeleton v-else />
   </div>
 </template>

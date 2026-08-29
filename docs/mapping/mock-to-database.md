@@ -1,17 +1,17 @@
 # Mock 数据迁移
 
-`server/prisma/seed.ts` 依据 `frontend/src/data/mock.ts` 建立首批内容，保留现有路由标识。
+`packages/demo-fixtures/` 是演示内容的唯一语义来源。Prisma Seed 与学生端 Mock Repository 读取同一数据集；API 模式继续读取 PostgreSQL，失败不回退 Mock。
 
 | Mock | 数据表 | 保留标识 |
 | --- | --- | --- |
-| `courses` | `courses`、课程版本/章节/课时/内容块 | `llm-zero`、`agent-first`、`image-create`、`api-deploy` 等 |
-| `labs` | `labs`、`lab_versions`、`lab_steps` | `agent-workbench`、`model-service`、`linux-command`、`hardware` 等 |
-| `resources` | `resources` | `resource-1` 等 |
-| `articles` | `articles` | `agent-tools`、`moe` 等 |
-| 挑战与成就 | `challenges`、`question_banks`、`questions`、`knowledge_points`、成长表 | `weekly-ai` |
-| 用户资料 | `users`、`growth_points` | 环境初始化账号 |
+| `demoCourses` | `courses`、课程版本/章节/课时/内容块 | `llm-zero`、`agent-first`、`docker-models` 等 |
+| `demoLabs` | `labs`、`lab_versions`、`lab_steps` | `model-service`、`campus-agent`、`linux-command` 等 |
+| `demoResources` | `resources` | `llm-handbook`、`docker-guide` 等 |
+| `demoArticles` | `articles` | `agent-tools`、`moe` 等 |
+| `demoChallenges` | `challenges`、题库、题目、知识点 | `weekly-ai` 等 |
+| 学生与成长数据 | 用户、计划、积分、徽章、证书、动态、日统计 | 稳定演示标识 |
 
-内容数据作为初始发布基线；学习人数、下载量等 Mock 数字不进入 API 模式。正式统计由活动事件、学习记录、实训和测评行为聚合生成。
+Seed 可重复执行并更新固定演示记录，不制造重复数据；首页只保留 12 个正式模块，排序归一化为 `0～11`，完成推荐关系后自动生成首次发布快照。学习人数、下载量等初始化指标用于演示基线，后续真实行为继续由活动、学习、实训和测评记录聚合。
 
 学生端切换：
 

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ai-learning-hub/contracts": "file:../packages/contracts",
+    "@ai-learning-hub/demo-fixtures": "file:../packages/demo-fixtures",
     "@aws-sdk/client-s3": "^3.933.0",
     "@aws-sdk/s3-request-presigner": "^3.933.0",
     "@nestjs/common": "^11.1.6",

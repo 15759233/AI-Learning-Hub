@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CourseCard from '../components/CourseCard.vue'
 import AppDialog from '../components/base/AppDialog.vue'
+import AppIcon from '../components/base/AppIcon.vue'
 import NotFoundState from '../components/NotFoundState.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { assets } from '../data/mock'
@@ -36,7 +37,7 @@ const noteDraft = ref(store.notes[courseId.value] || '')
 const courseDetail = ref<CourseDetailDto | null>(null)
 const detailLoading = ref(false)
 const detailError = ref('')
-const videoMessage = ref('▶ 12:40 · 演示视频占位')
+const videoMessage = ref('12:40 · 课程演示视频')
 const liked = ref(false)
 const questionSent = ref(false)
 const lessons = ['AI 与语言模型', 'Transformer 核心结构', '训练与微调', '推理与应用', '安全与伦理']
@@ -79,7 +80,10 @@ watch(currentLesson, (lesson) => {
 watch(courseId, async () => {
   currentLesson.value = Math.min(5, Math.max(1, Number(route.query.lesson) || 1))
   noteDraft.value = store.notes[noteKey.value] || ''
-  if (dataMode !== 'api') return
+  if (dataMode !== 'api') {
+    await courseStore.load()
+    return
+  }
   detailLoading.value = true
   detailError.value = ''
   courseDetail.value = null
@@ -106,12 +110,12 @@ watch(courseId, async () => {
     <div class="learning-layout">
       <aside class="outline-panel sticky">
         <button class="outline-title" type="button" @click="expanded = !expanded"><strong>课程大纲</strong><span>{{ expanded ? '收起' : '展开' }}</span></button>
-        <div v-if="expanded && displayLessons.length" class="lesson-list"><button v-for="(lesson, index) in displayLessons" :key="lesson" type="button" :class="{ done: index < currentLesson - 1, active: index === currentLesson - 1 }" @click="currentLesson = index + 1"><span>{{ index < currentLesson - 1 ? '✓' : String(index + 1).padStart(2, '0') }}</span>{{ lesson }}</button></div>
+        <div v-if="expanded && displayLessons.length" class="lesson-list"><button v-for="(lesson, index) in displayLessons" :key="lesson" type="button" :class="{ done: index < currentLesson - 1, active: index === currentLesson - 1 }" @click="currentLesson = index + 1"><span><AppIcon v-if="index < currentLesson - 1" name="check" :size="15" /><template v-else>{{ String(index + 1).padStart(2, '0') }}</template></span>{{ lesson }}</button></div>
         <p v-else-if="expanded && dataMode === 'api'">课程尚未发布结构化课时。</p>
         <div class="certificate-card">完成全部课程可获得<br /><strong>{{ courseDetail?.data.certificate || (dataMode === 'api' ? '证书待配置' : '大模型基础证书') }}</strong></div>
       </aside>
       <article class="lesson-content">
-        <div class="lesson-nav"><button type="button" :disabled="currentLesson === 1" @click="currentLesson--">← 上一节</button><strong>第 {{ currentLesson }} 节</strong><button type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">下一节 →</button></div>
+        <div class="lesson-nav"><button type="button" :disabled="currentLesson === 1" @click="currentLesson--"><AppIcon name="arrow-left" :size="16" />上一节</button><strong>第 {{ currentLesson }} 节</strong><button type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">下一节<AppIcon name="arrow-right" :size="16" /></button></div>
         <div v-if="detailLoading" class="notice">正在读取已发布课程内容…</div>
         <div v-else-if="detailError" class="notice error">{{ detailError }}，未回退到演示内容。</div>
         <template v-else-if="dataMode === 'api'">
@@ -124,14 +128,18 @@ watch(courseId, async () => {
               <p v-else-if="block.blockType === 'paragraph'">{{ block.content.text }}</p>
               <div v-else-if="block.blockType === 'key_points'" class="key-grid"><article v-for="point in block.content.items || []" :key="point"><strong>{{ point }}</strong></article></div>
               <section v-else-if="block.blockType === 'code'" class="code-card"><div><span>{{ block.content.language || 'text' }}</span></div><pre><code>{{ block.content.code }}</code></pre></section>
-              <div v-else class="notice">内容块：{{ block.blockType }}</div>
+              <div v-else-if="block.blockType === 'diagram'" class="concept-diagram"><template v-for="(node, index) in block.content.nodes || []" :key="node"><AppIcon v-if="index" name="arrow-right" :size="17" /><div>{{ node }}</div></template></div>
+              <section v-else-if="block.blockType === 'quiz'" class="quiz-card"><span class="eyebrow">知识小测</span><h3>{{ block.content.question }}</h3><p>{{ block.content.answer }}</p></section>
+              <RouterLink v-else-if="block.blockType === 'resource'" class="lesson-resource-link" :to="String(block.content.route || '/resources')"><AppIcon name="file" />{{ block.content.title || '配套学习资料' }}<AppIcon name="arrow-right" :size="16" /></RouterLink>
+              <section v-else-if="block.blockType === 'next_lesson'" class="next-lesson-card"><span>下一节</span><strong>{{ block.content.title }}</strong></section>
+              <div v-else class="notice">暂不支持的课程内容块：{{ block.blockType }}</div>
             </template>
           </div>
           <div v-else class="inline-empty"><p>该课程暂无已发布课时内容。</p></div>
         </template>
         <template v-else>
         <span class="eyebrow">核心概念</span><h2>{{ lessons[currentLesson - 1] }}</h2><p>Transformer 通过注意力机制理解序列中不同位置之间的关系。与逐步处理的传统结构相比，它能并行处理信息，并在大规模数据上形成更稳定的表示能力。</p>
-        <div class="concept-diagram"><div>输入序列</div><span>→</span><div>注意力</div><span>→</span><div>前馈网络</div><span>→</span><div>上下文表示</div></div>
+        <div class="concept-diagram"><div>输入序列</div><AppIcon name="arrow-right" :size="17" /><div>注意力</div><AppIcon name="arrow-right" :size="17" /><div>前馈网络</div><AppIcon name="arrow-right" :size="17" /><div>上下文表示</div></div>
         <div class="video-placeholder"><img :src="assets.learningCover" alt="课程视频封面插画" /><button type="button" aria-label="播放演示视频" @click="videoMessage = '暂无真实视频，当前为课程封面预览'">{{ videoMessage }}</button></div>
         <section class="code-card"><div><span>Python</span><button type="button" @click="copyCode">{{ copyMessage }}</button></div><pre><code>{{ code }}</code></pre></section>
         <div class="key-grid"><article><strong>并行计算</strong><p>减少序列处理的依赖。</p></article><article><strong>上下文关联</strong><p>学习远距离信息关系。</p></article><article><strong>规模扩展</strong><p>支持更大数据与模型。</p></article></div>
@@ -143,7 +151,7 @@ watch(courseId, async () => {
         <section><div class="panel-title"><strong>我的笔记</strong><button type="button" @click="noteOpen = true">编辑</button></div><p>{{ store.notes[noteKey] || '还没有笔记，记录一个关键想法吧。' }}</p></section>
         <section><h3>相关资料</h3><template v-if="dataMode === 'api'"><RouterLink v-for="resource in courseDetail?.relatedResources || []" :key="resource.slug" :to="{ path: '/resources', query: { preview: resource.slug } }">{{ resource.title }}</RouterLink><p v-if="!courseDetail?.relatedResources.length">尚未关联已发布资源。</p></template><template v-else><RouterLink to="/resources">Transformer 图解 · PDF</RouterLink><RouterLink to="/resources">注意力机制学习手册</RouterLink><RouterLink to="/resources">课程视频索引 · 视频</RouterLink><RouterLink to="/resources">示例代码仓库 · GitHub</RouterLink></template></section>
         <section><h3>学习进度</h3><template v-if="accountDataReady"><ProgressBar :value="store.courseProgress[course.id] || 0" /><small>完成本节会同步更新课程进度。</small></template><p v-else class="notice">{{ accountDataMessage }}</p></section>
-        <section><h3>学习成就</h3><div v-if="dataMode === 'mock'" class="mini-achievements"><span><strong>◆</strong>模型入门</span><span><strong>⬢</strong>连续学习</span><span><strong>✦</strong>小测达人</span></div><p v-else>课程成就规则尚未配置。</p></section>
+        <section><h3>学习成就</h3><div v-if="dataMode === 'mock'" class="mini-achievements"><span><AppIcon name="layers" />模型入门</span><span><AppIcon name="check" />连续学习</span><span><AppIcon name="trophy" />小测达人</span></div><p v-else>课程成就规则尚未配置。</p></section>
         <section><h3>下一节预告</h3><strong>{{ displayLessons[Math.min(currentLesson, displayLessons.length - 1)] || '暂无下一节' }}</strong><p v-if="currentApiLesson">预计 {{ currentApiLesson.durationMinutes }} 分钟</p><button class="button primary full-width" type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">继续下一节</button></section>
       </aside>
     </div>

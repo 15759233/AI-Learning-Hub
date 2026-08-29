@@ -20,3 +20,17 @@
 - 后台编辑保存草稿；公开接口只读已发布快照，不承担浏览统计或定时发布写入。
 - 首页管理预览与学生端共用 `HOMEPAGE_MODULE_KEYS` 和 `PublicHomepageDto` 渲染契约；推荐项通过真实内容选择器关联并可排序。
 - 六个领域分别使用 `*.read / *.write / *.publish` 权限；课程结构/关联/预览、五类实训面板、五题型组卷和资源版本恢复均使用专用接口。
+
+关键字段颗粒度：
+
+| 后台字段 | 数据库存储 | 公开 DTO | 学生端位置 |
+| --- | --- | --- | --- |
+| 课程封面/分类视觉 | `Course.payload.cover/coverVariant` | `CourseData.cover/coverVariant` | 课程卡、课程详情 Hero |
+| 课程难度/时长/讲师 | `Course.payload.level/hours/instructor` | `CourseData` 同名字段 | 列表元信息、详情教师信息 |
+| 课程章节与课时 | `CourseVersion → Chapter → Lesson → Block` | `CourseDetailDto.chapters` | 左侧目录、中间内容、右侧下一节 |
+| 实训时长/步骤/完成率 | `Lab.payload` 与 `LabStep` | `LabData`、`LabDetailDto.steps` | 实训卡、工作台任务区 |
+| 资源格式/下载量 | `Resource.format/downloadCount` | `ResourceSummaryDto.format/downloads` | 资源卡、热门下载 |
+| 资讯封面/阅读量 | `Article.payload.coverVariant`、`viewCount` | `ArticleData.coverVariant`、`views` | 焦点资讯、文章列表 |
+| 挑战题量/时长/奖励 | `Challenge.payload`、`rewardPoints` | `ChallengeData`、`rewardPoints` | 本周挑战、模拟测评 |
+| 首页标题/视觉/显示数量 | `HomepageModule.config` | `PublicHomepageModuleDto.config` | 12 个领域模块 |
+| 首页推荐关系 | `HomepageItem` | `resolvedItems` | 课程、实训、资源等领域卡片 |

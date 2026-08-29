@@ -2,6 +2,7 @@
 import type { AdminCatalogItemDto } from '@ai-learning-hub/contracts'
 import { reactive, watch } from 'vue'
 import AdminStatusTag from './AdminStatusTag.vue'
+import AdminIcon from './AdminIcon.vue'
 
 const props = defineProps<{ item: AdminCatalogItemDto | null; busy?: boolean; noun: string }>()
 const emit = defineEmits<{ save: [value: { title: string; summary: string; sortOrder: number }]; publish: []; archive: [] }>()
@@ -16,7 +17,7 @@ watch(() => props.item, (item) => {
 <template>
   <aside class="detail-panel">
     <template v-if="item">
-      <div class="detail-title"><div><span class="detail-icon">◇</span><strong>{{ item.title }}</strong></div><AdminStatusTag :status="item.status" /></div>
+      <div class="detail-title"><div><span class="detail-icon"><AdminIcon name="resource" :size="20" /></span><strong>{{ item.title }}</strong></div><AdminStatusTag :status="item.status" /></div>
       <form @submit.prevent="emit('save', form)">
         <label>{{ noun }}标题<input v-model="form.title" maxlength="120" required /></label>
         <label>内容摘要<textarea v-model="form.summary" maxlength="500" rows="4" required /></label>
@@ -30,6 +31,6 @@ watch(() => props.item, (item) => {
         </div>
       </form>
     </template>
-    <div v-else class="admin-empty"><span>◇</span><strong>选择一条内容</strong><small>右侧将显示详情、编辑与发布操作。</small></div>
+    <div v-else class="admin-empty"><span><AdminIcon name="resource" :size="24" /></span><strong>选择一条内容</strong><small>右侧将显示详情、编辑与发布操作。</small></div>
   </aside>
 </template>

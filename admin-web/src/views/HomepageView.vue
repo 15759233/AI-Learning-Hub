@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { HOMEPAGE_MODULE_KEYS, type PublicHomepageDto } from '@ai-learning-hub/contracts'
 import { ElMessage } from 'element-plus'
+import type { Component } from 'vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AdminKpiCard from '../components/AdminKpiCard.vue'
+import AdminIcon from '../components/AdminIcon.vue'
 import AdminDialog from '../components/AdminDialog.vue'
 import AdminPageHeader from '../components/AdminPageHeader.vue'
 import AdminStatusTag from '../components/AdminStatusTag.vue'
 import HomepagePreviewRenderer from '../components/HomepagePreviewRenderer.vue'
+import HeroModuleEditor from '../components/homepage-editors/HeroModuleEditor.vue'
+import AbilityModuleEditor from '../components/homepage-editors/AbilityModuleEditor.vue'
+import ThemeModuleEditor from '../components/homepage-editors/ThemeModuleEditor.vue'
+import CourseModuleEditor from '../components/homepage-editors/CourseModuleEditor.vue'
+import LabModuleEditor from '../components/homepage-editors/LabModuleEditor.vue'
+import ProjectModuleEditor from '../components/homepage-editors/ProjectModuleEditor.vue'
+import NewsModuleEditor from '../components/homepage-editors/NewsModuleEditor.vue'
+import ResourceModuleEditor from '../components/homepage-editors/ResourceModuleEditor.vue'
+import ChallengeModuleEditor from '../components/homepage-editors/ChallengeModuleEditor.vue'
+import GrowthModuleEditor from '../components/homepage-editors/GrowthModuleEditor.vue'
+import ActivityModuleEditor from '../components/homepage-editors/ActivityModuleEditor.vue'
+import BottomActionModuleEditor from '../components/homepage-editors/BottomActionModuleEditor.vue'
 import { usePermissionAction } from '../composables/usePermissionAction'
 import { api } from '../services/api'
 
@@ -27,6 +41,29 @@ const contentLoading = ref(false)
 const createForm = reactive({ moduleKey: 'weekly_featured', moduleName: '', moduleType: 'content_grid' })
 const itemForm = reactive({ targetType: 'course', targetId: '', titleOverride: '' })
 const moduleOptions = HOMEPAGE_MODULE_KEYS
+const editors: Record<string, Component> = {
+  hero_banner: HeroModuleEditor,
+  ability_method: AbilityModuleEditor,
+  theme_direction: ThemeModuleEditor,
+  weekly_featured: CourseModuleEditor,
+  featured_labs: LabModuleEditor,
+  maker_projects: ProjectModuleEditor,
+  frontier_news: NewsModuleEditor,
+  resource_tools: ResourceModuleEditor,
+  weekly_challenge: ChallengeModuleEditor,
+  growth_summary: GrowthModuleEditor,
+  student_activity: ActivityModuleEditor,
+  bottom_action: BottomActionModuleEditor,
+}
+const itemMinimums: Record<string, number> = { theme_direction: 4, weekly_featured: 3, featured_labs: 3, maker_projects: 3, frontier_news: 3, resource_tools: 4, weekly_challenge: 1 }
+const moduleReadiness = (item: HomepageModule) => {
+  const issues: string[] = []
+  if (!item.config.title && item.moduleKey !== 'hero_banner') issues.push('缺少标题')
+  if (item.moduleKey === 'hero_banner' && (!Array.isArray(item.config.titleLines) || item.config.titleLines.length < 2 || !item.config.subtitle)) issues.push('首屏标题或说明不完整')
+  if ((itemMinimums[item.moduleKey] || 0) > item.items.filter((relation) => relation.relationValid !== false).length) issues.push(`推荐内容少于 ${itemMinimums[item.moduleKey]} 项`)
+  return { ready: issues.length === 0, issues }
+}
+const selectedReadiness = computed(() => selected.value ? moduleReadiness(selected.value) : { ready: false, issues: ['未选择模块'] })
 const kpis = computed(() => ({
   total: modules.value.length,
   enabled: modules.value.filter((item) => item.enabled).length,
@@ -49,6 +86,11 @@ const save = async () => {
   } finally { loading.value = false }
 }
 const publish = async () => {
+  const incomplete = modules.value.filter((item) => item.enabled && !moduleReadiness(item).ready)
+  if (incomplete.length) {
+    ElMessage.error(`存在 ${incomplete.length} 个配置未完成模块，暂不能发布`)
+    return
+  }
   await api('/admin/homepage/publish', { method: 'POST' })
   await load()
   ElMessage.success('首页已发布，学生端将读取最新模块')
@@ -132,17 +174,17 @@ const saveAndPublish = async () => { await save(); await publish() }
     <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="save">保存草稿</button><button class="admin-primary" type="button" :disabled="!canPublish" @click="publish">发布更新</button></template>
   </AdminPageHeader>
   <div class="kpi-grid">
-    <AdminKpiCard icon="▧" label="模块数量" :value="kpis.total" color="#ff4d1f" />
-    <AdminKpiCard icon="▦" label="已启用模块" :value="kpis.enabled" color="#7c4dff" />
-    <AdminKpiCard icon="↗" label="推荐内容" :value="kpis.recommendations" color="#22b66c" />
-    <AdminKpiCard icon="⌁" label="已发布模块" :value="kpis.published" color="#3478f6" />
+    <AdminKpiCard icon="homepage" label="模块数量" :value="kpis.total" color="#ff4d1f" />
+    <AdminKpiCard icon="check" label="已启用模块" :value="kpis.enabled" color="#7c4dff" />
+    <AdminKpiCard icon="publish" label="推荐内容" :value="kpis.recommendations" color="#22b66c" />
+    <AdminKpiCard icon="dashboard" label="已发布模块" :value="kpis.published" color="#3478f6" />
   </div>
   <section class="homepage-editor panel">
     <div class="module-list">
-      <div class="panel-heading"><h2>首页模块管理</h2><button class="mini-add" type="button" :disabled="!canWrite" @click="createOpen = true">＋ 新增模块</button></div>
+      <div class="panel-heading"><h2>首页模块管理</h2><button class="mini-add" type="button" :disabled="!canWrite" @click="createOpen = true"><AdminIcon name="plus" :size="15" />新增模块</button></div>
       <div v-for="(item, index) in modules" :key="item.id" :class="['module-row', { selected: selected?.id === item.id }]">
-        <button type="button" @click="selected = item"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ item.name }}</strong><AdminStatusTag :status="item.status" /><small>排序 {{ item.sortOrder }}</small></button>
-        <button type="button" :disabled="!canWrite || index === 0" aria-label="上移模块" @click="move(index, -1)">↑</button><button type="button" :disabled="!canWrite || index === modules.length - 1" aria-label="下移模块" @click="move(index, 1)">↓</button>
+        <button type="button" @click="selected = item"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ item.name }}</strong><AdminStatusTag :status="moduleReadiness(item).ready ? item.status : '配置未完成'" /><small>排序 {{ item.sortOrder }}</small></button>
+        <button type="button" :disabled="!canWrite || index === 0" aria-label="上移模块" @click="move(index, -1)"><AdminIcon name="arrow-up" :size="16" /></button><button type="button" :disabled="!canWrite || index === modules.length - 1" aria-label="下移模块" @click="move(index, 1)"><AdminIcon name="arrow-down" :size="16" /></button>
       </div>
       <p class="drag-hint">使用上下按钮调整模块排序，发布后同步学生端。</p>
     </div>
@@ -155,9 +197,9 @@ const saveAndPublish = async () => { await save(); await publish() }
       <fieldset class="domain-permission-scope" :disabled="!canWrite">
       <label>模块名称<input v-model="selected.name" disabled /></label>
       <label>模块标识<input v-model="selected.moduleKey" disabled /><small>系统内部标识，不可修改</small></label>
-      <label>标题<input v-model="selected.config.title as string" placeholder="学生端展示标题" /></label>
-      <label>副标题<textarea v-model="selected.config.subtitle as string" rows="3" placeholder="模块说明与价值表达" /></label>
-      <section class="domain-section"><h3>推荐内容 <button class="text-link" type="button" @click="itemOpen = true">＋ 添加</button></h3><ul><li v-for="(item, index) in selected.items" :key="item.id">{{ item.targetType }} · {{ item.titleOverride || item.targetId }} · {{ item.relationValid === false ? '关联无效' : '关联有效' }} <button class="text-link" type="button" :disabled="index === 0" @click="moveItem(index, -1)">上移</button><button class="text-link" type="button" :disabled="index === selected.items.length - 1" @click="moveItem(index, 1)">下移</button><button class="text-link" type="button" @click="removeItem(item.id)">移除</button></li></ul><p v-if="!selected.items.length">暂无推荐内容。</p></section>
+      <div v-if="!selectedReadiness.ready" class="homepage-readiness"><strong>配置未完成</strong><span v-for="issue in selectedReadiness.issues" :key="issue">{{ issue }}</span></div>
+      <component :is="editors[selected.moduleKey]" :config="selected.config" />
+      <section class="domain-section"><h3>推荐内容 <button class="text-link" type="button" @click="itemOpen = true">添加</button></h3><ul><li v-for="(item, index) in selected.items" :key="item.id">{{ item.targetType }} · {{ item.titleOverride || item.targetId }} · {{ item.relationValid === false ? '关联无效' : '关联有效' }} <button class="text-link" type="button" :disabled="index === 0" @click="moveItem(index, -1)">上移</button><button class="text-link" type="button" :disabled="index === selected.items.length - 1" @click="moveItem(index, 1)">下移</button><button class="text-link" type="button" @click="removeItem(item.id)">移除</button></li></ul><p v-if="!selected.items.length">暂无推荐内容。</p></section>
       <label>排序<input v-model.number="selected.sortOrder" type="number" min="0" /></label>
       <label class="toggle-row">模块启用<el-switch v-model="selected.enabled" /></label>
       <div class="module-action-row"><button class="admin-danger" type="button" @click="archive">下架</button><button class="admin-primary" type="button" :disabled="loading || !canPublish" @click="saveAndPublish">保存并发布</button></div>

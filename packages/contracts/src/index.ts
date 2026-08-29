@@ -102,6 +102,9 @@ export interface ThemeWriteFields {
 export interface ThemeData extends ThemeWriteFields {
   learners?: number
   completionRate?: number
+  courseCount?: number
+  hours?: number
+  coverVariant?: string
 }
 
 export interface LearningPathStageDto {
@@ -139,6 +142,9 @@ export interface CourseData {
   learners?: number
   rating?: number
   certificate?: string
+  chapters?: number
+  progress?: number
+  recommended?: boolean
 }
 export type CourseSummaryDto = CatalogBaseDto<CourseData>
 export interface CourseDetailDto extends CourseSummaryDto {
@@ -194,6 +200,12 @@ export interface LabWriteFields {
 }
 export interface LabData extends LabWriteFields {
   icon?: string
+  coverVariant?: string
+  completionRate?: number
+  participants?: number
+  steps?: number
+  result?: string
+  skills?: string[]
 }
 export type LabSummaryDto = CatalogBaseDto<LabData> & { labType: LabType }
 export interface LabDetailDto extends LabSummaryDto {
@@ -234,6 +246,7 @@ export interface ResourceData extends ResourceWriteFields {
   icon?: string
   theme?: string
   featured?: boolean
+  favorites?: number
 }
 export type ResourceSummaryDto = CatalogBaseDto<ResourceData> & {
   category: string
@@ -275,6 +288,7 @@ export interface ArticleData extends ArticleWriteFields {
   content?: string[]
   coverVariant?: string
   icon?: string
+  favorites?: number
 }
 export type ArticleSummaryDto = CatalogBaseDto<ArticleData> & {
   category: string
@@ -298,7 +312,12 @@ export interface ChallengeWriteFields {
   leaderboardEnabled?: boolean
   integration?: 'web-native' | 'quiz-box-miniapp' | 'quiz-box-webview' | 'external-url'
 }
-export interface ChallengeData extends ChallengeWriteFields {}
+export interface ChallengeData extends ChallengeWriteFields {
+  durationMinutes?: number
+  questions?: number
+  participants?: number
+  difficulty?: string
+}
 export type ChallengeSummaryDto = CatalogBaseDto<ChallengeData> & {
   challengeType: string
   targetScore: number
@@ -388,12 +407,18 @@ export interface PublicHomepageDto {
 
 export const HOMEPAGE_PREVIEW_MESSAGE = 'ai-learning-hub:homepage-preview'
 export const HOMEPAGE_PREVIEW_READY_MESSAGE = 'ai-learning-hub:homepage-preview-ready'
+export const HOMEPAGE_PREVIEW_SIZE_MESSAGE = 'ai-learning-hub:homepage-preview-size'
 export interface HomepagePreviewMessage {
   type: typeof HOMEPAGE_PREVIEW_MESSAGE
   homepage: PublicHomepageDto
 }
 export interface HomepagePreviewReadyMessage {
   type: typeof HOMEPAGE_PREVIEW_READY_MESSAGE
+}
+export interface HomepagePreviewSizeMessage {
+  type: typeof HOMEPAGE_PREVIEW_SIZE_MESSAGE
+  width: number
+  height: number
 }
 
 export interface DashboardMetricDto {

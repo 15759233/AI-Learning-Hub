@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { assets } from '../data/mock'
 import { useLearningStore } from '../stores/learning'
 import type { FavoriteType } from '../types'
+import AppIcon from './base/AppIcon.vue'
 
 const props = withDefaults(defineProps<{
   id: string
@@ -33,9 +34,9 @@ const cover = computed(() => props.image || (props.kind === 'lab' ? assets.labCo
       <h3>{{ title }}</h3>
       <p v-if="description">{{ description }}</p>
       <div class="card-actions">
-        <RouterLink v-if="to" class="text-link" :to="to">{{ action }} →</RouterLink>
-        <button v-else class="text-link" type="button" @click="emit('action')">{{ action }} →</button>
-        <button class="icon-button" type="button" :aria-label="favorite ? `取消收藏${title}` : `收藏${title}`" @click="store.toggleFavorite(favoriteType, id)">{{ favorite ? '★' : '☆' }}</button>
+        <RouterLink v-if="to" class="text-link" :to="to">{{ action }} <AppIcon name="arrow-right" :size="15" /></RouterLink>
+        <button v-else class="text-link" type="button" @click="emit('action')">{{ action }} <AppIcon name="arrow-right" :size="15" /></button>
+        <button class="icon-button" type="button" :class="{ active: favorite }" :aria-pressed="favorite" :aria-label="favorite ? `取消收藏${title}` : `收藏${title}`" @click="store.toggleFavorite(favoriteType, id)"><AppIcon name="bookmark" :size="18" /></button>
       </div>
     </div>
   </article>

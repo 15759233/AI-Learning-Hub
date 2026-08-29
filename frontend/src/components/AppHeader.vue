@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppDialog from './base/AppDialog.vue'
+import AppIcon from './base/AppIcon.vue'
 import { useAuthStore } from '../stores/auth'
 import { useLearningStore } from '../stores/learning'
 
@@ -10,6 +11,7 @@ const auth = useAuthStore()
 const learning = useLearningStore()
 const searchOpen = ref(false)
 const loginOpen = ref(false)
+const navOpen = ref(false)
 const query = ref('')
 const loginEmail = ref('')
 const loginPassword = ref('')
@@ -47,16 +49,18 @@ const logout = async () => {
         <span class="brand-mark" aria-hidden="true">A</span>
         <span><strong>AI MAKER CAMPUS</strong><small>高校 AI 创客学习平台</small></span>
       </RouterLink>
-      <nav class="main-nav" aria-label="主导航">
-        <RouterLink v-for="[label, path] in navigation" :key="path" :to="path">{{ label }}</RouterLink>
+      <nav id="main-navigation" class="main-nav" :class="{ 'mobile-open': navOpen }" aria-label="主导航">
+        <RouterLink v-for="[label, path] in navigation" :key="path" :to="path" @click="navOpen = false">{{ label }}</RouterLink>
+        <RouterLink class="mobile-nav-cta" to="/topics" @click="navOpen = false">开始学习</RouterLink>
       </nav>
       <div class="header-actions">
         <span v-if="auth.dataMode === 'api'" class="api-mode-badge">真实 API</span>
-        <button class="icon-button" type="button" aria-label="全站搜索" @click="searchOpen = true">⌕</button>
+        <button class="icon-button" type="button" aria-label="全站搜索" @click="searchOpen = true"><AppIcon name="search" :size="18" /></button>
         <RouterLink v-if="auth.user" class="avatar" to="/profile" aria-label="进入个人中心">{{ auth.user.displayName.slice(0, 1) }}</RouterLink>
         <button v-else class="button secondary small" type="button" @click="loginOpen = true">登录</button>
         <button v-if="auth.user" class="text-link" type="button" @click="logout">退出</button>
         <RouterLink class="button primary header-cta" to="/topics">开始学习</RouterLink>
+        <button class="icon-button mobile-nav-toggle" type="button" :aria-expanded="navOpen" aria-controls="main-navigation" :aria-label="navOpen ? '关闭主导航' : '打开主导航'" @click="navOpen = !navOpen"><AppIcon :name="navOpen ? 'close' : 'menu'" :size="20" /></button>
       </div>
     </div>
   </header>
