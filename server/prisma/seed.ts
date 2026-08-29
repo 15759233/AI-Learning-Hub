@@ -17,6 +17,7 @@ import {
   fixtureMinimums,
 } from '@ai-learning-hub/demo-fixtures'
 import { hash } from 'bcryptjs'
+import { isDeepStrictEqual } from 'node:util'
 
 const prisma = new PrismaClient()
 
@@ -590,11 +591,27 @@ async function seed() {
     orderBy: { sortOrder: 'asc' },
     include: { items: { where: { enabled: true }, orderBy: { sortOrder: 'asc' } } },
   })
-  await prisma.homepagePublication.upsert({
-    where: { version: 1 },
-    update: { snapshot: JSON.parse(JSON.stringify(publishedModules)), publishedAt: new Date() },
-    create: { version: 1, snapshot: JSON.parse(JSON.stringify(publishedModules)) },
-  })
+  const publicationSnapshot = publishedModules.map((module) => ({
+    moduleKey: module.moduleKey,
+    name: module.name,
+    moduleType: module.moduleType,
+    enabled: module.enabled,
+    sortOrder: module.sortOrder,
+    config: module.config,
+    items: module.items.map((item) => ({
+      targetType: item.targetType,
+      targetId: item.targetId,
+      titleOverride: item.titleOverride,
+      sortOrder: item.sortOrder,
+      enabled: item.enabled,
+    })),
+  }))
+  const latestPublication = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+  if (!latestPublication || !isDeepStrictEqual(latestPublication.snapshot, publicationSnapshot)) {
+    await prisma.homepagePublication.create({
+      data: { version: (latestPublication?.version || 0) + 1, snapshot: publicationSnapshot },
+    })
+  }
 
   for (const [index, fixture] of demoLearningPlans.entries()) {
     await prisma.learningPlan.upsert({

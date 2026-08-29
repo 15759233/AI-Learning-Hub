@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
+import { PrismaClient } from '@prisma/client'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 const base = process.env.E2E_BASE_URL
 const adminEmail = process.env.E2E_ADMIN_EMAIL
@@ -461,5 +464,44 @@ describe('真实 PostgreSQL 数据闭环', () => {
     await call(`/admin/notifications/${notificationId}/archive`, { method: 'POST' }, adminToken)
     const response = await fetch(`${base}/courses/${slug}`)
     expect(response.status).toBe(404)
+  })
+
+  it('Seed 在既有高版本首页发布历史上只追加一次稳定快照', async () => {
+    const prisma = new PrismaClient()
+    const runSeed = () => execFileSync(resolve('node_modules/.bin/tsx'), ['prisma/seed.ts'], {
+      env: {
+        ...process.env,
+        SEED_ADMIN_EMAIL: adminEmail,
+        SEED_ADMIN_PASSWORD: adminPassword,
+        SEED_STUDENT_EMAIL: studentEmail,
+        SEED_STUDENT_PASSWORD: studentPassword,
+      },
+      stdio: 'pipe',
+    })
+    try {
+      const latest = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+      const legacyVersion = (latest?.version || 0) + 100
+      await prisma.homepagePublication.create({ data: { version: legacyVersion, snapshot: [] } })
+
+      runSeed()
+      const first = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+      const countAfterFirst = await prisma.homepagePublication.count()
+      const firstPublic = await call<{ version: number; modules: unknown[] }>('/public/homepage')
+      expect(first?.version).toBe(legacyVersion + 1)
+      expect(Array.isArray(first?.snapshot) ? first.snapshot : []).toHaveLength(12)
+      expect(firstPublic).toMatchObject({ version: legacyVersion + 1 })
+      expect(firstPublic.modules).toHaveLength(12)
+
+      runSeed()
+      const second = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+      const secondPublic = await call<{ version: number; modules: unknown[] }>('/public/homepage')
+      expect(second?.version).toBe(first?.version)
+      expect(await prisma.homepagePublication.count()).toBe(countAfterFirst)
+      expect(Array.isArray(second?.snapshot) ? second.snapshot : []).toHaveLength(12)
+      expect(secondPublic).toMatchObject({ version: legacyVersion + 1 })
+      expect(secondPublic.modules).toHaveLength(12)
+    } finally {
+      await prisma.$disconnect()
+    }
   })
 })
