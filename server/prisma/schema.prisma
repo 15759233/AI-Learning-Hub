@@ -1,0 +1,1353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PublishStatus {
+  draft
+  reviewing
+  published
+  archived
+}
+
+enum UserStatus {
+  active
+  disabled
+  locked
+}
+
+enum LabType {
+  agent
+  deployment
+  command
+  hardware
+  project
+}
+
+enum LabRunStatus {
+  ready
+  running
+  success
+  failed
+  stopped
+  submitted
+}
+
+enum FavoriteTargetType {
+  course
+  lab
+  resource
+  article
+}
+
+enum QuestionType {
+  single
+  multiple
+  true_false
+  short_answer
+  code
+}
+
+model User {
+  id                String               @id @default(cuid())
+  username          String               @unique
+  displayName       String               @map("display_name")
+  email             String               @unique
+  passwordHash      String?              @map("password_hash")
+  phone             String?
+  schoolId          String?              @map("school_id")
+  departmentId      String?              @map("department_id")
+  studentNo         String?              @map("student_no")
+  teacherNo         String?              @map("teacher_no")
+  major             String?
+  grade             String?
+  userType          String               @default("student") @map("user_type")
+  status            UserStatus           @default(active)
+  profile           Json                 @default("{}") @map("profile_json")
+  lastLoginAt       DateTime?            @map("last_login_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  refreshTokens     RefreshToken[]
+  userRoles         UserRole[]
+  favorites         Favorite[]
+  notes             LearningNote[]
+  lessonProgress    LessonProgress[]
+  labRuns           LabRun[]
+  attempts          AssessmentAttempt[]
+  assessmentAnswers AssessmentAnswer[]
+  wrongQuestions    WrongQuestion[]
+  knowledgeStats    UserKnowledgeStat[]
+  plans             LearningPlan[]
+  growthPoints      GrowthPoint[]
+  activities        ActivityEvent[]
+  uploadedFiles     FileRecord[]
+  achievements      UserAchievement[]
+  certificates      UserCertificate[]
+  identities        AuthIdentity[]
+  loginLogs         LoginLog[]
+  notificationReads NotificationRead[]
+  recommendations   UserRecommendation[]
+  courseAssignments CourseInstructor[]
+  resourceDownloads ResourceDownload[]
+  resourceViews     ResourceView[]
+  articleViews      ArticleView[]
+  school            School?              @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  department        Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@map("users")
+}
+
+model School {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  status      String       @default("active")
+  departments Department[]
+  users       User[]
+
+  @@map("schools")
+}
+
+model Department {
+  id       String @id @default(cuid())
+  schoolId String @map("school_id")
+  code     String
+  name     String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  users    User[]
+
+  @@unique([schoolId, code])
+  @@map("departments")
+}
+
+model AuthIdentity {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  provider    String
+  providerUid String   @map("provider_uid")
+  metadata    Json     @default("{}") @map("metadata_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@unique([userId, provider])
+  @@map("auth_identities")
+}
+
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  email     String
+  ipHash    String   @map("ip_hash")
+  result    String
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@map("login_logs")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  userRoles   UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id    String           @id @default(cuid())
+  code  String           @unique
+  name  String
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model HomepageModule {
+  id                    String                  @id @default(cuid())
+  moduleKey             String                  @unique @map("module_key")
+  name                  String
+  moduleType            String                  @default("content_grid") @map("module_type")
+  enabled               Boolean                 @default(true)
+  sortOrder             Int                     @default(0) @map("sort_order")
+  status                PublishStatus           @default(draft)
+  config                Json                    @default("{}") @map("config_json")
+  currentDraftVersionId String?                 @map("current_draft_version_id")
+  publishedVersionId    String?                 @map("published_version_id")
+  publishedAt           DateTime?               @map("published_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  items                 HomepageItem[]
+  versions              HomepageModuleVersion[] @relation("HomepageModuleVersions")
+  currentDraftVersion   HomepageModuleVersion?  @relation("HomepageModuleDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      HomepageModuleVersion?  @relation("HomepageModulePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+
+  @@index([status, sortOrder])
+  @@map("homepage_modules")
+}
+
+model HomepageModuleVersion {
+  id           String           @id @default(cuid())
+  moduleId     String           @map("module_id")
+  versionNo    Int              @map("version_no")
+  snapshot     Json
+  createdAt    DateTime         @default(now()) @map("created_at")
+  module       HomepageModule   @relation("HomepageModuleVersions", fields: [moduleId], references: [id], onDelete: Cascade)
+  draftFor     HomepageModule[] @relation("HomepageModuleDraftVersion")
+  publishedFor HomepageModule[] @relation("HomepageModulePublishedVersion")
+
+  @@unique([moduleId, versionNo])
+  @@map("homepage_module_versions")
+}
+
+model HomepagePublication {
+  id          String   @id @default(cuid())
+  version     Int      @unique
+  snapshot    Json
+  publishedAt DateTime @default(now()) @map("published_at")
+
+  @@map("homepage_publications")
+}
+
+model HomepageItem {
+  id            String         @id @default(cuid())
+  moduleId      String         @map("module_id")
+  targetType    String         @map("target_type")
+  targetId      String         @map("target_id")
+  titleOverride String?        @map("title_override")
+  sortOrder     Int            @default(0) @map("sort_order")
+  enabled       Boolean        @default(true)
+  module        HomepageModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, targetType, targetId])
+  @@map("homepage_items")
+}
+
+model Theme {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  title       String
+  summary     String
+  status      PublishStatus  @default(draft)
+  sortOrder   Int            @default(0) @map("sort_order")
+  publishedAt DateTime?      @map("published_at")
+  payload     Json           @default("{}")
+  version     Int            @default(1)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+  courses     Course[]
+  paths       LearningPath[]
+  versions    ThemeVersion[]
+
+  @@index([status, sortOrder])
+  @@map("learning_themes")
+}
+
+model ThemeVersion {
+  id        String   @id @default(cuid())
+  themeId   String   @map("theme_id")
+  versionNo Int      @map("version_no")
+  snapshot  Json
+  createdAt DateTime @default(now()) @map("created_at")
+  theme     Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, versionNo])
+  @@map("learning_theme_versions")
+}
+
+model LearningPath {
+  id          String              @id @default(cuid())
+  themeId     String              @map("theme_id")
+  name        String
+  description String              @default("")
+  status      PublishStatus       @default(draft)
+  sortOrder   Int                 @default(0) @map("sort_order")
+  theme       Theme               @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  stages      LearningPathStage[]
+
+  @@unique([themeId, name])
+  @@index([themeId, status, sortOrder])
+  @@map("learning_paths")
+}
+
+model LearningPathStage {
+  id          String        @id @default(cuid())
+  pathId      String        @map("path_id")
+  name        String
+  stageType   String        @map("stage_type")
+  description String        @default("")
+  sortOrder   Int           @default(0) @map("sort_order")
+  unlockRule  Json          @default("{}") @map("unlock_rule_json")
+  path        LearningPath  @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  contents    PathContent[]
+
+  @@unique([pathId, stageType])
+  @@map("learning_path_stages")
+}
+
+model PathContent {
+  id         String            @id @default(cuid())
+  stageId    String            @map("stage_id")
+  targetType String            @map("target_type")
+  targetId   String            @map("target_id")
+  sortOrder  Int               @default(0) @map("sort_order")
+  stage      LearningPathStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([stageId, targetType, targetId])
+  @@map("learning_path_contents")
+}
+
+model Course {
+  id                    String             @id @default(cuid())
+  slug                  String             @unique
+  title                 String
+  summary               String
+  themeId               String?            @map("theme_id")
+  status                PublishStatus      @default(draft)
+  sortOrder             Int                @default(0) @map("sort_order")
+  publishedAt           DateTime?          @map("published_at")
+  payload               Json               @default("{}")
+  version               Int                @default(1)
+  currentDraftVersionId String?            @map("current_draft_version_id")
+  publishedVersionId    String?            @map("published_version_id")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  deletedAt             DateTime?          @map("deleted_at")
+  theme                 Theme?             @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  versions              CourseVersion[]    @relation("CourseVersions")
+  currentDraftVersion   CourseVersion?     @relation("CourseDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      CourseVersion?     @relation("CoursePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  progress              LessonProgress[]
+  notes                 LearningNote[]
+  instructors           CourseInstructor[]
+  resources             CourseResource[]
+  labs                  CourseLab[]
+
+  @@index([status, sortOrder])
+  @@map("courses")
+}
+
+model CourseInstructor {
+  id        String @id @default(cuid())
+  courseId  String @map("course_id")
+  userId    String @map("user_id")
+  sortOrder Int    @default(0) @map("sort_order")
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([courseId, userId])
+  @@map("course_instructors")
+}
+
+model CourseResource {
+  id         String   @id @default(cuid())
+  courseId   String   @map("course_id")
+  resourceId String   @map("resource_id")
+  sortOrder  Int      @default(0) @map("sort_order")
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@unique([courseId, resourceId])
+  @@map("course_resources")
+}
+
+model CourseLab {
+  id        String @id @default(cuid())
+  courseId  String @map("course_id")
+  labId     String @map("lab_id")
+  sortOrder Int    @default(0) @map("sort_order")
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lab       Lab    @relation(fields: [labId], references: [id], onDelete: Restrict)
+
+  @@unique([courseId, labId])
+  @@map("course_labs")
+}
+
+model CourseVersion {
+  id           String          @id @default(cuid())
+  courseId     String          @map("course_id")
+  versionNo    Int             @map("version_no")
+  snapshot     Json
+  createdAt    DateTime        @default(now()) @map("created_at")
+  course       Course          @relation("CourseVersions", fields: [courseId], references: [id], onDelete: Cascade)
+  draftFor     Course[]        @relation("CourseDraftVersion")
+  publishedFor Course[]        @relation("CoursePublishedVersion")
+  chapters     CourseChapter[]
+
+  @@unique([courseId, versionNo])
+  @@map("course_versions")
+}
+
+model CourseChapter {
+  id              String         @id @default(cuid())
+  courseVersionId String         @map("course_version_id")
+  title           String
+  description     String         @default("")
+  sortOrder       Int            @default(0) @map("sort_order")
+  version         CourseVersion  @relation(fields: [courseVersionId], references: [id], onDelete: Cascade)
+  lessons         CourseLesson[]
+
+  @@map("course_chapters")
+}
+
+model CourseLesson {
+  id              String           @id @default(cuid())
+  chapterId       String           @map("chapter_id")
+  title           String
+  summary         String           @default("")
+  lessonType      String           @default("article") @map("lesson_type")
+  durationMinutes Int              @default(10) @map("duration_minutes")
+  sortOrder       Int              @default(0) @map("sort_order")
+  chapter         CourseChapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  blocks          LessonBlock[]
+  progress        LessonProgress[]
+
+  @@map("course_lessons")
+}
+
+model LessonBlock {
+  id        String       @id @default(cuid())
+  lessonId  String       @map("lesson_id")
+  blockType String       @map("block_type")
+  sortOrder Int          @default(0) @map("sort_order")
+  content   Json         @map("content_json")
+  lesson    CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_blocks")
+}
+
+model LessonProgress {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  courseId    String        @map("course_id")
+  lessonId    String?       @map("lesson_id")
+  progress    Int           @default(0)
+  completedAt DateTime?     @map("completed_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  lesson      CourseLesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, courseId, lessonId])
+  @@index([userId, updatedAt])
+  @@map("lesson_progress")
+}
+
+model LearningNote {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  courseId  String   @map("course_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, courseId])
+  @@map("learning_notes")
+}
+
+model Lab {
+  id                    String           @id @default(cuid())
+  slug                  String           @unique
+  title                 String
+  summary               String
+  labType               LabType          @map("lab_type")
+  status                PublishStatus    @default(draft)
+  sortOrder             Int              @default(0) @map("sort_order")
+  publishedAt           DateTime?        @map("published_at")
+  payload               Json             @default("{}")
+  version               Int              @default(1)
+  currentDraftVersionId String?          @map("current_draft_version_id")
+  publishedVersionId    String?          @map("published_version_id")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+  deletedAt             DateTime?        @map("deleted_at")
+  steps                 LabStep[]
+  runs                  LabRun[]
+  versions              LabVersion[]     @relation("LabVersions")
+  currentDraftVersion   LabVersion?      @relation("LabDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      LabVersion?      @relation("LabPublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  courseLinks           CourseLab[]
+  tools                 LabToolBinding[]
+  resources             LabResource[]
+
+  @@index([status, sortOrder])
+  @@map("labs")
+}
+
+model LabTool {
+  id           String           @id @default(cuid())
+  name         String
+  toolType     String           @map("tool_type")
+  icon         String           @default("")
+  description  String           @default("")
+  configSchema Json             @default("{}") @map("config_schema_json")
+  safeConfig   Json             @default("{}") @map("safe_config_json")
+  enabled      Boolean          @default(true)
+  bindings     LabToolBinding[]
+
+  @@unique([name, toolType])
+  @@map("lab_tools")
+}
+
+model LabToolBinding {
+  id        String  @id @default(cuid())
+  labId     String  @map("lab_id")
+  toolId    String  @map("tool_id")
+  sortOrder Int     @default(0) @map("sort_order")
+  lab       Lab     @relation(fields: [labId], references: [id], onDelete: Cascade)
+  tool      LabTool @relation(fields: [toolId], references: [id], onDelete: Restrict)
+
+  @@unique([labId, toolId])
+  @@map("lab_tool_bindings")
+}
+
+model LabResource {
+  id         String   @id @default(cuid())
+  labId      String   @map("lab_id")
+  resourceId String   @map("resource_id")
+  sortOrder  Int      @default(0) @map("sort_order")
+  lab        Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@unique([labId, resourceId])
+  @@map("lab_resources")
+}
+
+model LabVersion {
+  id           String   @id @default(cuid())
+  labId        String   @map("lab_id")
+  versionNo    Int      @map("version_no")
+  snapshot     Json
+  createdAt    DateTime @default(now()) @map("created_at")
+  lab          Lab      @relation("LabVersions", fields: [labId], references: [id], onDelete: Cascade)
+  draftFor     Lab[]    @relation("LabDraftVersion")
+  publishedFor Lab[]    @relation("LabPublishedVersion")
+  runs         LabRun[]
+
+  @@unique([labId, versionNo])
+  @@map("lab_versions")
+}
+
+model LabStep {
+  id          String @id @default(cuid())
+  labId       String @map("lab_id")
+  stepKey     String @map("step_key")
+  title       String
+  description String
+  sortOrder   Int    @default(0) @map("sort_order")
+  instruction Json   @default("{}") @map("instruction_json")
+  validator   Json   @default("{}") @map("validator_json")
+  score       Int    @default(0)
+  lab         Lab    @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, stepKey])
+  @@map("lab_steps")
+}
+
+model LabRun {
+  id           String           @id @default(cuid())
+  userId       String           @map("user_id")
+  labId        String           @map("lab_id")
+  labVersion   Int              @map("lab_version")
+  labVersionId String?          @map("lab_version_id")
+  status       LabRunStatus     @default(ready)
+  currentStep  Int              @default(0) @map("current_step")
+  progress     Int              @default(0)
+  score        Int              @default(0)
+  result       Json             @default("{}") @map("result_json")
+  startedAt    DateTime         @default(now()) @map("started_at")
+  completedAt  DateTime?        @map("completed_at")
+  submittedAt  DateTime?        @map("submitted_at")
+  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lab          Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)
+  version      LabVersion?      @relation(fields: [labVersionId], references: [id], onDelete: Restrict)
+  events       LabRunEvent[]
+  snapshots    LabRunSnapshot[]
+  report       LabReport?
+
+  @@index([userId, startedAt])
+  @@map("lab_runs")
+}
+
+model LabRunSnapshot {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  sequence  Int
+  state     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  run       LabRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@map("lab_run_snapshots")
+}
+
+model LabReport {
+  id        String   @id @default(cuid())
+  runId     String   @unique @map("run_id")
+  summary   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  run       LabRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("lab_reports")
+}
+
+model LabRunEvent {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  sequence  Int
+  type      String
+  step      String
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+  run       LabRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@map("lab_run_events")
+}
+
+model FileRecord {
+  id            String     @id @default(cuid())
+  storageDriver String     @map("storage_driver")
+  objectKey     String     @unique @map("object_key")
+  originalName  String     @map("original_name")
+  extension     String
+  mimeType      String     @map("mime_type")
+  size          Int
+  checksum      String
+  visibility    String     @default("private")
+  uploadedBy    String     @map("uploaded_by")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  uploader      User       @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  resources     Resource[]
+
+  @@index([checksum])
+  @@map("files")
+}
+
+model Resource {
+  id            String             @id @default(cuid())
+  slug          String             @unique
+  title         String
+  summary       String
+  category      String
+  format        String
+  visibility    String             @default("public")
+  fileId        String?            @map("file_id")
+  status        PublishStatus      @default(draft)
+  sortOrder     Int                @default(0) @map("sort_order")
+  downloadCount Int                @default(0) @map("download_count")
+  viewCount     Int                @default(0) @map("view_count")
+  publishedAt   DateTime?          @map("published_at")
+  payload       Json               @default("{}")
+  version       Int                @default(1)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
+  file          FileRecord?        @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  versions      ResourceVersion[]
+  tags          ResourceTag[]
+  downloads     ResourceDownload[]
+  views         ResourceView[]
+  courseLinks   CourseResource[]
+  labLinks      LabResource[]
+
+  @@index([status, category, sortOrder])
+  @@map("resources")
+}
+
+model ResourceCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("resource_categories")
+}
+
+model ResourceVersion {
+  id         String   @id @default(cuid())
+  resourceId String   @map("resource_id")
+  versionNo  Int      @map("version_no")
+  snapshot   Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, versionNo])
+  @@map("resource_versions")
+}
+
+model Tag {
+  id           String        @id @default(cuid())
+  code         String        @unique
+  name         String
+  resourceTags ResourceTag[]
+  articleTags  ArticleTag[]
+
+  @@map("tags")
+}
+
+model ResourceTag {
+  resourceId String   @map("resource_id")
+  tagId      String   @map("tag_id")
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, tagId])
+  @@map("resource_tags")
+}
+
+model ResourceDownload {
+  id         String   @id @default(cuid())
+  resourceId String   @map("resource_id")
+  userId     String?  @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([resourceId, createdAt])
+  @@map("resource_downloads")
+}
+
+model ResourceView {
+  id         String   @id @default(cuid())
+  resourceId String   @map("resource_id")
+  userId     String?  @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([resourceId, createdAt])
+  @@map("resource_views")
+}
+
+model Article {
+  id                    String                  @id @default(cuid())
+  slug                  String                  @unique
+  title                 String
+  summary               String
+  category              String
+  status                PublishStatus           @default(draft)
+  sortOrder             Int                     @default(0) @map("sort_order")
+  scheduledAt           DateTime?               @map("scheduled_at")
+  publishedAt           DateTime?               @map("published_at")
+  viewCount             Int                     @default(0) @map("view_count")
+  heatScore             Int                     @default(0) @map("heat_score")
+  payload               Json                    @default("{}")
+  version               Int                     @default(1)
+  currentDraftVersionId String?                 @map("current_draft_version_id")
+  publishedVersionId    String?                 @map("published_version_id")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  deletedAt             DateTime?               @map("deleted_at")
+  recommendations       ArticleRecommendation[]
+  versions              ArticleVersion[]        @relation("ArticleVersions")
+  currentDraftVersion   ArticleVersion?         @relation("ArticleDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      ArticleVersion?         @relation("ArticlePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  tags                  ArticleTag[]
+  views                 ArticleView[]
+  publications          ArticlePublication[]
+
+  @@index([status, category, publishedAt])
+  @@map("articles")
+}
+
+model ArticleCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("article_categories")
+}
+
+model ArticleTag {
+  articleId String  @map("article_id")
+  tagId     String  @map("tag_id")
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@map("article_tags")
+}
+
+model ArticleView {
+  id        String   @id @default(cuid())
+  articleId String   @map("article_id")
+  userId    String?  @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, createdAt])
+  @@map("article_views")
+}
+
+model ArticlePublication {
+  id               String         @id @default(cuid())
+  articleId        String         @map("article_id")
+  articleVersionId String         @map("article_version_id")
+  publishedAt      DateTime       @default(now()) @map("published_at")
+  article          Article        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version          ArticleVersion @relation(fields: [articleVersionId], references: [id], onDelete: Restrict)
+
+  @@index([articleId, publishedAt])
+  @@map("article_publications")
+}
+
+model ArticleVersion {
+  id           String               @id @default(cuid())
+  articleId    String               @map("article_id")
+  versionNo    Int                  @map("version_no")
+  snapshot     Json
+  createdAt    DateTime             @default(now()) @map("created_at")
+  article      Article              @relation("ArticleVersions", fields: [articleId], references: [id], onDelete: Cascade)
+  draftFor     Article[]            @relation("ArticleDraftVersion")
+  publishedFor Article[]            @relation("ArticlePublishedVersion")
+  publications ArticlePublication[]
+
+  @@unique([articleId, versionNo])
+  @@map("article_versions")
+}
+
+model ArticleRecommendation {
+  id          String    @id @default(cuid())
+  articleId   String    @map("article_id")
+  positionKey String    @map("position_key")
+  sortOrder   Int       @default(0) @map("sort_order")
+  startAt     DateTime? @map("start_at")
+  endAt       DateTime? @map("end_at")
+  enabled     Boolean   @default(true)
+  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, positionKey])
+  @@index([positionKey, enabled, sortOrder])
+  @@map("article_recommendations")
+}
+
+model Challenge {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  title          String
+  summary        String
+  challengeType  String              @default("assessment") @map("challenge_type")
+  status         PublishStatus       @default(draft)
+  sortOrder      Int                 @default(0) @map("sort_order")
+  targetScore    Int                 @default(60) @map("target_score")
+  rewardPoints   Int                 @default(0) @map("reward_points")
+  questionBankId String?             @map("question_bank_id")
+  paperId        String?             @map("paper_id")
+  publishedAt    DateTime?           @map("published_at")
+  payload        Json                @default("{}")
+  version        Int                 @default(1)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
+  attempts       AssessmentAttempt[]
+  questionBank   QuestionBank?       @relation(fields: [questionBankId], references: [id], onDelete: SetNull)
+  paper          Paper?              @relation(fields: [paperId], references: [id], onDelete: SetNull)
+  rankings       RankingSnapshot[]
+  rules          ChallengeRule[]
+
+  @@index([status, sortOrder])
+  @@map("challenges")
+}
+
+model ChallengeRule {
+  id          String    @id @default(cuid())
+  challengeId String    @map("challenge_id")
+  ruleKey     String    @map("rule_key")
+  config      Json
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, ruleKey])
+  @@map("challenge_rules")
+}
+
+model QuestionBank {
+  id         String        @id @default(cuid())
+  name       String
+  status     PublishStatus @default(draft)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  questions  Question[]
+  challenges Challenge[]
+
+  @@map("question_banks")
+}
+
+model Question {
+  id                    String             @id @default(cuid())
+  bankId                String             @map("bank_id")
+  questionType          QuestionType       @map("question_type")
+  difficulty            String
+  status                PublishStatus      @default(draft)
+  stem                  String
+  options               Json               @default("[]")
+  standardAnswer        Json               @map("standard_answer_json")
+  analysis              String
+  currentDraftVersionId String?            @map("current_draft_version_id")
+  publishedVersionId    String?            @map("published_version_id")
+  bank                  QuestionBank       @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  answers               AssessmentAnswer[]
+  wrongRecords          WrongQuestion[]
+  paperLinks            PaperQuestion[]
+  versions              QuestionVersion[]  @relation("QuestionVersions")
+  currentDraftVersion   QuestionVersion?   @relation("QuestionDraftVersion", fields: [currentDraftVersionId], references: [id], onDelete: SetNull)
+  publishedVersion      QuestionVersion?   @relation("QuestionPublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  knowledgePointId      String?            @map("knowledge_point_id")
+  knowledgePoint        KnowledgePoint?    @relation(fields: [knowledgePointId], references: [id], onDelete: SetNull)
+  optionRecords         QuestionOption[]
+
+  @@map("questions")
+}
+
+model KnowledgePoint {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  questions Question[]
+
+  @@map("knowledge_points")
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String   @map("question_id")
+  optionKey  String   @map("option_key")
+  content    String
+  sortOrder  Int      @default(0) @map("sort_order")
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, optionKey])
+  @@map("question_options")
+}
+
+model QuestionVersion {
+  id           String     @id @default(cuid())
+  questionId   String     @map("question_id")
+  versionNo    Int        @map("version_no")
+  snapshot     Json
+  createdAt    DateTime   @default(now()) @map("created_at")
+  question     Question   @relation("QuestionVersions", fields: [questionId], references: [id], onDelete: Cascade)
+  draftFor     Question[] @relation("QuestionDraftVersion")
+  publishedFor Question[] @relation("QuestionPublishedVersion")
+
+  @@unique([questionId, versionNo])
+  @@map("question_versions")
+}
+
+model Paper {
+  id              String          @id @default(cuid())
+  name            String
+  description     String          @default("")
+  durationMinutes Int             @default(30) @map("duration_minutes")
+  totalScore      Int             @default(100) @map("total_score")
+  passScore       Int             @default(60) @map("pass_score")
+  status          PublishStatus   @default(draft)
+  publishedAt     DateTime?       @map("published_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  questions       PaperQuestion[]
+  challenges      Challenge[]
+
+  @@map("papers")
+}
+
+model PaperQuestion {
+  id         String   @id @default(cuid())
+  paperId    String   @map("paper_id")
+  questionId String   @map("question_id")
+  sortOrder  Int      @default(0) @map("sort_order")
+  score      Int      @default(10)
+  paper      Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([paperId, questionId])
+  @@map("paper_questions")
+}
+
+model AssessmentAttempt {
+  id            String             @id @default(cuid())
+  userId        String             @map("user_id")
+  challengeId   String             @map("challenge_id")
+  score         Int
+  answers       Json
+  submittedAt   DateTime           @default(now()) @map("submitted_at")
+  user          User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  challenge     Challenge          @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  answerRecords AssessmentAnswer[]
+  wrongRecords  WrongQuestion[]
+
+  @@index([userId, submittedAt])
+  @@map("assessment_attempts")
+}
+
+model AssessmentAnswer {
+  id         String            @id @default(cuid())
+  attemptId  String            @map("attempt_id")
+  userId     String            @map("user_id")
+  questionId String            @map("question_id")
+  answer     Json
+  correct    Boolean
+  createdAt  DateTime          @default(now()) @map("created_at")
+  attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  question   Question          @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, questionId])
+  @@index([userId, createdAt])
+  @@map("assessment_answers")
+}
+
+model WrongQuestion {
+  id         String            @id @default(cuid())
+  userId     String            @map("user_id")
+  questionId String            @map("question_id")
+  attemptId  String            @map("attempt_id")
+  answer     Json
+  resolvedAt DateTime?         @map("resolved_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question          @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, questionId])
+  @@map("wrong_questions")
+}
+
+model UserKnowledgeStat {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  knowledgeKey String   @map("knowledge_key")
+  total        Int      @default(0)
+  correct      Int      @default(0)
+  accuracy     Int      @default(0)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, knowledgeKey])
+  @@map("user_knowledge_stats")
+}
+
+model RankingSnapshot {
+  id          String    @id @default(cuid())
+  challengeId String    @map("challenge_id")
+  periodStart DateTime  @map("period_start")
+  periodEnd   DateTime  @map("period_end")
+  rankings    Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId, periodEnd])
+  @@map("ranking_snapshots")
+}
+
+model Favorite {
+  id         String             @id @default(cuid())
+  userId     String             @map("user_id")
+  targetType FavoriteTargetType @map("target_type")
+  targetId   String             @map("target_id")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([userId, createdAt])
+  @@map("favorites")
+}
+
+model LearningPlan {
+  id         String             @id @default(cuid())
+  userId     String             @map("user_id")
+  title      String
+  startDate  DateTime           @map("start_date")
+  targetDate DateTime           @map("target_date")
+  status     String             @default("active")
+  progress   Int                @default(0)
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      LearningPlanItem[]
+
+  @@index([userId, status])
+  @@map("learning_plans")
+}
+
+model LearningPlanItem {
+  id          String       @id @default(cuid())
+  planId      String       @map("plan_id")
+  targetType  String       @map("target_type")
+  targetId    String       @map("target_id")
+  sortOrder   Int          @default(0) @map("sort_order")
+  status      String       @default("pending")
+  completedAt DateTime?    @map("completed_at")
+  plan        LearningPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("learning_plan_items")
+}
+
+model GrowthPoint {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  eventType String   @map("event_type")
+  points    Int
+  reference String?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("growth_points")
+}
+
+model Achievement {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  description String
+  rule        Json              @default("{}") @map("rule_json")
+  enabled     Boolean           @default(true)
+  users       UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  achievementId String      @map("achievement_id")
+  evidence      Json        @default("{}")
+  awardedAt     DateTime    @default(now()) @map("awarded_at")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Certificate {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  description String
+  rule        Json              @default("{}") @map("rule_json")
+  enabled     Boolean           @default(true)
+  users       UserCertificate[]
+
+  @@map("certificates")
+}
+
+model UserCertificate {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  certificateId String      @map("certificate_id")
+  serialNo      String      @unique @map("serial_no")
+  evidence      Json        @default("{}")
+  issuedAt      DateTime    @default(now()) @map("issued_at")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificate   Certificate @relation(fields: [certificateId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, certificateId])
+  @@map("user_certificates")
+}
+
+model GrowthModuleSetting {
+  id           String  @id @default(cuid())
+  moduleKey    String  @unique @map("module_key")
+  title        String
+  description  String  @default("")
+  enabled      Boolean @default(true)
+  sortOrder    Int     @default(0) @map("sort_order")
+  displayLimit Int     @default(6) @map("display_limit")
+  config       Json    @default("{}") @map("config_json")
+
+  @@map("growth_module_settings")
+}
+
+model ActivityEvent {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  eventType  String   @map("event_type")
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@map("activity_events")
+}
+
+model DailyUserStatistic {
+  id              String   @id @default(cuid())
+  date            DateTime @unique @db.Date
+  activeUsers     Int      @default(0) @map("active_users")
+  learningMinutes Int      @default(0) @map("learning_minutes")
+
+  @@map("daily_user_statistics")
+}
+
+model DailyContentStatistic {
+  id           String   @id @default(cuid())
+  statisticDay DateTime @map("statistic_day") @db.Date
+  targetType   String   @map("target_type")
+  targetId     String   @map("target_id")
+  metricKey    String   @map("metric_key")
+  metricValue  Int      @default(0) @map("metric_value")
+
+  @@unique([statisticDay, targetType, targetId, metricKey])
+  @@map("daily_content_statistics")
+}
+
+model UserRecommendation {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  targetType String    @map("target_type")
+  targetId   String    @map("target_id")
+  reason     String
+  score      Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, score])
+  @@map("user_recommendations")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   @map("actor_id")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model OperationLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  method    String
+  path      String
+  result    String
+  requestId String?  @map("request_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@map("operation_logs")
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  title       String
+  content     String
+  audience    String             @default("all")
+  status      PublishStatus      @default(draft)
+  publishedAt DateTime?          @map("published_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  reads       NotificationRead[]
+
+  @@index([status, publishedAt])
+  @@map("notifications")
+}
+
+model NotificationRead {
+  notificationId String       @map("notification_id")
+  userId         String       @map("user_id")
+  readAt         DateTime     @default(now()) @map("read_at")
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@map("notification_reads")
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  sensitive Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model ExternalMapping {
+  id           String   @id @default(cuid())
+  provider     String
+  internalType String   @map("internal_type")
+  internalId   String   @map("internal_id")
+  externalId   String   @map("external_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, internalType, internalId])
+  @@unique([provider, internalType, externalId])
+  @@map("external_mappings")
+}
+
+model SyncJob {
+  id         String    @id @default(cuid())
+  provider   String
+  jobType    String    @map("job_type")
+  status     String
+  summary    Json      @default("{}")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  finishedAt DateTime? @map("finished_at")
+
+  @@map("sync_jobs")
+}
+
+model IdempotencyKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  scope     String
+  response  Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

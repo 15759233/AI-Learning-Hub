@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import CourseCard from '../components/CourseCard.vue'
 import CategoryCover from '../components/base/CategoryCover.vue'
 import LabCard from '../components/cards/LabCard.vue'
 import ProjectCard from '../components/cards/ProjectCard.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { articles, assets, courses, labs, makerProjects, resources, studentActivities } from '../data/mock'
+import { dataMode } from '../services/api/client'
+import { homepageModules, publicThemes } from '../services/api/content'
 import { quizBridge } from '../services/quizBridge'
 
 const abilities = [
@@ -13,7 +16,11 @@ const abilities = [
   ['03', '实践', '在受控环境完成操作与项目。'],
   ['04', '验证', '用测评和成果检查学习效果。'],
 ]
-const directions = ['大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全']
+const directions = computed(() => dataMode === 'api'
+  ? publicThemes.map((theme) => theme.title)
+  : ['大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全'])
+const heroModule = computed(() => homepageModules.find((module) => module.moduleKey === 'hero_banner'))
+const heroTitle = computed(() => String(heroModule.value?.config.title || '学 AI，不止是听懂。还要亲手做出来。'))
 </script>
 
 <template>
@@ -21,10 +28,10 @@ const directions = ['大模型 LLM', 'AI Agent', '图像生成', '模型部署',
     <section class="home-hero">
       <div class="hero-copy">
         <span class="eyebrow">面向高校学生的 AI 学习与实训平台</span>
-        <h1>学 <em>AI</em>，不止是听懂。<br />还要亲手<em>做出来</em>。</h1>
+        <h1>{{ heroTitle }}</h1>
         <p>从基础知识、前沿趋势，到模型部署、AI Agent、命令行与智能硬件实践，在低门槛环境中完成“学习—实践—验证”。</p>
         <div class="hero-actions"><RouterLink class="button primary" to="/topics">开始学习</RouterLink><RouterLink class="button secondary" to="/labs">查看实训项目</RouterLink></div>
-        <small>演示数据：已有 25,642 名同学加入学习</small>
+        <small>{{ dataMode === 'api' ? '内容由统一 API 与 PostgreSQL 提供' : '演示数据：已有 25,642 名同学加入学习' }}</small>
       </div>
       <div class="hero-visual">
         <img :src="assets.heroCampus" alt="AI 学习、工作流与算力模块组成的 3D 插画" />
@@ -53,7 +60,7 @@ const directions = ['大模型 LLM', 'AI Agent', '图像生成', '模型部署',
       <div class="section-heading"><div><span class="eyebrow">本周精选</span><h2>值得投入时间的内容</h2></div><RouterLink to="/topics">查看全部内容 →</RouterLink></div>
       <div class="featured-grid">
         <article class="featured-course">
-          <div><span class="tag orange">精选课程</span><h2>从零理解大语言模型</h2><p>原理、训练与应用全链路解析，用一门课建立可靠的模型认知。</p><div class="meta"><span>中级</span><span>6 章</span><span>90 分钟</span></div><ProgressBar :value="60" label="学习进度" /><RouterLink class="button primary" to="/courses/llm-zero">继续课程</RouterLink></div>
+          <div v-if="courses[0]"><span class="tag orange">精选课程</span><h2>{{ courses[0].title }}</h2><p>{{ courses[0].description }}</p><div class="meta"><span>{{ courses[0].level }}</span><span>{{ courses[0].hours }} 小时</span><span>{{ courses[0].learners }} 人学习</span></div><ProgressBar :value="courses[0].progress || 0" label="学习进度" /><RouterLink class="button primary" :to="`/courses/${courses[0].id}`">继续课程</RouterLink></div>
           <img :src="assets.learningCover" alt="大语言模型层叠知识方块插画" loading="lazy" />
         </article>
         <CourseCard v-for="course in courses.slice(1, 5)" :key="course.id" :course="course" compact />

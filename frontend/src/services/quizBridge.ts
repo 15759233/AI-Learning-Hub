@@ -1,3 +1,5 @@
+import { dataMode } from './api/client'
+
 export interface QuizBridge {
   startChallenge(id: string): void
   startAssessment(id: string): void
@@ -9,6 +11,10 @@ export interface QuizBridge {
 type QuizAction = '挑战' | '测评' | '练习' | '错题' | '报告'
 
 const notify = (action: QuizAction, id?: string) => {
+  if (dataMode === 'api' && (action === '挑战' || action === '测评' || action === '练习') && id) {
+    window.dispatchEvent(new CustomEvent('quiz-bridge-open', { detail: { action, id } }))
+    return
+  }
   window.dispatchEvent(new CustomEvent('quiz-bridge', {
     detail: { action, id, message: `演示模式：已通过统一适配层打开《题盒》${action}入口，待真实路由或接口接入。` },
   }))

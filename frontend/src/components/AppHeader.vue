@@ -2,10 +2,17 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppDialog from './base/AppDialog.vue'
+import { useAuthStore } from '../stores/auth'
+import { useLearningStore } from '../stores/learning'
 
 const router = useRouter()
+const auth = useAuthStore()
+const learning = useLearningStore()
 const searchOpen = ref(false)
+const loginOpen = ref(false)
 const query = ref('')
+const loginEmail = ref('')
+const loginPassword = ref('')
 const navigation = [
   ['探索首页', '/'],
   ['学习主题', '/topics'],
@@ -21,6 +28,15 @@ const submitSearch = () => {
   searchOpen.value = false
   router.push({ path: '/topics', query: { q: value } })
 }
+const login = async () => {
+  await auth.login(loginEmail.value, loginPassword.value)
+  await learning.syncFromApi()
+  loginPassword.value = ''
+  loginOpen.value = false
+}
+const logout = async () => {
+  await auth.logout()
+}
 </script>
 
 <template>
@@ -35,8 +51,11 @@ const submitSearch = () => {
         <RouterLink v-for="[label, path] in navigation" :key="path" :to="path">{{ label }}</RouterLink>
       </nav>
       <div class="header-actions">
+        <span v-if="auth.dataMode === 'api'" class="api-mode-badge">真实 API</span>
         <button class="icon-button" type="button" aria-label="全站搜索" @click="searchOpen = true">⌕</button>
-        <RouterLink class="avatar" to="/profile" aria-label="进入个人中心">梦</RouterLink>
+        <RouterLink v-if="auth.user" class="avatar" to="/profile" aria-label="进入个人中心">{{ auth.user.displayName.slice(0, 1) }}</RouterLink>
+        <button v-else class="button secondary small" type="button" @click="loginOpen = true">登录</button>
+        <button v-if="auth.user" class="text-link" type="button" @click="logout">退出</button>
         <RouterLink class="button primary header-cta" to="/topics">开始学习</RouterLink>
       </div>
     </div>
@@ -46,6 +65,14 @@ const submitSearch = () => {
       <label class="sr-only" for="global-search">搜索内容</label>
       <input id="global-search" v-model="query" autofocus placeholder="例如：AI Agent" />
       <button class="button primary" type="submit">搜索学习内容</button>
+    </form>
+  </AppDialog>
+  <AppDialog v-model="loginOpen" title="登录统一学习账号">
+    <form class="dialog-form" @submit.prevent="login">
+      <label>邮箱<input v-model="loginEmail" type="email" autocomplete="username" required autofocus /></label>
+      <label>密码<input v-model="loginPassword" type="password" autocomplete="current-password" minlength="8" required /></label>
+      <p v-if="auth.error" class="answer-wrong" role="alert">{{ auth.error }}</p>
+      <button class="button primary" type="submit" :disabled="auth.loading">{{ auth.loading ? '正在登录…' : '登录' }}</button>
     </form>
   </AppDialog>
 </template>

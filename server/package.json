@@ -1,0 +1,61 @@
+{
+  "name": "ai-learning-hub-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "lint": "eslint \"{src,test,prisma}/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@ai-learning-hub/contracts": "file:../packages/contracts",
+    "@aws-sdk/client-s3": "^3.933.0",
+    "@aws-sdk/s3-request-presigner": "^3.933.0",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/jwt": "^11.0.1",
+    "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/swagger": "^11.2.0",
+    "@prisma/client": "^6.19.0",
+    "bcryptjs": "^3.0.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "cookie-parser": "^1.4.7",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@nestjs/cli": "^11.0.10",
+    "@nestjs/schematics": "^11.0.7",
+    "@nestjs/testing": "^11.1.6",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.5",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "prisma": "^6.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.8"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

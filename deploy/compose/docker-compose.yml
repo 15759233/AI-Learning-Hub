@@ -1,0 +1,87 @@
+name: ai-learning-hub
+
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    container_name: ai-learning-hub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  migrate:
+    image: ${SERVER_IMAGE:?SERVER_IMAGE required}
+    container_name: ai-learning-hub-migrate
+    restart: "no"
+    env_file: .env
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run prisma:seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  server:
+    image: ${SERVER_IMAGE:?SERVER_IMAGE required}
+    container_name: ai-learning-hub-server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_COMMIT_SHA: ${APP_COMMIT_SHA:?APP_COMMIT_SHA required}
+      PORT: 3000
+      NODE_ENV: production
+      STORAGE_LOCAL_PATH: /workspace/server/var/uploads
+    volumes:
+      - uploads_data:/workspace/server/var/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  student-web:
+    image: ${STUDENT_IMAGE:?STUDENT_IMAGE required}
+    container_name: ai-learning-hub-web
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz | grep -qx ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  admin-web:
+    image: ${ADMIN_IMAGE:?ADMIN_IMAGE required}
+    container_name: ai-learning-hub-admin
+    restart: unless-stopped
+    ports:
+      - "8089:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz | grep -qx ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres_data:
+  uploads_data:

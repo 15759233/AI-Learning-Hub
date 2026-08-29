@@ -5,12 +5,17 @@ import NotFoundState from '../components/NotFoundState.vue'
 import LabWorkspaceShell from '../components/lab/LabWorkspaceShell.vue'
 import { getLabDefinition } from '../labs/registry'
 import { canTransition, progressForState } from '../labs/stateMachine'
-import type { LabRunState, LabType } from '../labs/types'
+import type { LabDefinition, LabRunState, LabType } from '../labs/types'
+import { dataMode } from '../services/api/client'
+import { contentApi } from '../services/api/content'
 import { useLearningStore } from '../stores/learning'
 
 const route = useRoute()
 const store = useLearningStore()
-const definition = computed(() => getLabDefinition(String(route.params.labId)))
+const apiDefinition = ref<LabDefinition>()
+const detailLoading = ref(false)
+const detailError = ref('')
+const definition = computed(() => dataMode === 'api' ? apiDefinition.value : getLabDefinition(String(route.params.labId)))
 const state = ref<LabRunState>('ready')
 const activeStep = ref(1)
 const score = ref(0)
@@ -83,23 +88,74 @@ const stop = () => {
   logs.value = [...logs.value, '[stopped] 用户停止了前端模拟']
 }
 
-const submit = () => {
+const submit = async () => {
   if (!definition.value || state.value !== 'success') return
+  if (!await store.submitLab(definition.value.id)) return
   moveTo('submitted')
-  store.submitLab(definition.value.id)
-  logs.value = [...logs.value, '[submitted] 报告已在本地演示状态中标记提交']
-  result.value = `${definition.value.result} 报告仅保存在浏览器，不代表服务端已接收。`
+  logs.value = [...logs.value, dataMode === 'api'
+    ? '[submitted] 服务端已接收报告并更新成长记录'
+    : '[submitted] 报告已在本地演示状态中标记提交']
+  result.value = dataMode === 'api'
+    ? `${definition.value.result} 报告已写入学习账号。`
+    : `${definition.value.result} 报告仅保存在浏览器，不代表服务端已接收。`
 }
 
-watch(() => route.params.labId, reset, { immediate: true })
+const loadDefinition = async () => {
+  reset()
+  if (dataMode !== 'api') return
+  detailLoading.value = true
+  detailError.value = ''
+  apiDefinition.value = undefined
+  try {
+    const item = await contentApi.lab(String(route.params.labId)) as {
+      id: string
+      title: string
+      description: string
+      summary: string
+      labType: LabType
+      category?: string
+      level?: string
+      minutes?: number
+      coverVariant?: string
+      stepsDetail: Array<{ id: string; title: string; description: string; sortOrder: number }>
+    }
+    apiDefinition.value = {
+      id: item.id,
+      type: item.labType,
+      title: item.title,
+      subtitle: item.description || item.summary,
+      category: item.category || item.labType,
+      level: item.level || '入门',
+      duration: item.minutes || 60,
+      coverVariant: item.coverVariant || item.labType,
+      steps: item.stepsDetail.map((step, index) => ({ id: step.id, title: step.title, minutes: 10 + index * 3 })),
+      tools: [{ id: `${item.labType}-simulator`, label: '受控模拟器', mode: 'simulated' }],
+      initialProgress: 0,
+      scoring: [{ label: '流程完成', points: 50 }, { label: '安全边界', points: 50 }],
+      relatedResourceIds: [],
+      task: item.description || item.summary,
+      hints: ['按后台发布的步骤完成受控模拟。'],
+      logs: item.stepsDetail.map((step) => `[step] ${step.title}`),
+      result: '服务端已记录本次受控实训结果。',
+    }
+  } catch (error) {
+    detailError.value = error instanceof Error ? error.message : '实训详情加载失败'
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+watch(() => route.params.labId, () => void loadDefinition(), { immediate: true })
 onBeforeUnmount(stopTimer)
 </script>
 
 <template>
+  <div v-if="detailLoading" class="page-container"><div class="notice">正在读取已发布实训配置…</div></div>
+  <div v-else-if="detailError" class="page-container"><div class="notice error">{{ detailError }}，未回退到演示配置。</div></div>
   <NotFoundState
-    v-if="!definition"
+    v-else-if="!definition || !definition.steps.length"
     title="没有找到这个实训"
-    description="未知 labId 不会回退到其他实验，请返回实训中心重新选择。"
+    description="未知实训或尚未发布步骤配置，不会回退到演示配置。"
     back-to="/labs"
     back-label="返回实训中心"
   />

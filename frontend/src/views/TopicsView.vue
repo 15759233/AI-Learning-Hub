@@ -5,6 +5,8 @@ import CourseCard from '../components/CourseCard.vue'
 import PageHero from '../components/PageHero.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import { assets, courses } from '../data/mock'
+import { dataMode } from '../services/api/client'
+import { publicThemes } from '../services/api/content'
 import { useLearningStore } from '../stores/learning'
 
 const route = useRoute()
@@ -16,8 +18,14 @@ const level = ref(String(route.query.level || '全部难度'))
 const duration = ref(String(route.query.duration || '全部时长'))
 const mode = ref(String(route.query.mode || '全部方式'))
 const sort = ref(String(route.query.sort || '综合排序'))
-const categories = ['全部主题', '大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全']
-const pathSteps = ['了解 AI 基础', 'Python 入门', '大模型应用', '构建 AI 应用', '部署与优化', '进阶与创新']
+const categories = computed(() => dataMode === 'api'
+  ? ['全部主题', ...publicThemes.map((theme) => theme.title)]
+  : ['全部主题', '大模型 LLM', 'AI Agent', '图像生成', '模型部署', '智能硬件', 'AI 安全'])
+const pathSteps = computed(() => {
+  if (dataMode !== 'api') return ['了解 AI 基础', 'Python 入门', '大模型应用', '构建 AI 应用', '部署与优化', '进阶与创新']
+  const theme = publicThemes.find((item) => item.title === category.value) || publicThemes[0]
+  return theme?.paths[0]?.stages.map((stage) => stage.name) || []
+})
 const overallProgress = computed(() => {
   const values = Object.values(store.courseProgress)
   return values.length ? Math.round(values.reduce((total, value) => total + value, 0) / values.length) : 0
@@ -79,7 +87,7 @@ const reset = () => {
     <div class="category-tabs" role="tablist" aria-label="课程主题分类">
       <button v-for="item in categories" :key="item" type="button" :class="{ active: category === item }" @click="category = item">{{ item }}</button>
     </div>
-    <section class="learning-path"><div class="section-heading"><h2>推荐学习路径</h2><span>从入门到实践，逐步掌握 AI 能力</span><RouterLink to="/profile">查看完整路径 →</RouterLink></div><div class="path-steps"><div v-for="(step, index) in pathSteps" :key="step" :class="{ done: index < 2, current: index === 2 }"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ step }}</strong></div></div></section>
+    <section class="learning-path"><div class="section-heading"><h2>推荐学习路径</h2><span>从入门到实践，逐步掌握 AI 能力</span><RouterLink to="/profile">查看完整路径 →</RouterLink></div><div v-if="pathSteps.length" class="path-steps"><div v-for="(step, index) in pathSteps" :key="step" :class="{ done: index < 2, current: index === 2 }"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ step }}</strong></div></div><p v-else>该主题暂未发布学习路径。</p></section>
     <div class="catalog-layout">
       <aside class="filter-panel">
         <div class="panel-title"><strong>筛选条件</strong><button type="button" @click="reset">清空</button></div>

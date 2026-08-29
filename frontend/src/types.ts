@@ -100,4 +100,10 @@ export interface DemoAppState {
   recentLabs: string[]
   submittedLabs: string[]
   assessmentRecords: AssessmentRecord[]
+  serverGrowth?: {
+    points: number
+    achievements: number
+    certificates: number
+    knowledgeAccuracy: number
+  }
 }

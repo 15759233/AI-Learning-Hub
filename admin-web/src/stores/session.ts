@@ -1,0 +1,41 @@
+import { defineStore } from 'pinia'
+import { api } from '../services/api'
+
+interface AdminUser {
+  id: string
+  email: string
+  displayName: string
+  roles: string[]
+}
+
+export const useSessionStore = defineStore('session', {
+  state: () => ({
+    user: JSON.parse(sessionStorage.getItem('admin-user') || 'null') as AdminUser | null,
+    loading: false,
+    error: '',
+  }),
+  actions: {
+    async login(email: string, password: string) {
+      this.loading = true
+      this.error = ''
+      try {
+        const result = await api<{ user: AdminUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
+        if (!result.user.roles.includes('admin')) throw new Error('该账号没有管理后台权限')
+        this.user = result.user
+        sessionStorage.setItem('admin-user', JSON.stringify(result.user))
+        sessionStorage.setItem('admin-access-token', result.accessToken)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '登录失败'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+    async logout() {
+      await api('/auth/logout', { method: 'POST' }).catch(() => undefined)
+      this.user = null
+      sessionStorage.removeItem('admin-user')
+      sessionStorage.removeItem('admin-access-token')
+    },
+  },
+})

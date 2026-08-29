@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ state: string }>()
+defineProps<{ state: string; errorMessage?: string }>()
 defineEmits<{ retry: [] }>()
 </script>
 
@@ -13,7 +13,7 @@ defineEmits<{ retry: [] }>()
     <RouterLink class="button secondary" to="/">返回首页</RouterLink>
   </div>
   <div v-else-if="state === 'error'" class="page-container state-message" role="alert">
-    <span class="state-icon">!</span><h1>内容加载失败</h1><p>演示请求没有完成，请重新尝试。</p>
+    <span class="state-icon">!</span><h1>内容加载失败</h1><p>{{ errorMessage || '请求没有完成，请重新尝试。' }}</p>
     <button class="button primary" type="button" @click="$emit('retry')">重新加载</button>
   </div>
   <slot v-else />

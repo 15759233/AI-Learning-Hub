@@ -1,0 +1,83 @@
+import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { createReadStream } from 'node:fs'
+import { access } from 'node:fs/promises'
+import * as path from 'node:path'
+import type { Response } from 'express'
+import { RawResponse } from '../../common/raw-response.decorator'
+import { PrismaService } from '../../prisma/prisma.service'
+import { AuthGuard } from '../auth/auth.guard'
+import { CurrentUser } from '../auth/current-user.decorator'
+import { Roles } from '../auth/roles.decorator'
+import { RolesGuard } from '../auth/roles.guard'
+import type { AuthUser } from '../auth/auth.types'
+import { STORAGE_SERVICE, type StorageService, type UploadedFile as StoredUpload } from './storage.types'
+
+@Controller('admin/files')
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('admin', 'editor')
+export class StorageController {
+  constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService) {}
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  upload(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Body('visibility') visibility = 'private') {
+    if (!file) throw new BadRequestException('请选择文件')
+    if (!['public', 'private'].includes(visibility)) throw new BadRequestException('文件可见性不合法')
+    return this.storage.upload(file as StoredUpload, { uploadedBy: user.id, visibility: visibility as 'public' | 'private' })
+  }
+
+  @Get(':id/url')
+  async url(@Param('id') id: string) {
+    return { url: await this.storage.getSignedUrl(id), expiresIn: 300 }
+  }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string) {
+    await this.storage.delete(id)
+    return { deleted: true }
+  }
+}
+
+@Controller('files')
+@UseGuards(AuthGuard)
+export class LocalFileController {
+  private readonly root: string
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService,
+  ) {
+    this.root = path.resolve(config.get('STORAGE_LOCAL_PATH') || './var/uploads')
+  }
+
+  @Get(':id/download')
+  @RawResponse()
+  async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res({ passthrough: true }) response: Response) {
+    const file = await this.prisma.fileRecord.findUnique({ where: { id } })
+    if (!file || file.storageDriver !== 'local') throw new NotFoundException('文件不存在')
+    const target = path.resolve(this.root, file.objectKey)
+    if (!target.startsWith(`${this.root}${path.sep}`)) throw new NotFoundException('文件不存在')
+    try {
+      await access(target)
+    } catch {
+      throw new NotFoundException('文件不存在')
+    }
+    const resources = await this.prisma.resource.findMany({ where: { fileId: id, status: 'published' }, select: { id: true } })
+    if (resources.length) {
+      await this.prisma.$transaction(resources.flatMap((resource) => [
+        this.prisma.resource.update({ where: { id: resource.id }, data: { downloadCount: { increment: 1 } } }),
+        this.prisma.resourceDownload.create({ data: { resourceId: resource.id, userId: user.id } }),
+      ]))
+    }
+    response.set({
+      'Content-Type': file.mimeType,
+      'Content-Length': String(file.size),
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    })
+    return new StreamableFile(createReadStream(target))
+  }
+}

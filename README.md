@@ -1,12 +1,41 @@
 # AI 数智化学习平台
 
-在人工智能技术快速演进的今天，AI 素养正逐渐成为大学生学习、就业与职业发展的基础能力。然而，当前面向高校学生的学习资源往往较为分散，系统性不足，部分课程和实验环境还受到设备成本高、配置复杂、实践门槛高等限制，许多学生只能了解概念，难以真正动手。本平台希望以免费、易用、循序渐进的方式，整合基础课程、前沿资讯、学习资料、模型部署、AI Agent、命令行、智能硬件和答题测评，让学生在低门槛环境中完成“学习—实践—验证”闭环，提升面向未来职业发展的 AI 应用能力。
+面向高校学生的 AI 学习与受控实训平台。管理后台维护内容，NestJS 执行业务规则，PostgreSQL 提供统一数据源，学生端完成学习、收藏、实训和测评回写，《题盒》通过适配层接入统一题库与成绩。
 
+## 架构
 
-## 技术栈
+```text
+学生端 Vue 3 ─┐
+管理端 Vue 3 ─┼─ Nginx ─ NestJS /api/v1 ─ Prisma ─ PostgreSQL
+《题盒》──────┘                         └─ 本地 / MinIO / S3
+```
 
-Vue 3 + TypeScript + Vite，NestJS + PostgreSQL + Prisma；xterm.js、Vue Flow 实现模拟实训，Docker 部署。
+- `frontend/`：学生端，支持 `VITE_DATA_MODE=mock|api`。
+- `admin-web/`：管理后台，内容编辑、发布及业务数据查询。
+- `server/`：NestJS 模块化单体、Swagger、RBAC、SSE 与存储适配。
+- `packages/contracts/`：跨端状态、分页及 DTO 契约。
+- `deploy/compose/`：局域网开发测试 Compose，不代表正式生产方案。
+
+## 开发验证
+
+```bash
+cd server && npm ci && npm run check
+cd admin-web && npm ci && npm run check
+cd frontend && npm ci && npm run check
+```
+
+数据库迁移、环境变量和部署命令见：
+
+- [基本架构](docs/architecture.md)
+- [服务部署方案](docs/deployment/service-deployment.md)
+- [API 模块](docs/api/module-api.md)
+- [数据库模型](docs/database/schema.md)
+- [需求覆盖矩阵](docs/mapping/requirements-coverage.md)
 
 ## 作者
 
 K、Rong、Wen、Xin、Yun、Qiang
+
+## 许可
+
+本项目采用 [MIT License](LICENSE)。
