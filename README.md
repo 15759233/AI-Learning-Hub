@@ -14,7 +14,7 @@
 - `admin-web/`：管理后台，内容编辑、发布及业务数据查询。
 - `server/`：NestJS 模块化单体、Swagger、RBAC、SSE 与存储适配。
 - `packages/contracts/`：跨端状态、分页及 DTO 契约。
-- `deploy/compose/`：局域网开发测试 Compose，不代表正式生产方案。
+- `deploy/compose/`：Docker Compose 快速部署。
 
 ## 开发验证
 
@@ -26,6 +26,7 @@ cd frontend && npm ci && npm run check
 
 数据库迁移、环境变量和部署命令见：
 
+- [Docker Compose 快速部署](docs/deployment/quick-deploy.md)
 - [基本架构](docs/architecture.md)
 - [服务部署方案](docs/deployment/service-deployment.md)
 - [API 模块](docs/api/module-api.md)
