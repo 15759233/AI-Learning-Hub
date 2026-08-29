@@ -50,12 +50,28 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('未认证和学生角色不能访问管理接口', async () => {
     expect((await fetch(`${base}/admin/courses`)).status).toBe(401)
     expect((await fetch(`${base}/admin/courses`, { headers: { authorization: `Bearer ${studentToken}` } })).status).toBe(403)
+    const unsafeUpload = new FormData()
+    unsafeUpload.append('file', new Blob(['echo unsafe'], { type: 'application/x-sh' }), 'unsafe.sh')
+    expect((await fetch(`${base}/admin/files/upload`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken}` },
+      body: unsafeUpload,
+    })).status).toBe(400)
     const wechat = await fetch(`${base}/auth/wechat/miniapp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ code: 'unconfigured-test-code' }),
     })
     expect(wechat.status).toBe(503)
+    const quizBoxHealth = await fetch(`${base}/admin/integrations/quiz-box/health`, {
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    expect(quizBoxHealth.status).toBe(503)
+    const quizBoxImport = await fetch(`${base}/admin/integrations/quiz-box/attempts/unconfigured-attempt/import`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    expect(quizBoxImport.status).toBe(503)
   })
 
   it('学校院系和登录审计来自真实数据库', async () => {
