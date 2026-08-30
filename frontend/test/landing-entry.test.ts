@@ -73,6 +73,22 @@ describe('社区化入口', () => {
     state.open.mockClear(); preview.state.navigate(); expect(state.open).not.toHaveBeenCalled(); preview.unmount()
   })
 
+  it('话题和创作者查看更多沿用搜索页type契约，登录前后均保留筛选目标', async () => {
+    const targets = [...source('landing/LandingRenderer.vue').matchAll(/navigate\('(\/community\/search\?[^']+)'\)/g)].map((match) => match[1])
+    expect(targets).toEqual(['/community/search?type=topics', '/community/search?type=users'])
+    expect(source('community/CommunitySearchView.vue')).toContain('route.query.type')
+    const view = setupComponent<{ navigate: (path: string) => void }>(LandingRenderer, { homepage: await MockHomepageRepository.load() })
+    for (const target of targets) {
+      state.auth.user = null
+      view.state.navigate(target)
+      expect(state.open).toHaveBeenLastCalledWith({ redirect: target, action: undefined })
+      state.auth.user = { id: 'viewer' }
+      view.state.navigate(target)
+      expect(state.push).toHaveBeenLastCalledWith(target)
+    }
+    view.unmount()
+  })
+
   it('已登录硬刷品牌页同步配置创作者关注状态，不依赖建议用户列表', async () => {
     const homepage = await MockHomepageRepository.load(), id = homepage.community!.creators[0].id
     state.auth.user = { id: 'viewer' }; state.following.mockResolvedValue([{ id }])
