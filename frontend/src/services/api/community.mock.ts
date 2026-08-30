@@ -18,11 +18,31 @@ const initialFollowing = fixtures.follows.filter((f) => f.follower === authors[0
 const hidden = new Set<string>(), muted = new Set<string>(), following = new Set(initialFollowing)
 const cursors = new Map<string, { ids: string[]; offset: number; mode: string; type: string; requestId: string }>()
 let bio = '', headline = '', allowAchievementDrafts = false
+const storageKey = 'ai-learning-community:demo-v2'
+let restored = false
+const restoreMock = () => {
+if (restored) return
+restored = true
+try {
+  const stored = JSON.parse(localStorage.getItem(storageKey) || 'null')
+  if (stored?.version === 2) {
+    posts = stored.posts; comments = stored.comments; notifications = stored.notifications
+    for (const id of stored.hidden) hidden.add(id)
+    for (const id of stored.muted) muted.add(id)
+    following.clear(); for (const id of stored.following) following.add(id)
+    topics.forEach((topic) => { topic.following = stored.topicIds.includes(topic.id) })
+    bio = stored.bio; headline = stored.headline; allowAchievementDrafts = stored.allowAchievementDrafts
+  }
+} catch { /* 损坏的本地演示状态使用可重置的初始数据。 */ }
+}
+const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 2, posts, comments, notifications, hidden: [...hidden], muted: [...muted], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, allowAchievementDrafts })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
 export const resetCommunityMock = () => {
+  restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
   hidden.clear(); muted.clear(); following.clear(); cursors.clear(); initialFollowing.forEach((id) => following.add(id))
   topics.forEach((topic) => { topic.following = false; topic.followerCount = 0 })
   bio = ''; headline = ''; allowAchievementDrafts = false
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(storageKey)
 }
 const text = (blocks: CommunityContentBlock[]) => blocks.map((block) => block.type === 'image' ? block.alt : block.type === 'code' ? block.code : block.text).join('\n')
 const context = (): CommunityContextDto => ({ todayPlan: null, continueCourse: null, continueLab: null, currentChallenge: null, trendingTopics: topics.slice(0, 6), suggestedUsers: authors.filter((user) => user.verifiedType !== 'none'), needsInterests: topics.filter((t) => t.following).length < 3 })
@@ -31,10 +51,37 @@ const requirePost = (id: string) => { const post = visible(true).find((p) => p.i
 const requireOwner = (authorId: string) => { if (authorId !== authors[0].id) throw new Error('只能修改自己的内容') }
 const filtered = (url: URL) => visible().filter((p) => (!url.searchParams.get('type') || url.searchParams.get('type') === 'all' || p.type === url.searchParams.get('type')) && (url.searchParams.get('mode') !== 'following' || following.has(p.author.id) || p.topics.some((t) => topics.find((topic) => topic.id === t.id)?.following)))
 export async function mockCommunity<T>(path: string, method: string, body?: unknown): Promise<T> {
+  restoreMock()
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const user = JSON.parse(localStorage.getItem('community-demo-user') || 'null')
+      if (user?.username) {
+        Object.assign(authors[0], { username: user.username, displayName: user.displayName, school: user.school, major: user.major })
+        for (const row of [...posts, ...comments]) if (row.author.id === authors[0].id) row.author = { ...authors[0] }
+      }
+    } catch { /* 损坏的演示账号不会覆盖当前展示资料。 */ }
+  }
+  if (path.startsWith('/users/by-username/')) {
+    const username = decodeURIComponent(path.slice('/users/by-username/'.length)), user = authors.find((row) => row.username === username)
+    if (!user) throw new Error('用户不存在')
+    return mockCommunity<T>(`/users/${user.id}`, method, body)
+  }
   const url = new URL(path, 'http://mock.invalid'), parts = url.pathname.split('/').filter(Boolean)
   const [root, id, action, fourth] = parts
   let value: unknown
-  if (root === 'feed') {
+  if (root === 'drafts') {
+    if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, updatedAt: p.editedAt || p.publishedAt, input: { type: p.type, title: p.title || '', contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft' } }))
+    else { if (id && requirePost(id).status !== 'draft') throw new Error('不是草稿'); return mockCommunity<T>(id ? `/posts/${id}` : '/posts', method, body ? { ...body as CommunityPostInput, status: 'draft' } : undefined) }
+  } else if (root === 'onboarding') {
+    if (method === 'GET') value = [{ id: 'demo-school', name: 'AI 创客学院（本地演示）' }]
+    else { const input = body as { themeIds: string[]; schoolId: string; major: string; headline: string }; await mockCommunity('/interests', 'POST', input); headline = input.headline; const user = JSON.parse(localStorage.getItem('community-demo-user') || '{}'); value = { ...user, school: input.schoolId ? 'AI 创客学院' : null, major: input.major, onboardingCompleted: true } }
+  } else if (root === 'search') {
+    const q = (url.searchParams.get('q') || '').toLowerCase(), type = url.searchParams.get('type') || 'all', offset = Number(url.searchParams.get('cursor') || 0), limit = type === 'all' ? 3 : 20
+    const matches = (value: string) => !!q && value.toLowerCase().includes(q)
+    const catalog = (rows: Array<{ slug: string; title: string; summary: string }>) => rows.filter((r) => matches(`${r.title} ${r.summary}`)).map((r) => ({ ...r, id: r.slug, status: 'published', data: r, updatedAt: '', publishedAt: null, sortOrder: 0 }))
+    const all = { posts: visible().filter((r) => matches(`${r.title} ${r.body}`)), users: authors.filter((r) => !muted.has(r.id) && matches(`${r.username} ${r.displayName}`)), topics: topics.filter((r) => matches(`${r.name} ${r.description}`)), courses: catalog(demoCourses), labs: catalog(demoLabs), resources: catalog(demoResources), articles: catalog(demoArticles) }
+    value = { ...Object.fromEntries(Object.entries(all).map(([key, rows]) => [key, type === 'all' || type === key ? rows.slice(offset, offset + limit) : []])), nextCursor: type !== 'all' && type in all && all[type as keyof typeof all].length > offset + limit ? String(offset + limit) : null }
+  } else if (root === 'feed') {
     if (id === 'updates') value = { count: filtered(url).filter((p) => p.publishedAt > (url.searchParams.get('since') || '')).length }
     else if (method !== 'GET') value = { received: true }
     else {
@@ -70,7 +117,10 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     else if (method === 'GET') value = available
     else { notifications.forEach((n) => { if (id === 'read-all' || n.id === id) n.readAt ||= new Date().toISOString() }); value = { read: true } }
   }
-  else if (root === 'profile') { const input = body as CommunityProfileDto; bio = input.bio; headline = input.headline; allowAchievementDrafts = !!input.allowAchievementDrafts; value = {} }
+  else if (root === 'profile') {
+    if (id === 'username') { const user = JSON.parse(localStorage.getItem('community-demo-user') || '{}'); if (user.usernameChanged) throw new Error('公开用户名只能修改一次'); const username = (body as { username: string }).username; if (!/^[a-z][a-z0-9_]{3,29}$/.test(username) || authors.some((a) => a.username === username)) throw new Error('用户名不可用'); authors[0].username = username; value = { ...user, username, usernameChanged: true }; localStorage.setItem('community-demo-user', JSON.stringify(value)) }
+    else { const input = body as CommunityProfileDto; bio = input.bio; headline = input.headline; allowAchievementDrafts = !!input.allowAchievementDrafts; value = {} }
+  }
   else if (root === 'users') {
     if (action === 'following') value = authors.filter((author) => following.has(author.id))
     else if (action === 'follow') { if (method === 'PUT') following.add(id); else following.delete(id); posts.forEach((p) => { p.viewerState.followingAuthor = following.has(p.author.id) }); value = { active: method === 'PUT' } }
@@ -118,5 +168,6 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     } else value = id ? post : visible().filter((p) => (!url.searchParams.get('keyword') || `${p.title} ${p.body}`.includes(url.searchParams.get('keyword')!)) && (!url.searchParams.get('bindingId') || p.bindings.some((b) => b.id === url.searchParams.get('bindingId'))))
   }
   if (value === undefined) throw new Error('演示数据中没有此内容')
+  if (method !== 'GET' && typeof localStorage !== 'undefined') persist()
   return JSON.parse(JSON.stringify(value)) as T
 }

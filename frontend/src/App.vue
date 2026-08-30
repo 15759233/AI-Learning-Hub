@@ -6,9 +6,13 @@ import CommunityLayout from './layouts/CommunityLayout.vue'
 import ImmersiveLabLayout from './layouts/ImmersiveLabLayout.vue'
 import PageState from './components/PageState.vue'
 import QuizBridgeDialog from './components/QuizBridgeDialog.vue'
+import AuthDialog from './components/AuthDialog.vue'
+import CommunityComposer from './community/CommunityComposer.vue'
 import { AUTH_SESSION_CLEARED_EVENT, dataMode } from './services/api/client'
 import { useAuthStore } from './stores/auth'
 import { useLearningStore } from './stores/learning'
+import { useAuthUiStore } from './stores/authUi'
+import CommunitySkeleton from './community/CommunitySkeleton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,6 +52,7 @@ const showApiError = (event: Event) => {
 }
 
 const clearApiSession = () => auth.clearSession()
+const reconnect = async () => { await auth.restore(true); if (!auth.user && auth.authState === 'anonymous') useAuthUiStore().open({ redirect: route.fullPath, reason: '登录已失效，请重新登录后继续当前页面' }) }
 const layout = computed(() => route.meta.layout === 'immersive' ? ImmersiveLabLayout : route.meta.layout === 'community' ? CommunityLayout : PublicLayout)
 
 const retry = () => {
@@ -75,7 +80,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <component :is="layout">
+  <CommunitySkeleton v-if="route.meta.requiresAuth && ['idle', 'restoring'].includes(auth.authState)" />
+  <section v-else-if="route.meta.requiresAuth && (!auth.user || auth.authState === 'error')" class="community-empty"><h1>{{ auth.authState === 'error' ? '连接暂时中断' : '请登录后继续' }}</h1><p>{{ auth.restoreError }}</p><button class="button primary" @click="reconnect">重新连接</button></section>
+  <component :is="layout" v-else>
     <RouterView v-slot="{ Component }">
       <PageState :state="viewState" :error-message="apiMessage" @retry="retry">
         <component :is="Component" />
@@ -83,5 +90,7 @@ onBeforeUnmount(() => {
     </RouterView>
   </component>
   <QuizBridgeDialog />
+  <AuthDialog />
+  <CommunityComposer v-if="auth.user" />
   <div v-if="bridgeMessage" class="toast" role="status">{{ bridgeMessage }}</div>
 </template>

@@ -76,8 +76,8 @@ export interface CommunityNotificationDto {
   count: number; readAt: string | null; createdAt: string; source: 'community' | 'platform'
 }
 export interface CommunitySignalInput {
-  eventType: 'community_post_click' | 'community_post_expand' | 'community_binding_click' | 'community_profile_visit' | 'community_topic_visit' | 'community_to_course' | 'community_to_lab' | 'community_to_resource' | 'community_to_article' | 'community_to_challenge'
-  targetId: string; targetType: 'post' | 'user' | 'topic'; binding?: CommunityBindingInput
+  eventType: 'community_post_click' | 'community_post_expand' | 'community_binding_click' | 'community_profile_visit' | 'community_topic_visit' | 'community_to_course' | 'community_to_lab' | 'community_to_resource' | 'community_to_article' | 'community_to_challenge' | 'community_search_to_course' | 'community_search_to_lab' | 'community_search_to_resource' | 'community_search_to_article'
+  targetId: string; targetType: 'post' | 'user' | 'topic' | 'course' | 'lab' | 'resource' | 'article'; binding?: CommunityBindingInput
   requestId?: string; sessionId?: string; position?: number
 }
 export interface CommunityFeedPolicyDto {
@@ -98,3 +98,11 @@ export interface CommunityModerationInput {
   action: 'restore' | 'limit' | 'label' | 'hide' | 'remove' | 'reject' | 'disable_author'
   reason: string; label?: string
 }
+import type { ArticleSummaryDto, CourseSummaryDto, LabSummaryDto, ResourceSummaryDto } from '../index'
+export type CommunitySearchType = 'all' | 'posts' | 'users' | 'topics' | 'courses' | 'labs' | 'resources' | 'articles'
+export interface CommunitySearchResultDto {
+  posts: CommunityPostSummaryDto[]; users: CommunityAuthorDto[]; topics: CommunityTopicDto[]
+  courses: CourseSummaryDto[]; labs: LabSummaryDto[]; resources: ResourceSummaryDto[]; articles: ArticleSummaryDto[]
+  nextCursor: string | null
+}
+export interface CommunityDraftDto { id: string; input: CommunityPostInput; updatedAt: string }

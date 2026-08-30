@@ -1,13 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../services/api'
 
-interface AdminUser {
-  id: string
-  email: string
-  displayName: string
-  roles: string[]
-  permissions: string[]
-}
+import type { AuthUser as AdminUser } from '@ai-learning-hub/contracts'
 
 export const useSessionStore = defineStore('session', {
   state: () => ({

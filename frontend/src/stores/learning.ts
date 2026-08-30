@@ -4,6 +4,7 @@ import { dataMode } from '../services/api/client'
 import { loadDemoState, saveDemoState } from '../services/demoStorage'
 import type { FavoriteType, LearningPlan } from '../types'
 import { createEmptyLearningState } from './learningState'
+import { ensureAuth } from '../composables/useRequireAuth'
 
 const clamp = (value: number) => Math.min(100, Math.max(0, Math.round(value)))
 const notifyError = (error: unknown) => window.dispatchEvent(new CustomEvent('api-error', {
@@ -31,6 +32,7 @@ export const useLearningStore = defineStore('learning', {
       return this.favorites.some((item) => item.type === type && item.id === id)
     },
     async toggleFavorite(type: FavoriteType, id: string) {
+      if (!ensureAuth('登录后可收藏学习内容', () => this.toggleFavorite(type, id))) return false
       const index = this.favorites.findIndex((item) => item.type === type && item.id === id)
       if (dataMode === 'api') {
         try {
@@ -47,6 +49,7 @@ export const useLearningStore = defineStore('learning', {
       return true
     },
     async saveNote(courseId: string, note: string, lessonId?: string) {
+      if (!ensureAuth('登录后可保存私人笔记', () => this.saveNote(courseId, note, lessonId))) return false
       if (dataMode === 'api') {
         try {
           if (lessonId) await behaviorApi.saveLessonNote(lessonId, note)
@@ -58,6 +61,7 @@ export const useLearningStore = defineStore('learning', {
       return true
     },
     async completeCourseStep(courseId: string, lessonId: string | number, total = 1) {
+      if (!ensureAuth('登录后可记录课程进度', () => this.completeCourseStep(courseId, lessonId, total))) return false
       let progress = clamp((Number(lessonId) / total) * 100)
       if (dataMode === 'api') {
         try {

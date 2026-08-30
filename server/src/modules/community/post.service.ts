@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common'
 import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import type { CommunityContentBlock, CommunityPostDetailDto, CommunityTopicDto, CommunityPostSummaryDto, CommunityBindingInput } from '@ai-learning-hub/contracts'
@@ -19,8 +19,8 @@ export type HydratedPost = Prisma.CommunityPostGetPayload<{ include: typeof post
 export class CommunityPostService {
   constructor(private readonly prisma: PrismaService, private readonly refs: ContentReferenceService, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService) {}
 
-  async blocks(userId: string, blocks: CommunityContentBlock[]) {
-    if (!blocks.length) throw new BadRequestException('请填写正文')
+  async blocks(userId: string, blocks: CommunityContentBlock[], draft = false) {
+    if (!blocks.length && !draft) throw new BadRequestException('请填写正文')
     let imageCount = 0
     const files: string[] = []
     const clean = blocks.map((block): CommunityContentBlock => {
@@ -44,7 +44,7 @@ export class CommunityPostService {
       if (count !== new Set(files).size) throw new BadRequestException('图片必须由本人上传且为不超过 5MB 的 PNG、JPEG 或 WebP')
     }
     const plainText = clean.map((block) => block.type === 'code' ? block.code : block.type === 'image' ? block.alt || '' : block.text).join('\n')
-    if (plainText.length < 5 || plainText.length > 20000) throw new BadRequestException('正文需要 5～20000 字')
+    if ((!draft && plainText.length < 1) || plainText.length > 20000) throw new BadRequestException('正文需要 1～20000 字')
     return { clean, plainText }
   }
   async save(userId: string, input: PostDto, id?: string, audit?: { actorId: string; action: string; reason: string }) {
@@ -53,15 +53,15 @@ export class CommunityPostService {
     if (id && (!current || current.authorId !== userId || current.deletedAt)) throw new ForbiddenException('只有作者可以编辑自己的内容')
     if (current && !['draft', 'published'].includes(current.status)) throw new ForbiddenException('审核中的内容暂不可编辑')
     if (input.visibility === 'school' && !viewer.schoolId) throw new BadRequestException('未认证学校，不能发布同校内容')
-    if (['question', 'project'].includes(input.type) && !input.title?.trim()) throw new BadRequestException('问答和项目需要标题')
-    const { clean, plainText } = await this.blocks(userId, input.contentBlocks)
+    if (input.status === 'published' && ['question', 'project'].includes(input.type) && !input.title?.trim()) throw new BadRequestException('问答和项目需要标题')
+    const { clean, plainText } = await this.blocks(userId, input.contentBlocks, input.status === 'draft')
     const references = await this.refs.resolveMany(input.bindings, userId, true)
-    if (input.type === 'lab_result' && !input.bindings.some((ref) => ref.type === 'lab_run')) throw new BadRequestException('实训成果需要关联本人已提交的实训记录')
-    if (input.type === 'project') {
+    if (input.status === 'published' && input.type === 'lab_result' && !input.bindings.some((ref) => ref.type === 'lab_run')) throw new BadRequestException('实训成果需要关联本人已提交的实训记录')
+    if (input.status === 'published' && input.type === 'project') {
       const labIds = input.bindings.filter((ref) => ref.type === 'lab').map((ref) => references.get(`lab:${ref.id}`)!.id)
       if (!await this.prisma.lab.count({ where: { id: { in: labIds }, labType: 'project' } })) throw new BadRequestException('创客项目需要关联现有综合项目实训')
     }
-    if (input.type === 'frontier_discussion' && !input.bindings.some((ref) => ref.type === 'article')) throw new BadRequestException('前沿讨论需要关联文章')
+    if (input.status === 'published' && input.type === 'frontier_discussion' && !input.bindings.some((ref) => ref.type === 'article')) throw new BadRequestException('前沿讨论需要关联文章')
     if (!!input.sourceType !== !!input.sourceId) throw new BadRequestException('分享来源类型与标识必须同时提供')
     if (input.sourceType === 'note' && !await this.prisma.learningNote.findFirst({ where: { id: input.sourceId, userId } })) throw new ForbiddenException('笔记只能由本人主动分享')
     if (input.sourceType === 'lab_run' && !input.bindings.some((ref) => ref.type === 'lab_run' && ref.id === input.sourceId)) throw new BadRequestException('实训来源与关联记录不一致')
@@ -70,9 +70,11 @@ export class CommunityPostService {
     if (topics.length !== input.topicIds.length) throw new BadRequestException('话题已关闭或不存在')
     const contentHash = createHash('sha256').update(plainText.replace(/\s+/g, '').toLowerCase()).digest('hex')
     if (input.status === 'published' && await this.prisma.communityPost.count({ where: { authorId: userId, contentHash, id: { not: id }, status: { in: ['published', 'limited'] } } })) throw new BadRequestException('相同内容已发布，请编辑原动态')
-    const burst = await this.prisma.communityPost.count({ where: { authorId: userId, createdAt: { gt: new Date(Date.now() - 60000) } } })
-    if (!id && burst >= 5) throw new BadRequestException('发布过于频繁，请稍后再试')
     const post = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`
+      const latest = id ? await tx.communityPost.findUnique({ where: { id } }) : null
+      const publishing = input.status === 'published' && latest?.status !== 'published'
+      if (publishing && await tx.activityEvent.count({ where: { userId, eventType: 'community_post_publish', createdAt: { gt: new Date(Date.now() - 60000) } } }) >= 5) throw new HttpException('发布过于频繁，请稍后再试', 429)
       const oldTopicIds = current ? (await tx.communityPostTopic.findMany({ where: { postId: current.id } })).map((row) => row.topicId) : []
       const data = { authorId: userId, postType: input.type, status: input.status, visibility: input.visibility, schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: input.status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
       const saved = id ? await tx.communityPost.update({ where: { id }, data }) : await tx.communityPost.create({ data })
@@ -86,7 +88,7 @@ export class CommunityPostService {
       await tx.communityProfile.update({ where: { userId }, data: { postCount: await tx.communityPost.count({ where: { authorId: userId, status: 'published', deletedAt: null } }) } })
       const topicIds = [...new Set([...topics.map((row) => row.id), ...oldTopicIds])]
       for (const topicId of topicIds) await tx.communityTopic.update({ where: { id: topicId }, data: { postCount: await tx.communityPostTopic.count({ where: { topicId, post: { status: 'published', deletedAt: null } } }) } })
-      if (input.status === 'published' && current?.status !== 'published') await this.signals.record(userId, 'community_post_publish', 'post', saved.id, { postType: input.type, topicIds: input.topicIds, bindingKeys: input.bindings.map((ref) => `${ref.type}:${references.get(`${ref.type}:${ref.id}`)!.id}`) }, tx)
+      if (publishing) await this.signals.record(userId, 'community_post_publish', 'post', saved.id, { postType: input.type, topicIds: input.topicIds, bindingKeys: input.bindings.map((ref) => `${ref.type}:${references.get(`${ref.type}:${ref.id}`)!.id}`) }, tx)
       if (audit) await tx.communityModerationAction.create({ data: { ...audit, targetType: 'post', targetId: saved.id } })
       return saved
     })

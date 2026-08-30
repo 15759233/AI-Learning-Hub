@@ -281,7 +281,7 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     const ownPost = (await request<CommunityPostDetailDto>('/community/posts/community-lab_result-1', student)).data
     expect(ownPost.bindings.some((binding) => binding.type === 'lab_run')).toBe(true)
     const runOnly = await request<CommunityPostDetailDto>('/community/posts', student, 'POST', input('仅绑定本人实训记录', { type: 'lab_result', bindings: [{ type: 'lab_run', id: 'community-run-1' }] }))
-    expect(runOnly.status).toBe(201)
+    expect(runOnly.status, runOnly.message).toBe(201)
     const publicPost = (await request<CommunityPostDetailDto>(`/community/posts/${runOnly.data.id}`, c)).data
     expect(publicPost.bindings).toHaveLength(1); expect(publicPost.bindings[0].type).toBe('lab')
     expect(JSON.stringify(publicPost)).not.toContain('community-run-1')

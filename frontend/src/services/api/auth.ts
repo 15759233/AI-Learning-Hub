@@ -1,16 +1,10 @@
 import { request } from './client'
-
-export interface StudentUser {
-  id: string
-  email: string
-  displayName: string
-  roles: string[]
-  permissions: string[]
-}
+import type { AuthSessionDto, AuthUser, RegisterInput, RegistrationConfigDto } from '@ai-learning-hub/contracts'
+export type StudentUser = AuthUser
 
 export const authApi = {
-  async login(email: string, password: string) {
-    const result = await request<{ user: StudentUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
+  async login(email: string, password: string, remember = true) {
+    const result = await request<{ user: StudentUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, remember }) }, false)
     sessionStorage.setItem('student-access-token', result.accessToken)
     return result.user
   },
@@ -19,4 +13,13 @@ export const authApi = {
     sessionStorage.removeItem('student-access-token')
   },
   me: () => request<StudentUser>('/me'),
+  registrationConfig: () => request<RegistrationConfigDto>('/auth/registration-config', {}, false),
+  async register(input: RegisterInput) {
+    const result = await request<AuthSessionDto>('/auth/register', { method: 'POST', body: JSON.stringify(input) }, false)
+    sessionStorage.setItem('student-access-token', result.accessToken)
+    return result.user
+  },
+  forgotPassword: (email: string) => request<{ message: string }>('/auth/password/forgot', { method: 'POST', body: JSON.stringify({ email }) }, false),
+  resetPassword: (token: string, password: string) => request('/auth/password/reset', { method: 'POST', body: JSON.stringify({ token, password }) }, false),
+  verifyEmail: (token: string) => request('/auth/email/verify', { method: 'POST', body: JSON.stringify({ token }) }, false),
 }

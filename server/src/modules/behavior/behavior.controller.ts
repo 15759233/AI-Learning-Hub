@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Put, Query, Sse, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Put, Query, Sse, UseGuards } from '@nestjs/common'
 import { from, mergeMap, of, switchMap, timer, type Observable } from 'rxjs'
 import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -8,7 +8,7 @@ import { Permissions } from '../auth/permissions.decorator'
 import { PermissionsGuard } from '../auth/permissions.guard'
 import type { AuthUser } from '../auth/auth.types'
 import { BehaviorService } from './behavior.service'
-import { CreatePlanDto, FavoriteDto, LabActionDto, LessonProgressDto, NoteDto, SubmitAssessmentDto, UpdatePlanDto, ViewEventDto } from './behavior.dto'
+import { CreatePlanDto, FavoriteDto, LabActionDto, LessonProgressDto, NoteDto, SubmitAssessmentDto, UpdatePlanDto, UserStatusDto, ViewEventDto } from './behavior.dto'
 
 @Controller()
 @UseGuards(AuthGuard)
@@ -250,15 +250,41 @@ export class BehaviorController {
 @Permissions('growth.read')
 export class AdminUserController {
   constructor(private readonly prisma: PrismaService) {}
+  private async assertStudentTarget(id: string) {
+    const target = await this.prisma.user.findUnique({ where: { id }, include: { userRoles: { include: { role: true } } } })
+    if (!target || !target.userRoles.some((row) => row.role.code === 'student') || target.userRoles.some((row) => ['super_admin', 'admin'].includes(row.role.code))) throw new BadRequestException('此入口仅管理学习账号')
+  }
 
   @Get()
-  users(@Query('keyword') keyword = '') {
-    return this.prisma.user.findMany({
-      where: keyword ? { OR: [{ displayName: { contains: keyword, mode: 'insensitive' } }, { email: { contains: keyword, mode: 'insensitive' } }] } : {},
-      select: { id: true, displayName: true, email: true, status: true, userType: true, school: true, department: true, lastLoginAt: true, createdAt: true },
+  async users(@Query('keyword') keyword = '') {
+    const rows = await this.prisma.user.findMany({
+      where: keyword ? { OR: [{ username: { contains: keyword, mode: 'insensitive' } }, { displayName: { contains: keyword, mode: 'insensitive' } }, { email: { contains: keyword, mode: 'insensitive' } }] } : {},
+      select: { id: true, username: true, displayName: true, email: true, status: true, userType: true, registrationSource: true, major: true, grade: true, onboardingCompletedAt: true, school: { select: { id: true, name: true } }, department: true, lastLoginAt: true, createdAt: true, _count: { select: { communityPosts: { where: { deletedAt: null, status: 'published' } } } } },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 200,
     })
+    return rows.map(({ _count, onboardingCompletedAt, ...row }) => ({ ...row, onboardingCompleted: !!onboardingCompletedAt, communityPostCount: _count.communityPosts }))
+  }
+
+  @Patch(':id/status') @Permissions('growth.write')
+  async status(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() input: UserStatusDto) {
+    if (actor.id === id) throw new BadRequestException('不能禁用当前账号')
+    await this.assertStudentTarget(id)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { status: input.status } })
+      if (input.status === 'disabled') await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })
+      await tx.auditLog.create({ data: { actorId: actor.id, action: `user_${input.status}`, targetType: 'user', targetId: id } })
+    })
+    return { updated: true }
+  }
+  @Post(':id/reset-onboarding') @Permissions('growth.write')
+  async resetOnboarding(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    await this.assertStudentTarget(id)
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id }, data: { onboardingCompletedAt: null } }),
+      this.prisma.auditLog.create({ data: { actorId: actor.id, action: 'reset_onboarding', targetType: 'user', targetId: id } }),
+    ])
+    return { updated: true }
   }
 
   @Get(':id/growth')

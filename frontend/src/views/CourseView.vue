@@ -14,6 +14,8 @@ import { useAuthStore } from '../stores/auth'
 import { mapCourse, useCoursesStore } from '../stores/content/courses'
 import { useLearningStore } from '../stores/learning'
 import { useCommunityStore } from '../stores/community'
+import { ensureAuth } from '../composables/useRequireAuth'
+import { behaviorApi } from '../services/api/behavior'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,7 +57,13 @@ const accountDataMessage = computed(() => {
 const code = `from transformers import pipeline\n\nassistant = pipeline("text-generation")\nresult = assistant("解释注意力机制：", max_new_tokens=80)\nprint(result[0]["generated_text"])`
 
 const submitQuiz = () => {
+  if (!ensureAuth('登录后可参与课程知识小测', submitQuiz)) return
   if (selectedAnswer.value) submitted.value = true
+}
+const startLearning = async (next = false) => {
+  if (!ensureAuth('登录后可开始课程并记录学习进度', () => startLearning(next))) return
+  try { if (dataMode === 'api') await behaviorApi.enroll(courseId.value); if (next) currentLesson.value++; document.querySelector('.lesson-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  catch (error) { window.dispatchEvent(new CustomEvent('api-error', { detail: { message: error instanceof Error ? error.message : '暂时无法开始课程' } })) }
 }
 const copyCode = async () => {
   try {
@@ -69,7 +77,7 @@ const copyCode = async () => {
 const saveNote = async () => {
   if (await store.saveNote(courseId.value, noteDraft.value, dataMode === 'api' ? currentApiLesson.value?.id : undefined)) noteOpen.value = false
 }
-const shareNote = () => useCommunityStore().openComposer({ type: 'note', title: `${course.value?.title || '课程'}学习笔记`, contentBlocks: [{ type: 'paragraph', text: store.notes[noteKey.value] || noteDraft.value }], bindings: [{ type: 'course', id: courseId.value }, ...(currentApiLesson.value ? [{ type: 'lesson' as const, id: currentApiLesson.value.id }] : [])] })
+const shareNote = () => { if (!ensureAuth('登录后可主动分享学习笔记', shareNote)) return; useCommunityStore().openComposer({ type: 'note', title: `${course.value?.title || '课程'}学习笔记`, contentBlocks: [{ type: 'paragraph', text: store.notes[noteKey.value] || noteDraft.value }], bindings: [{ type: 'course', id: courseId.value }, ...(currentApiLesson.value ? [{ type: 'lesson' as const, id: currentApiLesson.value.id }] : [])] }) }
 const completeCurrentLesson = () => {
   const lessonId = dataMode === 'api' ? currentApiLesson.value?.id : currentLesson.value
   if (lessonId) void store.completeCourseStep(courseId.value, lessonId, displayLessons.value.length)
@@ -107,8 +115,9 @@ watch(courseId, async () => {
     <section class="course-hero">
       <div class="hero-copy"><span class="tag purple">{{ course.category }}</span><h1>{{ course.title }}</h1><p>{{ course.description }}{{ dataMode === 'mock' ? ' 从核心概念出发，逐步走向受控实践。' : '' }}</p><div class="meta"><span>{{ course.level }}</span><span>{{ chapterCount }} 章 · {{ displayLessons.length }} 节</span><span>{{ course.learners === undefined ? '学习人数 —' : `${course.learners.toLocaleString()} 人学习` }}</span><span>{{ dataMode === 'api' ? (courseDetail?.data.rating ? `${courseDetail.data.rating} 分` : '评分 —') : '4.9 分' }}</span></div><div class="teacher"><span class="avatar">{{ String(courseDetail?.data.instructor?.name || '讲师').slice(0, 1) }}</span><div><strong>{{ courseDetail?.data.instructor?.name || (dataMode === 'api' ? '讲师待配置' : '林知远老师') }}</strong><small>{{ courseDetail?.data.instructor?.title || (dataMode === 'api' ? '信息待配置' : '高校 AI 应用课程讲师') }}</small></div><button v-if="dataMode === 'mock'" class="button secondary small" type="button" @click="followed = !followed">{{ followed ? '已关注' : '关注' }}</button></div></div>
       <img v-if="course.cover || dataMode === 'mock'" :src="course.cover || assets.learningCover" :alt="`${course.title}课程插画`" />
-      <aside class="hero-progress"><ProgressBar v-if="accountDataReady" :value="store.courseProgress[course.id] ?? course.progress ?? 0" label="学习进度" /><p v-else class="notice">{{ accountDataMessage }}</p><strong>当前第 {{ currentLesson }} / {{ displayLessons.length }} 课时</strong><button class="button primary full-width" type="button" :disabled="!displayLessons.length" @click="completeCurrentLesson">完成本节</button><button class="button secondary full-width" type="button" @click="store.toggleFavorite('course', course.id)">{{ store.isFavorite('course', course.id) ? '已收藏' : '收藏课程' }}</button></aside>
+      <aside class="hero-progress"><ProgressBar v-if="accountDataReady" :value="store.courseProgress[course.id] ?? course.progress ?? 0" label="学习进度" /><p v-else class="notice">{{ accountDataMessage }}</p><strong>当前第 {{ currentLesson }} / {{ displayLessons.length }} 课时</strong><button class="button primary full-width" type="button" :disabled="!displayLessons.length" @click="startLearning()">{{ store.courseProgress[course.id] ? '继续学习' : '开始学习' }}</button><button class="button secondary full-width" type="button" :disabled="!displayLessons.length" @click="completeCurrentLesson">完成本节</button><button class="button secondary full-width" type="button" @click="store.toggleFavorite('course', course.id)">{{ store.isFavorite('course', course.id) ? '已收藏' : '收藏课程' }}</button></aside>
     </section>
+    <RouterLink class="text-link" :to="`/community/search?bindingId=${courseId}`">查看课程相关讨论 ↗</RouterLink>
     <div class="learning-layout">
       <aside class="outline-panel sticky">
         <button class="outline-title" type="button" @click="expanded = !expanded"><strong>课程大纲</strong><span>{{ expanded ? '收起' : '展开' }}</span></button>
@@ -154,7 +163,7 @@ watch(courseId, async () => {
         <section><h3>相关资料</h3><template v-if="dataMode === 'api'"><RouterLink v-for="resource in courseDetail?.relatedResources || []" :key="resource.slug" :to="{ path: '/resources', query: { preview: resource.slug } }">{{ resource.title }}</RouterLink><p v-if="!courseDetail?.relatedResources.length">尚未关联已发布资源。</p></template><template v-else><RouterLink to="/resources">Transformer 图解 · PDF</RouterLink><RouterLink to="/resources">注意力机制学习手册</RouterLink><RouterLink to="/resources">课程视频索引 · 视频</RouterLink><RouterLink to="/resources">示例代码仓库 · GitHub</RouterLink></template></section>
         <section><h3>学习进度</h3><template v-if="accountDataReady"><ProgressBar :value="store.courseProgress[course.id] || 0" /><small>完成本节会同步更新课程进度。</small></template><p v-else class="notice">{{ accountDataMessage }}</p></section>
         <section><h3>学习成就</h3><div v-if="dataMode === 'mock'" class="mini-achievements"><span><AppIcon name="layers" />模型入门</span><span><AppIcon name="check" />连续学习</span><span><AppIcon name="trophy" />小测达人</span></div><p v-else>课程成就规则尚未配置。</p></section>
-        <section><h3>下一节预告</h3><strong>{{ displayLessons[Math.min(currentLesson, displayLessons.length - 1)] || '暂无下一节' }}</strong><p v-if="currentApiLesson">预计 {{ currentApiLesson.durationMinutes }} 分钟</p><button class="button primary full-width" type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="currentLesson++">继续下一节</button></section>
+        <section><h3>下一节预告</h3><strong>{{ displayLessons[Math.min(currentLesson, displayLessons.length - 1)] || '暂无下一节' }}</strong><p v-if="currentApiLesson">预计 {{ currentApiLesson.durationMinutes }} 分钟</p><button class="button primary full-width" type="button" :disabled="currentLesson === displayLessons.length || !displayLessons.length" @click="startLearning(true)">继续下一节</button></section>
       </aside>
     </div>
     <section><div class="section-heading"><h2>相关推荐课程</h2></div><div v-if="dataMode === 'mock'" class="four-grid"><CourseCard v-for="item in recommendations" :key="item.id" :course="item" compact /></div><p v-else>相关推荐尚未配置。</p></section>

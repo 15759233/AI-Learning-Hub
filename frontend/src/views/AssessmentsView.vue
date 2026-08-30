@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureAuth } from '../composables/useRequireAuth'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -43,16 +44,19 @@ const abilities = [
   ['计算机视觉', 64, 31], ['自然语言处理', 79, 45], ['数据可视化', 91, 58], ['AI 应用实践', 73, 36],
 ]
 const startChallenge = () => {
+  if (!ensureAuth('登录后可参与挑战', startChallenge)) return
   if (!challenge.value) return
   const id = challenge.value.slug
   store.recordAssessment('challenge', id)
   quizBridge.startChallenge(id)
 }
 const startAssessment = (id: string) => {
+  if (!ensureAuth('登录后可参与测评', () => startAssessment(id))) return
   store.recordAssessment('assessment', id)
   quizBridge.startAssessment(id)
 }
 const startPractice = (id: string) => {
+  if (!ensureAuth('登录后可参与练习', () => startPractice(id))) return
   store.recordAssessment('practice', id)
   quizBridge.startPractice(id)
 }

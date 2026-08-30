@@ -85,3 +85,6 @@ export class ViewEventDto {
   @Length(1, 120)
   targetSlug!: string
 }
+export class UserStatusDto {
+  @IsIn(['active', 'disabled']) status!: 'active' | 'disabled'
+}

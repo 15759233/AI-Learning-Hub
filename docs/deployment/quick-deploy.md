@@ -28,4 +28,14 @@ docker compose --env-file deploy/compose/.env \
 
 数据和上传文件保存在 Docker 命名卷中，`.env` 不进入 Git。
 
+## 注册与邮件
+
+默认开放学生邮箱注册，管理员由 `SEED_ADMIN_EMAIL` 和 `SEED_ADMIN_PASSWORD` 初始化；已有账号不会被重复 Seed 重置密码或基本资料。注册模式、协议版本、密码规则和学校要求在管理端「系统设置」维护。
+
+邮箱验证与找回密码需配置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`、`FRONTEND_URL`，认证邮件服务另填 `SMTP_USER`、`SMTP_PASSWORD`。默认强制 TLS；`SMTP_ALLOW_INSECURE=true` 仅用于隔离本地邮件验收。缺少通道返回明确不可用，不模拟邮件送达。找回邮件异步发送，发送期间进程重启需用户重新申请。
+
+邀请注册需在环境变量 `REGISTRATION_INVITE_HASHES` 填入邀请码的 SHA-256 十六进制摘要（逗号分隔）；不在数据库或公开设置保存明文邀请码。当前为可重复使用的邀请码，不包含配额管理。
+
+API 默认不信任转发头。Compose 仅允许 Docker 私网代理范围，Nginx 覆盖 `X-Forwarded-For`；调整网络时将 `TRUSTED_PROXY_CIDRS` 收窄为实际代理网段，勿对外开放 API 容器或信任任意来源。
+
 > 默认只监听 `127.0.0.1`。不要将此 Compose 直接暴露公网；正式部署请使用[服务部署方案](service-deployment.md)。

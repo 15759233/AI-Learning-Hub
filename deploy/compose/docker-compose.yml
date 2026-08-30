@@ -41,6 +41,7 @@ services:
       PORT: 3000
       NODE_ENV: production
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       STORAGE_LOCAL_PATH: /workspace/server/var/uploads
     volumes:
       - uploads_data:/workspace/server/var/uploads

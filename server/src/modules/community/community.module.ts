@@ -12,9 +12,11 @@ import { CommunityInteractionService } from './interaction.service'
 import { CommunityNotificationService } from './notification.service'
 import { CommunityContextService } from './context.service'
 import { LearningFeedPipeline } from '../feed/feed.service'
+import { CommunitySearchService } from './search.service'
+import { ContentSupportModule } from '../../common/content/content-support.module'
 @Module({
-  imports: [AuthModule, StorageModule, SignalsModule, ContentReferenceModule, CommunityVisibilityModule],
+  imports: [AuthModule, StorageModule, SignalsModule, ContentReferenceModule, CommunityVisibilityModule, ContentSupportModule],
   controllers: [CommunityController, CommunityAdminController],
-  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline],
+  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline, CommunitySearchService],
 })
 export class CommunityModule {}

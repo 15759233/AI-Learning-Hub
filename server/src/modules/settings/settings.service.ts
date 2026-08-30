@@ -18,6 +18,7 @@ export class SettingsService {
   }
 
   private validate(input: UpdateSettingDto) {
+    if (input.key === 'registration') throw new BadRequestException('注册设置请使用专用注册管理接口')
     const stringKeys = ['platform_name', 'platform_subtitle']
     const numberKeys = ['upload_max_mb', 'session_minutes']
     const arrayKeys = ['allowed_file_types', 'allowed_login_domains']

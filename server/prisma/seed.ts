@@ -119,7 +119,7 @@ async function seed() {
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: { passwordHash: await hash(requiredAdminPassword, 12), schoolId: school.id, departmentId: department.id },
+    update: {},
     create: {
       username: 'admin',
       displayName: '平台管理员',
@@ -128,12 +128,13 @@ async function seed() {
       schoolId: school.id,
       departmentId: department.id,
       userType: 'admin',
+      onboardingCompletedAt: new Date(),
       profile: { school: 'AI MAKER CAMPUS' },
     },
   })
   const student = await prisma.user.upsert({
     where: { email: studentEmail },
-    update: { passwordHash: await hash(requiredStudentPassword, 12), schoolId: school.id, departmentId: department.id },
+    update: {},
     create: {
       username: 'student',
       displayName: '造梦少年',
@@ -142,6 +143,7 @@ async function seed() {
       schoolId: school.id,
       departmentId: department.id,
       studentNo: '20260001',
+      onboardingCompletedAt: new Date(),
       major: '计算机科学与技术',
       grade: '大二',
       profile: { school: '高校认证', program: 'AI 创客学院 · 计算机科学与技术', level: 1 },
@@ -154,7 +156,7 @@ async function seed() {
   for (const demoStudent of demoStudents.filter((item) => item.username !== 'student')) {
     const saved = await prisma.user.upsert({
       where: { username: demoStudent.username },
-      update: { displayName: demoStudent.displayName, major: demoStudent.major, grade: demoStudent.grade },
+      update: {},
       create: {
         username: demoStudent.username,
         displayName: demoStudent.displayName,
@@ -165,6 +167,7 @@ async function seed() {
         schoolId: school.id,
         departmentId: department.id,
         userType: 'student',
+        onboardingCompletedAt: new Date(),
         profile: { demo: true, school: 'AI 创客学院' },
       },
     })

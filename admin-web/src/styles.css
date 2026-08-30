@@ -264,7 +264,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shad
 .learner-list .panel-heading input { width: 200px; padding: 9px; font-size: 12px; }
 .learner-list > button { display: grid; grid-template-columns: 38px 1fr auto 32px; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px; border: 0; border-bottom: 1px solid #f0eeea; background: #fff; text-align: left; }
 .learner-list > button.selected { background: #fff7f3; }
-.learner-list > button > span, .learner-profile > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; background: #27354b; font-size: 12px; font-weight: 800; }
+.learner-list > button > span:first-child, .learner-profile > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; background: #27354b; font-size: 12px; font-weight: 800; }
 .learner-list > button strong { font-size: 12px; }
 .learner-list > button small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .learner-list > button > i { color: var(--blue); font-size: 12px; font-style: normal; }

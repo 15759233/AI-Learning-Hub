@@ -8,7 +8,7 @@ import AdminStatusTag from '../components/AdminStatusTag.vue'
 import { api } from '../services/api'
 import { usePermissionAction } from '../composables/usePermissionAction'
 
-interface UserRow { id: string; displayName: string; email: string; status: string; lastLoginAt: string | null; createdAt: string; school?: { name: string }; department?: { name: string } }
+import type { AdminUserDto as UserRow } from '@ai-learning-hub/contracts'
 interface GrowthModule { id: string; title: string; description?: string; enabled: boolean; displayLimit?: number; sortOrder?: number }
 interface GrowthRule { id: string; code: string; name: string; description: string; enabled: boolean; _count?: { users: number } }
 interface Growth {
@@ -29,6 +29,7 @@ const modules = ref<GrowthModule[]>([])
 const selected = ref<UserRow | null>(null)
 const growth = ref<Growth | null>(null)
 const keyword = ref('')
+const schoolFilter = ref(''), statusFilter = ref(''), accountError = ref('')
 const canWrite = usePermissionAction('growth.write')
 const rulesOpen = ref(false)
 const createOpen = ref(false)
@@ -50,7 +51,19 @@ const moduleMeta: Record<string, [string, string, string]> = {
   growth_stats: ['成长统计', '积分、连续学习', '▥'],
 }
 const moduleView = (item: GrowthModule) => moduleMeta[item.id] || [item.title, '个人中心展示模块', 'resource']
-const filtered = computed(() => users.value.filter((item) => `${item.displayName}${item.email}`.toLowerCase().includes(keyword.value.toLowerCase())))
+const filtered = computed(() => users.value.filter((item) => `${item.username}${item.displayName}${item.email}${item.school?.name || ''}`.toLowerCase().includes(keyword.value.toLowerCase()) && (!schoolFilter.value || item.school?.id === schoolFilter.value) && (!statusFilter.value || item.status === statusFilter.value)))
+const schoolOptions = computed(() => [...new Map(users.value.filter((u) => u.school).map((u) => [u.school!.id, u.school!])).values()])
+const changeAccount = async (reset = false) => {
+  if (!selected.value || !confirm(reset ? '重置此学生的首次使用引导？' : `确认${selected.value.status === 'active' ? '禁用' : '启用'}此学生账号？`)) return
+  accountError.value = ''
+  try {
+    await api(`/admin/users/${selected.value.id}/${reset ? 'reset-onboarding' : 'status'}`, { method: reset ? 'POST' : 'PATCH', ...(reset ? {} : { body: JSON.stringify({ status: selected.value.status === 'active' ? 'disabled' : 'active' }) }) })
+    users.value = await api<UserRow[]>('/admin/users')
+    selected.value = users.value.find((user) => user.id === selected.value?.id) || null
+    if (selected.value) await loadGrowth(selected.value)
+    ElMessage.success(reset ? '首次引导已重置' : '账号状态已更新，禁用账号会话已撤销')
+  } catch (cause) { accountError.value = cause instanceof Error ? cause.message : '账号操作失败' }
+}
 const loadGrowth = async (user: UserRow) => { selected.value = user; growth.value = await api(`/admin/users/${user.id}/growth`) }
 const toggleModule = async (item: GrowthModule, enabled: boolean) => {
   await api(`/admin/growth/modules/${item.id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) })
@@ -123,7 +136,7 @@ onMounted(async () => {
       <div v-for="item in modules" :key="item.id"><i>{{ moduleView(item)[2] }}</i><strong>{{ moduleView(item)[0] }}<small>{{ moduleView(item)[1] }}</small></strong><el-switch :model-value="item.enabled" :disabled="!canWrite" @change="toggleModule(item, Boolean($event))" /><button type="button" :disabled="!canWrite" @click="openModule(item)">管理</button></div>
     </aside>
     <div class="learner-list">
-      <div class="panel-heading"><div><h2>学习者列表</h2><small>查看与管理学习成长数据与展示内容</small></div><input v-model="keyword" placeholder="搜索用户名、姓名、学号、学校" /><select><option>全部学校</option></select><select><option>全部状态</option></select></div>
+      <div class="panel-heading"><div><h2>学习者列表</h2><small>查看与管理学习成长数据与展示内容</small></div><input v-model="keyword" placeholder="搜索用户名、姓名、学号、学校" /><select v-model="schoolFilter"><option value="">全部学校</option><option v-for="item in schoolOptions" :key="item.id" :value="item.id">{{ item.name }}</option></select><select v-model="statusFilter"><option value="">全部状态</option><option value="active">正常</option><option value="disabled">已禁用</option></select></div>
       <div class="learner-table-head"><span>用户</span><span>学校</span><span>学习记录</span><span>账号状态</span><span>操作</span></div>
       <button v-for="user in filtered" :key="user.id" type="button" :class="{ selected: selected?.id === user.id }" @click="loadGrowth(user)">
         <span>{{ user.displayName.slice(0, 1) }}</span>
@@ -136,6 +149,7 @@ onMounted(async () => {
     </div>
     <aside v-if="growth" class="learner-detail">
       <div class="learner-profile"><span>{{ growth.user.displayName.slice(0, 1) }}</span><div><h2>{{ growth.user.displayName }} <small>等级 —</small></h2><p>{{ growth.user.email }} · ID {{ growth.user.id.slice(-6) }}</p><AdminStatusTag :status="growth.user.status" /></div></div>
+      <section v-if="selected"><h3>账号管理</h3><p>用户名：{{ selected.username }} · 来源：{{ selected.registrationSource }}</p><p>{{ selected.school?.name || '学校未填写' }} · {{ selected.major || '专业未填写' }} · {{ selected.grade || '年级未填写' }}</p><p>最近登录：{{ selected.lastLoginAt ? new Date(selected.lastLoginAt).toLocaleString('zh-CN') : '尚未登录' }}；社区内容 {{ selected.communityPostCount }} 条</p><div v-if="selected.userType === 'student'" class="panel-heading"><button class="admin-secondary" :disabled="!canWrite" @click="changeAccount()">{{ selected.status === 'active' ? '禁用账号' : '启用账号' }}</button><button class="admin-secondary" :disabled="!canWrite" @click="changeAccount(true)">重置首次引导</button></div><p v-if="accountError" role="alert">{{ accountError }}</p></section>
       <h3>学习数据快照</h3>
       <div class="growth-snapshot"><span><i>时</i><b>—</b>学习时长</span><span><i>课</i><b>{{ growth.progress.length }}</b>课时进度</span><span><i>练</i><b>{{ growth.runs.filter((item) => item.status === 'submitted').length }}</b>实训提交</span><span><i>章</i><b>{{ growth.achievements.length }}</b>获得徽章</span><span><i>证</i><b>{{ growth.certificates.length }}</b>证书获得</span></div>
       <h3>获得的徽章 <small>全部（{{ growth.achievements.length }}）</small></h3>

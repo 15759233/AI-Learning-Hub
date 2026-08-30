@@ -8,6 +8,7 @@ export class CommunityVisibilityPolicyService {
   async viewer(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { communityProfile: true, school: true, userRoles: { include: { role: true } } } })
     if (!user || user.status !== 'active') throw new ForbiddenException('账号当前不可使用社区')
+    if (!user.emailVerifiedAt && (user.profile as Record<string, unknown>).emailVerificationRequired) throw new ForbiddenException('请先打开邮件完成邮箱验证')
     return user
   }
   async authorExclusions(userId: string) {

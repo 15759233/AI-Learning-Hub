@@ -7,6 +7,7 @@ PostgreSQL 是 API 模式的唯一正式数据源，Prisma 模型位于 `server/
 | 领域 | 核心表 |
 | --- | --- |
 | 用户、组织与权限 | `users`、`schools`、`departments`、`auth_identities`、`refresh_tokens`、`roles`、`permissions`、`user_roles`、`role_permissions`、`login_logs` |
+| 注册与账号恢复 | `password_reset_tokens`、`email_verification_tokens`、`registration_throttles`；用户表补充邮箱验证、协议、注册来源、引导及用户名修改时间 |
 | 首页运营 | `homepage_modules`、`homepage_module_versions`、`homepage_publications`、`homepage_items` |
 | 主题与路径 | `learning_themes`、`learning_theme_versions`、`learning_paths`、`learning_path_stages`、`learning_path_contents` |
 | 课程 | `courses`、`course_versions`、`course_instructors`、`course_resources`、`course_labs`、`course_chapters`、`course_lessons`、`lesson_blocks` |
@@ -31,6 +32,7 @@ PostgreSQL 是 API 模式的唯一正式数据源，Prisma 模型位于 `server/
 - 文件仅保存元数据、摘要和对象键，不保存二进制。
 - 社区互动复合唯一键保证重复请求幂等；计数与互动关系在同一事务更新，数据库同时约束非负计数、同校范围及举报单一目标。
 - 社区帖子和评论软删除；父评论删除保留回复结构，采纳答案删除后问题恢复未解决。多态内容绑定由统一解析服务验证已发布状态和所有权。
+- 注册相关账号、角色、资料、活动与会话原子写入；验证／重置令牌只保存 SHA-256 哈希、30分钟有效且一次使用。草稿复用 `community_posts.status=draft`，只允许作者管理。
 
 ## 迁移与 Seed
 

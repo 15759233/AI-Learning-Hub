@@ -14,6 +14,8 @@ import { OperationLogInterceptor } from './common/operation-log.interceptor'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   const config = app.get(ConfigService)
+  const trustedProxies = String(config.get('TRUSTED_PROXY_CIDRS') || '').split(',').map((value) => value.trim()).filter(Boolean)
+  if (trustedProxies.length) app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies)
   const origins = (config.get<string>('CORS_ORIGINS') || '').split(',').map((item) => item.trim()).filter(Boolean)
   if (!origins.length) throw new Error('CORS_ORIGINS 不能为空')
 

@@ -457,3 +457,4 @@ export interface GrowthSnapshotDto {
   certificates: unknown[]
 }
 export * from './community'
+export * from './auth'

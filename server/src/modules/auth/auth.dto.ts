@@ -1,12 +1,41 @@
-import { IsEmail, IsString, Length } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator'
+import type { PasswordForgotInput, PasswordResetInput, RegisterInput, RegistrationSettingsDto } from '@ai-learning-hub/contracts'
 
 export class LoginDto {
+  @IsOptional() @IsBoolean() remember = true
   @IsEmail()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value)
   email!: string
 
   @IsString()
   @Length(8, 128)
   password!: string
+}
+
+export class RegisterDto implements RegisterInput {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value) @IsString() @Length(2, 40) displayName!: string
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value) @IsEmail() @Length(3, 254) email!: string
+  @IsString() @Length(8, 128) @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[\s\S]+$/, { message: '密码须同时包含字母和数字' }) password!: string
+  @IsString() @Length(1, 60) agreementVersion!: string
+  @IsOptional() @IsString() @Length(1, 128) inviteCode?: string
+}
+export class ForgotPasswordDto implements PasswordForgotInput {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value) @IsEmail() @Length(3, 254) email!: string
+}
+export class ResetPasswordDto implements PasswordResetInput {
+  @IsString() @Matches(/^[A-Za-z0-9_-]{40,128}$/) token!: string
+  @IsString() @Length(8, 128) @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[\s\S]+$/) password!: string
+}
+export class VerificationDto {
+  @IsString() @Matches(/^[A-Za-z0-9_-]{40,128}$/) token!: string
+}
+export class RegistrationSettingsInput implements RegistrationSettingsDto {
+  @IsIn(['open', 'invite', 'closed']) mode!: RegistrationSettingsDto['mode']
+  @IsBoolean() emailVerification!: boolean
+  @IsString() @Length(1, 60) agreementVersion!: string
+  @IsInt() @Min(8) @Max(72) passwordMinLength!: number
+  @IsBoolean() schoolRequired!: boolean
 }
 
 export class UpdateProfileDto {

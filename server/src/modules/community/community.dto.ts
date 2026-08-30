@@ -2,6 +2,7 @@ import { Type } from 'class-transformer'
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import { CommunityPostType as DatabasePostType } from '@prisma/client'
 import type { CommunityPostInput, CommunityCommentInput, CommunityPostType, CommunityVisibility, CommunityContentBlock, CommunityBindingInput, LearningContentType, CommunityFeedMode, CommunitySignalInput } from '@ai-learning-hub/contracts'
+import type { OnboardingInput, UsernameInput, CommunitySearchType } from '@ai-learning-hub/contracts'
 const communityPostTypes = Object.values(DatabasePostType)
 
 export class BlockDto {
@@ -58,6 +59,21 @@ export class ProfileDto {
 export class InterestsDto {
   @IsArray() @ArrayUnique() @ArrayMaxSize(3) @IsString({ each: true }) themeIds!: string[]
 }
+export class UsernameDto implements UsernameInput {
+  @Matches(/^[a-z][a-z0-9_]{3,29}$/) username!: string
+}
+export class OnboardingDto extends InterestsDto implements OnboardingInput {
+  @IsOptional() @IsString() @MaxLength(100) schoolId?: string
+  @IsString() @MaxLength(100) major!: string
+  @IsString() @MaxLength(40) grade!: string
+  @IsString() @MaxLength(120) headline!: string
+}
+export class SearchDto {
+  @IsString() @MaxLength(120) q = ''
+  @IsIn(['all', 'posts', 'users', 'topics', 'courses', 'labs', 'resources', 'articles']) type: CommunitySearchType = 'all'
+  @IsOptional() @IsString() @MaxLength(2000) cursor?: string
+  @Type(() => Number) @IsInt() @Min(1) @Max(30) limit = 20
+}
 export class TopicDto {
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) @MaxLength(80) slug!: string
   @IsString() @Length(1, 60) name!: string
@@ -85,9 +101,9 @@ export class PolicyDto {
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
 }
 export class SignalDto implements CommunitySignalInput {
-  @IsIn(['community_post_click', 'community_post_expand', 'community_binding_click', 'community_profile_visit', 'community_topic_visit', 'community_to_course', 'community_to_lab', 'community_to_resource', 'community_to_article', 'community_to_challenge']) eventType!: CommunitySignalInput['eventType']
+  @IsIn(['community_post_click', 'community_post_expand', 'community_binding_click', 'community_profile_visit', 'community_topic_visit', 'community_to_course', 'community_to_lab', 'community_to_resource', 'community_to_article', 'community_to_challenge', 'community_search_to_course', 'community_search_to_lab', 'community_search_to_resource', 'community_search_to_article']) eventType!: CommunitySignalInput['eventType']
   @IsString() @Length(1, 100) targetId!: string
-  @IsIn(['post', 'user', 'topic']) targetType!: CommunitySignalInput['targetType']
+  @IsIn(['post', 'user', 'topic', 'course', 'lab', 'resource', 'article']) targetType!: CommunitySignalInput['targetType']
   @IsOptional() @ValidateNested() @Type(() => BindingDto) binding?: BindingDto
   @IsOptional() @IsString() @MaxLength(100) requestId?: string
   @IsOptional() @IsString() @MaxLength(100) sessionId?: string

@@ -11,6 +11,7 @@ export interface LabRunDto {
 }
 
 export const behaviorApi = {
+  enroll: (courseId: string) => request(`/courses/${encodeURIComponent(courseId)}/enroll`, { method: 'POST' }),
   favorites: () => request<Array<{ targetType: FavoriteType; targetId: string }>>('/me/favorites'),
   addFavorite: (targetType: FavoriteType, targetId: string) => request('/favorites', { method: 'POST', body: JSON.stringify({ targetType, targetId }) }),
   removeFavorite: (targetType: FavoriteType, targetId: string) => request(`/favorites/${targetType}/${encodeURIComponent(targetId)}`, { method: 'DELETE' }),

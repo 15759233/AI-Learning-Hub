@@ -3,11 +3,18 @@ import type { CommunityContextDto, CommunityFeedMode, CommunityPostDetailDto, Co
 import { communityApi } from '../services/api/community'
 interface FeedState { items: FeedUnitDto[]; publishedPosts: FeedUnitDto[]; cursor: string | null; loaded: boolean; scroll: number; requestId: string }
 export const useCommunityStore = defineStore('community', {
-  state: () => ({ feeds: {} as Record<string, FeedState>, context: null as CommunityContextDto | null, unread: 0, composerOpen: false, draft: null as CommunityPostInput | null, editingId: undefined as string | undefined, publishNotice: null as { id: string; text: string } | null, error: '', epoch: 0, lastFeedLocation: '/community' }),
+  state: () => ({ feeds: {} as Record<string, FeedState>, context: null as CommunityContextDto | null, unread: 0, composerOpen: false, composerMode: 'quick' as 'quick' | 'advanced', composerInline: false, draft: null as CommunityPostInput | null, editingId: undefined as string | undefined, publishNotice: null as { id: string; text: string } | null, error: '', epoch: 0, lastFeedLocation: '/community' }),
   actions: {
     clear() { const epoch = this.epoch + 1; this.$reset(); this.epoch = epoch },
     openComposer(input?: Partial<CommunityPostInput>, id?: string) {
-      this.draft = { type: 'note', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published', ...input }
+      if (this.composerOpen) {
+        window.dispatchEvent(new CustomEvent('community-composer-focus'))
+        if (input || id) window.dispatchEvent(new CustomEvent('api-error', { detail: { message: '请先保存或关闭当前编辑，再打开其他内容；当前草稿未被覆盖。' } }))
+        return
+      }
+      this.draft = { type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published', ...input }
+      this.composerMode = id ? 'advanced' : 'quick'
+      this.composerInline = typeof location !== 'undefined' && location.pathname === '/community' && typeof matchMedia !== 'undefined' && !matchMedia('(max-width: 767px)').matches && !id
       this.editingId = id; this.publishNotice = null; this.composerOpen = true
     },
     async loadContext() { const epoch = this.epoch; const context = await communityApi.context(); if (epoch === this.epoch) this.context = context },

@@ -1,10 +1,11 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common'
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common'
 import { catchError, from, mergeMap, throwError } from 'rxjs'
 import { PrismaService } from '../prisma/prisma.service'
 import type { AuthRequest } from '../modules/auth/auth.types'
 
 @Injectable()
 export class OperationLogInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(OperationLogInterceptor.name)
   constructor(private readonly prisma: PrismaService) {}
 
   intercept(context: ExecutionContext, next: CallHandler) {
@@ -18,7 +19,7 @@ export class OperationLogInterceptor implements NestInterceptor {
         result,
         requestId: request.id,
       },
-    })
+    }).catch(() => { this.logger.error(JSON.stringify({ event: 'operation_log_write_failed', method: request.method, path: request.path, result, requestId: request.id })); return null })
     return next.handle().pipe(
       mergeMap((value) => from(write('success')).pipe(mergeMap(() => [value]))),
       catchError((error: unknown) => from(write('failed')).pipe(mergeMap(() => throwError(() => error)))),

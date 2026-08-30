@@ -6,6 +6,8 @@ import { Permissions } from '../auth/permissions.decorator'
 import { PermissionsGuard } from '../auth/permissions.guard'
 import { BatchSettingsDto, CreateDepartmentDto, CreateNotificationDto, CreateSchoolDto, UpdateSettingDto } from './settings.dto'
 import { SettingsService } from './settings.service'
+import { RegistrationService } from '../auth/registration.service'
+import { RegistrationSettingsInput } from '../auth/auth.dto'
 
 @Controller('admin/settings')
 @UseGuards(AuthGuard, PermissionsGuard)
@@ -19,7 +21,11 @@ export class SettingsController {
 @Controller('admin')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class SettingsOperationsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly registration: RegistrationService) {}
+  @Get('registration/settings') @Permissions('settings.read')
+  registrationSettings() { return this.registration.configuration() }
+  @Patch('registration/settings') @Permissions('settings.write')
+  updateRegistration(@Body() input: RegistrationSettingsInput) { return this.registration.updateSettings(input) }
   @Get('schools') @Permissions('settings.read')
   schools() { return this.prisma.school.findMany({ include: { departments: { orderBy: { name: 'asc' } }, _count: { select: { users: true } } }, orderBy: { name: 'asc' } }) }
   @Post('schools') @Permissions('settings.write')

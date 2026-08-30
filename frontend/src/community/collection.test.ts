@@ -9,7 +9,7 @@ import { flushRender, setupComponent } from './test-renderer'
 interface CollectionState { profile: CommunityProfileDto | null; topic: CommunityTopicDto | null; tab: string; follow: () => Promise<void> }
 
 const routing = vi.hoisted(() => ({ route: {} as Record<string, unknown> }))
-vi.mock('vue-router', () => ({ useRoute: () => routing.route }))
+vi.mock('vue-router', () => ({ useRoute: () => routing.route, useRouter: () => ({ replace: vi.fn() }) }))
 vi.mock('../stores/auth', () => ({ useAuthStore: () => ({ user: { id: 'viewer' }, dataMode: 'api' }) }))
 vi.mock('../stores/learning', () => ({ useLearningStore: () => ({ notes: {}, favorites: [] }) }))
 vi.mock('./CommunityPostCard.vue', () => ({ default: { render: () => null } }))

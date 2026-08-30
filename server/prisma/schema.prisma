@@ -69,6 +69,14 @@ model User {
   status                    UserStatus                  @default(active)
   profile                   Json                        @default("{}") @map("profile_json")
   lastLoginAt               DateTime?                   @map("last_login_at")
+  emailVerifiedAt           DateTime?                   @map("email_verified_at")
+  agreementVersion          String?                     @map("agreement_version")
+  agreementAcceptedAt       DateTime?                   @map("agreement_accepted_at")
+  registrationSource        String                      @default("legacy") @map("registration_source")
+  onboardingCompletedAt     DateTime?                   @map("onboarding_completed_at")
+  usernameChangedAt         DateTime?                   @map("username_changed_at")
+  passwordResetTokens       PasswordResetToken[]
+  emailVerificationTokens   EmailVerificationToken[]
   createdAt                 DateTime                    @default(now()) @map("created_at")
   updatedAt                 DateTime                    @updatedAt @map("updated_at")
   refreshTokens             RefreshToken[]
@@ -127,6 +135,37 @@ model School {
   users       User[]
 
   @@map("schools")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model RegistrationThrottle {
+  identityKey String   @id @map("identity_key")
+  attempts    Int      @default(1)
+  expiresAt   DateTime @map("expires_at")
+  @@map("registration_throttles")
 }
 
 model Department {

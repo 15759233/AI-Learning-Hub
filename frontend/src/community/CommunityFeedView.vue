@@ -6,6 +6,8 @@ import { useThemesStore } from '../stores/content/themes'
 import { useCommunityStore } from '../stores/community'
 import { communityApi } from '../services/api/community'
 import CommunityPostCard from './CommunityPostCard.vue'
+import CommunityQuickComposer from './CommunityQuickComposer.vue'
+import CommunitySkeleton from './CommunitySkeleton.vue'
 import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import { postLabels } from './labels'
@@ -58,11 +60,12 @@ onMounted(async () => {
 onBeforeUnmount(() => { flushDwell(); if (feed.value) feed.value.scroll = window.scrollY; observer?.disconnect(); impressionObserver?.disconnect(); window.clearInterval(polling) })
 </script>
 <template><section class="community-feed">
+  <CommunityQuickComposer />
+  <CommunitySkeleton v-if="loading && !feed?.items.length" />
   <header class="community-page-heading"><div><span class="eyebrow">学习，让想法发生</span><h1>社区发现</h1><p>遇见一个好问题，开启一次新实践。</p></div><button class="icon-button" aria-label="刷新信息流" @click="load(true)"><AppIcon name="refresh" :size="19" /></button></header>
   <div class="community-feed-tabs" role="tablist" aria-label="信息流模式"><button v-for="[value, label] in [['for_you', '推荐'], ['following', '关注'], ['latest', '最新']]" :key="value" role="tab" :aria-selected="mode === value" @click="change(value as CommunityFeedMode, type)">{{ label }}</button></div>
   <div class="community-filters"><button v-for="[value, label] in [['all', '全部'], ['question', '学习问答'], ['note', '学习笔记'], ['lab_result', '实训成果'], ['project', '创客项目'], ['frontier_discussion', '前沿讨论']]" :key="value" :class="{ active: type === value }" @click="change(mode, value as CommunityPostType | 'all')">{{ label }}</button></div>
   <form class="community-search" @submit.prevent="router.push({ path: '/community/search', query: { q: search } })"><AppIcon name="search" :size="17" /><input v-model="search" aria-label="搜索社区学习内容" placeholder="搜索学习问题、笔记与项目" maxlength="120" /><button class="text-link">搜索</button></form>
-  <section class="community-composer-prompt"><button class="composer-placeholder" @click="store.openComposer()">分享你今天学到的 AI 知识……</button><div><button v-for="[value, label] in [['question', '提出问题'], ['note', '发布笔记'], ['lab_result', '分享实训'], ['project', '展示项目']]" :key="value" @click="store.openComposer({ type: value as CommunityPostType })">{{ label }}</button></div></section>
   <button v-if="newCount" class="community-new-content" @click="load(true)">有 {{ newCount }} 条新内容，点击加载</button>
   <p v-if="store.error" class="community-notice">{{ store.error }}</p>
   <p v-if="error" class="community-error" role="alert">{{ error }} <button class="text-link" @click="load(true)">重试</button></p>

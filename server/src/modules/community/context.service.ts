@@ -1,15 +1,47 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import type { CommunityBindingInput, CommunityBindingContextDto, CommunityContextDto, CommunityProfileDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { ContentReferenceService } from '../../common/content-reference/content-reference.service'
 import { CommunityVisibilityPolicyService } from './visibility.service'
 import { CommunityInteractionService } from './interaction.service'
 import { authorDto, authorInclude } from './community.mapper'
-import type { ProfileDto } from './community.dto'
+import type { OnboardingDto, ProfileDto } from './community.dto'
+import { RegistrationService } from '../auth/registration.service'
+import { authUserDto, authUserInclude } from '../auth/auth.mapper'
+import { Prisma } from '@prisma/client'
 
 @Injectable()
 export class CommunityContextService {
-  constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService, private readonly references: ContentReferenceService, private readonly interactions: CommunityInteractionService) {}
+  constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService, private readonly references: ContentReferenceService, private readonly interactions: CommunityInteractionService, private readonly registration: RegistrationService) {}
+  async byUsername(userId: string, username: string) {
+    const user = await this.prisma.user.findUnique({ where: { username }, select: { id: true } })
+    if (!user) throw new NotFoundException('用户不存在')
+    return this.profile(userId, user.id)
+  }
+  async changeUsername(userId: string, username: string) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username, usernameChangedAt: new Date() } })
+        if (!changed.count) throw new BadRequestException('公开用户名只能修改一次')
+        return authUserDto(await tx.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('此用户名已被使用')
+      throw error
+    }
+  }
+  async onboarding(userId: string, input: OnboardingDto) {
+    const user = await this.visibility.viewer(userId), settings = await this.registration.settings()
+    if (!user.emailVerifiedAt && (user.profile as Record<string, unknown>).emailVerificationRequired) throw new BadRequestException('请先打开邮件完成邮箱验证')
+    if (settings.schoolRequired && !input.schoolId) throw new BadRequestException('请选择学校')
+    if (input.schoolId && !await this.prisma.school.count({ where: { id: input.schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
+    await this.interests(userId, input.themeIds)
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { schoolId: input.schoolId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date() } }),
+      this.prisma.communityProfile.upsert({ where: { userId }, create: { userId, headline: input.headline }, update: { headline: input.headline } }),
+    ])
+    return authUserDto(await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
+  }
   async bindingContext(userId: string, input: CommunityBindingInput): Promise<CommunityBindingContextDto> {
     await this.visibility.viewer(userId)
     const binding = (await this.references.resolveMany([input], userId, true)).get(`${input.type}:${input.id}`)!
@@ -25,7 +57,7 @@ export class CommunityContextService {
   }
   async profile(userId: string, username: string): Promise<CommunityProfileDto> {
     await this.visibility.viewer(userId)
-    const user = await this.prisma.user.findFirst({ where: { OR: [{ id: username }, { username }], status: 'active' }, include: authorInclude })
+    const user = await this.prisma.user.findFirst({ where: { id: username, status: 'active' }, include: authorInclude })
     if (!user || (await this.visibility.authorExclusions(userId)).authors.includes(user.id)) throw new NotFoundException('用户不存在')
     const [topics, following, postCount] = await Promise.all([
       this.topics(user.id),

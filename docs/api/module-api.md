@@ -16,6 +16,10 @@
 | POST | `/auth/wechat/miniapp` | 微信 `code` 换取身份；未配置时返回 503 |
 | POST | `/auth/identities/wechat/bind` | 当前用户绑定微信身份 |
 | GET/PATCH | `/me` | 当前用户资料 |
+| GET | `/auth/registration-config` | 开放／邀请／关闭模式及邮件能力，不返回密钥 |
+| POST | `/auth/register` | 邮箱规范化；同事务创建学生、社区资料、协议、注册事件和会话 |
+| POST | `/auth/password/forgot`、`/auth/password/reset` | 通用找回提示；30分钟、一次性哈希令牌；重置后撤销刷新会话 |
+| POST | `/auth/email/verify` | 验证注册邮箱；启用验证的账号验证后才能进入社区 |
 
 ## 公开内容
 
@@ -53,6 +57,11 @@
 | 通知 | `GET /community/notifications`、`/community/notifications/unread-count`，`POST /community/notifications/:id/read`、`/community/notifications/read-all` |
 | 行为 | `POST /community/signals`、`/community/feed/impressions`、`/community/feed/dwell`，曝光和停留支持批量提交 |
 | 文件 | `POST /community/media`、`GET /community/media/:id/url`，最多四张、每张 5MB 的 PNG/JPEG/WebP |
+| 引导与用户名 | `POST /community/onboarding`、`GET /community/onboarding/schools`、`PATCH /community/profile/username`（只能修改一次） |
+| 草稿 | `GET/POST /community/drafts`、`PATCH/DELETE /community/drafts/:id`；复用动态模型且仅本人可见 |
+| 搜索 | `GET /community/search?q=…&type=all|posts|users|topics|courses|labs|resources|articles&cursor=…` |
+
+用户公开路由使用 `/community/user/:username`，资料入口为 `GET /community/users/by-username/:username`；关注等受保护写操作使用明确的内部用户 ID。快捷发布和高级编辑共用内容块、图片上传、学习关联及发布接口；每分钟最多新发布5条，草稿保存不计入，发布草稿不能绕过限制。
 
 运营入口 `/admin/community` 使用独立 `community.read/write/moderate/topic.manage/report.manage/official.publish/feed.manage` 权限。官方账号发布、内容编辑、审核、认证和策略调整均记录理由。策略只接受命名参数及安全数值范围，禁止任意代码或公式。
 
@@ -66,6 +75,8 @@
 - 数据：`GET /admin/dashboard`、用户成长、排行榜快照、内容统计
 - 文件：`POST /admin/files/upload`；类型、大小、路径和可见性由服务端校验
 - 设置：`GET/PATCH /admin/settings`，支持字符串、数字、布尔和字符串数组；通知发布、登录/操作/审计日志查询
+- 注册：`GET/PATCH /admin/registration/settings`（`settings.read/write`）；禁止通过通用设置绕过注册校验
+- 学生账号：`PATCH /admin/users/:id/status`、`POST /admin/users/:id/reset-onboarding`（`growth.write`），不允许借此修改管理员；禁用后现有会话立即失效
 - 题盒：`GET /admin/integrations/quiz-box/health`
 
 管理端接口要求 Bearer Token，并按领域校验 `read / write / publish` 权限；未认证返回 401，权限不足返回 403。OpenAPI 页面为 `/api/docs`，机器文档为 `/api/docs-json`。

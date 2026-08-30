@@ -7,6 +7,8 @@ import { WechatMiniappService } from '../../integrations/wechat/wechat-miniapp.s
 import { PrismaService } from '../../prisma/prisma.service'
 import type { AuthUser } from './auth.types'
 import { durationMs } from './auth-ttl'
+import { Prisma } from '@prisma/client'
+import { authUserDto, authUserInclude } from './auth.mapper'
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 @Injectable()
@@ -18,30 +20,17 @@ export class AuthService {
     private readonly wechat: WechatMiniappService,
   ) {}
 
-  private userDto(user: {
-    id: string
-    email: string
-    displayName: string
-    userRoles: Array<{ role: { code: string; permissions: Array<{ permission: { code: string } }> } }>
-  }): AuthUser {
-    return {
-      id: user.id,
-      email: user.email,
-      displayName: user.displayName,
-      roles: user.userRoles.map((item) => item.role.code),
-      permissions: [...new Set(user.userRoles.flatMap((item) => item.role.permissions.map((entry) => entry.permission.code)))],
-    }
-  }
-
   async login(email: string, password: string, clientKey: string, ip: string) {
+    email = email.trim().toLowerCase()
     const identityKey = hashToken(clientKey)
     const current = await this.prisma.loginThrottle.findUnique({ where: { identityKey } })
     if (current?.blockedUntil && current.blockedUntil > new Date()) throw new HttpException('登录失败次数过多，请稍后再试', 429)
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: { userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+      include: authUserInclude,
     })
-    if (!user || !user.passwordHash || user.status !== 'active' || !(await compare(password, user.passwordHash))) {
+    const passwordValid = !!user?.passwordHash && await compare(password, user.passwordHash)
+    if (!user || !passwordValid || user.status !== 'active') {
       const failures = (current?.expiresAt && current.expiresAt > new Date() ? current.failures : 0) + 1
       await this.prisma.loginThrottle.upsert({
         where: { identityKey },
@@ -58,16 +47,16 @@ export class AuthService {
         },
       })
       await this.prisma.loginLog.create({ data: { userId: user?.id, email, ipHash: hashToken(ip), result: 'failed' } })
-      throw new UnauthorizedException('账号或密码错误')
+      throw new UnauthorizedException(passwordValid && user?.status !== 'active' ? '账号已禁用，请联系管理员' : '账号或密码错误')
     }
     await this.prisma.loginThrottle.deleteMany({ where: { identityKey } })
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
     await this.prisma.loginLog.create({ data: { userId: user.id, email, ipHash: hashToken(ip), result: 'success' } })
-    const profile = this.userDto(user)
+    const profile = authUserDto(user)
     return { user: profile, ...(await this.createSession(profile)) }
   }
 
-  async createSession(user: AuthUser) {
+  async createSession(user: AuthUser, tx: Prisma.TransactionClient = this.prisma) {
     const accessTtl = this.config.get<string>('ACCESS_TOKEN_TTL') || '15m'
     const accessToken = await this.jwt.signAsync(user, {
       secret: this.config.getOrThrow('JWT_SECRET'),
@@ -75,7 +64,7 @@ export class AuthService {
     })
     const refreshToken = randomBytes(48).toString('base64url')
     const ttl = this.config.get('REFRESH_TOKEN_TTL') || `${this.config.get('REFRESH_TOKEN_DAYS') || '7'}d`
-    await this.prisma.refreshToken.create({
+    await tx.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: hashToken(refreshToken),
@@ -90,17 +79,18 @@ export class AuthService {
       where: { tokenHash: hashToken(refreshToken) },
       include: {
         user: {
-          include: {
-            userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
-          },
+          include: authUserInclude,
         },
       },
     })
     if (!stored || stored.revokedAt || stored.expiresAt <= new Date() || stored.user.status !== 'active') {
       throw new UnauthorizedException('刷新凭据已失效')
     }
-    await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } })
-    return this.createSession(this.userDto(stored.user))
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.refreshToken.updateMany({ where: { id: stored.id, revokedAt: null }, data: { revokedAt: new Date() } })
+      if (!claimed.count) throw new UnauthorizedException('刷新凭据已失效')
+      return this.createSession(authUserDto(stored.user), tx)
+    })
   }
 
   async logout(refreshToken?: string) {
@@ -114,14 +104,13 @@ export class AuthService {
       where: { provider_providerUid: { provider: 'wechat_miniapp', providerUid: external.providerUid } },
       include: {
         user: {
-          include: {
-            userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
-          },
+          include: authUserInclude,
         },
       },
     })
     if (identity) {
-      const profile = this.userDto(identity.user)
+      if (identity.user.status !== 'active') throw new UnauthorizedException('账号已禁用')
+      const profile = authUserDto(identity.user)
       return { user: profile, ...(await this.createSession(profile)) }
     }
     const role = await this.prisma.role.findUnique({ where: { code: 'student' } })
@@ -136,11 +125,9 @@ export class AuthService {
         identities: { create: { provider: 'wechat_miniapp', providerUid: external.providerUid, metadata: external.unionid ? { unionid: external.unionid } : {} } },
         userRoles: { create: { roleId: role.id } },
       },
-      include: {
-        userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
-      },
+      include: authUserInclude,
     })
-    const profile = this.userDto(user)
+    const profile = authUserDto(user)
     return { user: profile, ...(await this.createSession(profile)) }
   }
 

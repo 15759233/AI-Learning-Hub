@@ -9,6 +9,7 @@ interface Envelope<T> {
 }
 
 let refreshPromise: Promise<boolean> | null = null
+export class ApiError extends Error { constructor(message: string, public status: number) { super(message) } }
 export const AUTH_SESSION_CLEARED_EVENT = 'student-auth-session-cleared'
 
 const clearSession = () => {
@@ -20,17 +21,17 @@ const clearSession = () => {
 const refresh = async () => {
   const response = await fetch(`${baseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' })
   if (!response.ok) {
-    clearSession()
-    return false
+    if (response.status === 401) { clearSession(); return false }
+    throw new ApiError('服务暂时不可用，请重新连接', response.status)
   }
   const body = await response.json().catch(() => null) as Envelope<{ accessToken: string }> | null
   if (!body || body.code !== 0 || !body.data.accessToken) {
-    clearSession()
-    return false
+    throw new ApiError('会话响应异常，请重新连接', 502)
   }
   sessionStorage.setItem('student-access-token', body.data.accessToken)
   return true
 }
+export const restoreRefresh = () => refreshPromise ||= refresh().finally(() => { refreshPromise = null })
 
 export async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = sessionStorage.getItem('student-access-token')
@@ -46,13 +47,19 @@ export async function request<T>(path: string, init: RequestInit = {}, retry = t
       },
     })
   } catch {
-    throw new Error('真实 API 当前不可用，未回退到 Mock 数据')
+    throw new ApiError('网络暂时不可用，请重新连接；未回退到 Mock 数据', 0)
   }
   if (response.status === 401 && retry) {
-    refreshPromise ||= refresh().finally(() => { refreshPromise = null })
-    if (await refreshPromise) return request<T>(path, init, false)
+    if (await restoreRefresh()) return request<T>(path, init, false)
   }
   const body = await response.json().catch(() => null) as Envelope<T> | null
-  if (!response.ok || !body || body.code !== 0) throw new Error(body?.message || `请求失败（${response.status}）`)
+  if (!response.ok || !body || body.code !== 0) throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status)
   return body.data
+}
+export async function downloadFile(id: string) {
+  const load = () => fetch(`${baseUrl}/files/${encodeURIComponent(id)}/download`, { credentials: 'include', headers: { authorization: `Bearer ${sessionStorage.getItem('student-access-token') || ''}` } })
+  let response = await load()
+  if (response.status === 401 && await restoreRefresh()) response = await load()
+  if (!response.ok) throw new ApiError(response.status === 403 || response.status === 404 ? '资源不存在或没有下载权限' : '下载暂不可用，请重试', response.status)
+  return response.blob()
 }

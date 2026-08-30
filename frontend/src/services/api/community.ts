@@ -1,6 +1,8 @@
 import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentInput, CommunityContextDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { dataMode, request } from './client'
 import { mockCommunity } from './community.mock'
+import type { AuthUser, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
+const demoImages = new Map<string, File>()
 const call = <T>(path: string, method = 'GET', body?: unknown): Promise<T> => dataMode === 'api'
   ? request<T>(`/community${path}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) })
   : mockCommunity<T>(path, method, body)
@@ -20,7 +22,14 @@ export const communityApi = {
   reaction: (id: string, kind: 'like' | 'useful' | 'bookmark', active: boolean) => call(`/posts/${id}/${kind === 'bookmark' ? 'bookmark' : `reactions/${kind}`}`, active ? 'PUT' : 'DELETE'),
   commentLike: (id: string, active: boolean) => call(`/comments/${id}/like`, active ? 'PUT' : 'DELETE'),
   follow: (id: string, topic: boolean, active: boolean) => call(`/${topic ? 'topics' : 'users'}/${id}/follow`, active ? 'PUT' : 'DELETE'),
-  profile: (id: string) => call<CommunityProfileDto>(`/users/${encodeURIComponent(id)}`),
+  profile: (username: string) => call<CommunityProfileDto>(`/users/by-username/${encodeURIComponent(username)}`),
+  username: (username: string) => call<AuthUser>('/profile/username', 'PATCH', { username }),
+  onboarding: (input: OnboardingInput) => call<AuthUser>('/onboarding', 'POST', input),
+  schools: () => call<Array<{ id: string; name: string }>>('/onboarding/schools'),
+  search: (q: string, type: CommunitySearchType, cursor?: string) => call<CommunitySearchResultDto>(`/search?${new URLSearchParams({ q, type, ...(cursor ? { cursor } : {}) })}`),
+  drafts: () => call<CommunityDraftDto[]>('/drafts'),
+  saveDraft: (input: CommunityPostInput, id?: string) => call<CommunityPostDetailDto>(id ? `/drafts/${id}` : '/drafts', id ? 'PATCH' : 'POST', { ...input, status: 'draft' }),
+  deleteDraft: (id: string) => call(`/drafts/${id}`, 'DELETE'),
   following: (id: string) => call<CommunityAuthorDto[]>(`/users/${encodeURIComponent(id)}/following`),
   updateProfile: (input: Pick<CommunityProfileDto, 'bio' | 'headline' | 'expertiseTopics' | 'allowAchievementDrafts'>) => call<CommunityProfileDto>('/profile', 'PATCH', input),
   topics: () => call<CommunityTopicDto[]>('/topics'),
@@ -34,11 +43,12 @@ export const communityApi = {
   impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
   async upload(file: File) {
     if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !/\.(png|jpe?g|webp)$/i.test(file.name)) throw new Error('请选择不超过 5MB 的 PNG、JPEG 或 WebP 图片')
-    if (dataMode === 'mock') throw new Error('演示模式不伪造文件上传，请切换真实 API 模式')
+    if (dataMode === 'mock') { const id = `demo-image-${crypto.randomUUID()}`; demoImages.set(id, file); return { id } }
     const form = new FormData(); form.append('file', file)
     return request<{ id: string }>('/community/media', { method: 'POST', body: form })
   },
   async image(id: string) {
+    if (dataMode === 'mock') { const file = demoImages.get(id); if (!file) throw new Error('演示图片仅保存在当前浏览器会话'); return URL.createObjectURL(file) }
     const { url } = await call<{ url: string }>(`/media/${id}/url`)
     const source = url.startsWith('/api/') && import.meta.env.VITE_API_BASE_URL?.startsWith('http') ? new URL(url, import.meta.env.VITE_API_BASE_URL).href : url
     const response = await fetch(source, { headers: url.startsWith('/api/') ? { authorization: `Bearer ${sessionStorage.getItem('student-access-token') || ''}` } : {} })

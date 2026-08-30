@@ -16,11 +16,31 @@ import { SignalsService } from '../signals/signals.service'
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.types'
 import { FileAccessService } from '../storage/file-access.service'
 import { BindingDto, CommentDto, CommunityQueryDto, FeedbackDto, FeedUpdatesDto, ImpressionsDto, InterestsDto, PostDto, ProfileDto, ReportDto, SignalDto } from './community.dto'
+import { OnboardingDto, SearchDto, UsernameDto } from './community.dto'
+import { CommunitySearchService } from './search.service'
+import type { CommunityDraftDto, CommunityPostInput } from '@ai-learning-hub/contracts'
 
 @Controller('community')
 @UseGuards(AuthGuard)
 export class CommunityController {
-  constructor(private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly interactions: CommunityInteractionService, private readonly notifications: CommunityNotificationService, private readonly context: CommunityContextService, private readonly feed: LearningFeedPipeline, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService, private readonly prisma: PrismaService, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly files: FileAccessService) {}
+  constructor(private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly interactions: CommunityInteractionService, private readonly notifications: CommunityNotificationService, private readonly context: CommunityContextService, private readonly feed: LearningFeedPipeline, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService, private readonly prisma: PrismaService, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly files: FileAccessService, private readonly searchService: CommunitySearchService) {}
+  @Get('search') search(@CurrentUser() user: AuthUser, @Query() input: SearchDto) { return this.searchService.search(user.id, input) }
+  @Get('onboarding/schools') schools() { return this.prisma.school.findMany({ where: { status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) }
+  @Post('onboarding') onboarding(@CurrentUser() user: AuthUser, @Body() input: OnboardingDto) { return this.context.onboarding(user.id, input) }
+  @Patch('profile/username') username(@CurrentUser() user: AuthUser, @Body() input: UsernameDto) { return this.context.changeUsername(user.id, input.username) }
+  @Get('users/by-username/:username') byUsername(@CurrentUser() user: AuthUser, @Param('username') username: string) { return this.context.byUsername(user.id, username) }
+  @Get('drafts')
+  async drafts(@CurrentUser() user: AuthUser): Promise<CommunityDraftDto[]> {
+    await this.visibility.viewer(user.id)
+    const rows = await this.prisma.communityPost.findMany({ where: { authorId: user.id, status: 'draft', deletedAt: null }, include: { bindings: true, topics: true }, orderBy: { updatedAt: 'desc' }, take: 100 })
+    return rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt.toISOString(), input: { type: row.postType, title: row.title || '', contentBlocks: row.contentBlocks as CommunityPostInput['contentBlocks'], bindings: row.bindings.map((ref) => ({ type: ref.targetType as CommunityPostInput['bindings'][number]['type'], id: ref.targetId })), topicIds: row.topics.map((ref) => ref.topicId), visibility: row.visibility, status: 'draft', ...(row.sourceType ? { sourceType: row.sourceType as CommunityPostInput['sourceType'], sourceId: row.sourceId! } : {}) } }))
+  }
+  @Post('drafts') createDraft(@CurrentUser() user: AuthUser, @Body() input: PostDto) { return this.posts.save(user.id, { ...input, status: 'draft' }) }
+  private async ownDraft(userId: string, id: string) {
+    if (!await this.prisma.communityPost.count({ where: { id, authorId: userId, status: 'draft', deletedAt: null } })) throw new BadRequestException('草稿不存在或无权操作')
+  }
+  @Patch('drafts/:id') async updateDraft(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto) { await this.ownDraft(user.id, id); return this.posts.save(user.id, { ...input, status: 'draft' }, id) }
+  @Delete('drafts/:id') async deleteDraft(@CurrentUser() user: AuthUser, @Param('id') id: string) { await this.ownDraft(user.id, id); return this.posts.remove(user.id, id) }
   @Get('feed') getFeed(@CurrentUser() user: AuthUser, @Query() query: CommunityQueryDto) { return this.feed.feed(user.id, query) }
   @Get('feed/updates') async updates(@CurrentUser() user: AuthUser, @Query() input: FeedUpdatesDto) {
     const following = input.mode === 'following' ? await this.prisma.communityUserFollow.findMany({ where: { followerId: user.id }, select: { followeeId: true } }) : []
@@ -34,7 +54,12 @@ export class CommunityController {
   @Post('signals') async signal(@CurrentUser() user: AuthUser, @Body() input: SignalDto) {
     await this.visibility.viewer(user.id)
     let payload: Record<string, unknown> = {}
-    if (input.targetType === 'post') {
+    if (['course', 'lab', 'resource', 'article'].includes(input.targetType)) {
+      if (input.eventType !== `community_search_to_${input.targetType}`) throw new BadRequestException('搜索转化事件与学习内容不匹配')
+      const binding = await this.context.bindingContext(user.id, { type: input.targetType as 'course' | 'lab' | 'resource' | 'article', id: input.targetId })
+      payload = { bindingKeys: [`${binding.binding.type}:${binding.binding.id}`] }
+    } else if (input.eventType.startsWith('community_search_to_')) throw new BadRequestException('搜索事件必须指向学习内容')
+    else if (input.targetType === 'post') {
       const post = await this.posts.detail(user.id, input.targetId, false)
       const bindings = post.bindings.filter((ref) => ref.status !== 'unavailable' && ref.route)
       if (input.binding && !bindings.some((ref) => ref.type === input.binding!.type && ref.id === input.binding!.id)) throw new BadRequestException('学习行动与动态关联不匹配')
