@@ -7,7 +7,7 @@ import {
   type PublicHomepageDto,
 } from '@ai-learning-hub/contracts'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import HomepageRenderer from '../homepage/HomepageRenderer.vue'
+import LandingRenderer from '../landing/LandingRenderer.vue'
 import HomepageSkeleton from '../homepage/HomepageSkeleton.vue'
 
 const homepage = ref<PublicHomepageDto | null>(null)
@@ -56,8 +56,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-container home-page">
-    <HomepageRenderer v-if="homepage" :homepage="homepage" />
+  <div class="landing-preview">
+    <LandingRenderer v-if="homepage" :homepage="homepage" preview />
     <HomepageSkeleton v-else />
   </div>
 </template>

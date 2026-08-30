@@ -379,11 +379,11 @@ export const HOMEPAGE_MODULE_REGISTRY = {
   bottom_action: { label: '底部行动', layout: 'action' },
 } as const
 
-export type HomepageModuleKey = keyof typeof HOMEPAGE_MODULE_REGISTRY
+export type HomepageModuleKey = keyof typeof HOMEPAGE_MODULE_REGISTRY | import('./landing').LandingModuleKey
 export const HOMEPAGE_MODULE_KEYS = Object.keys(HOMEPAGE_MODULE_REGISTRY) as HomepageModuleKey[]
 
 export interface HomepageResolvedItemDto {
-  targetType: 'theme' | 'course' | 'lab' | 'resource' | 'article' | 'challenge'
+  targetType: 'theme' | 'course' | 'lab' | 'resource' | 'article' | 'challenge' | 'community_post' | 'community_topic' | 'community_user'
   slug: string
   title: string
   summary: string
@@ -400,6 +400,8 @@ export interface PublicHomepageModuleDto {
 }
 
 export interface PublicHomepageDto {
+  pageMode?: 'community_landing_v1'
+  community?: { members: number; creators: import('./landing').LandingPublicAuthor[] }
   version: number
   updatedAt: string
   modules: PublicHomepageModuleDto[]
@@ -435,6 +437,8 @@ export interface DashboardTrendPoint {
 }
 
 export interface DashboardDto {
+  community: { todayPosts: number; activeUsers: number; unanswered: number; pendingReports: number }
+  learning: { publishedCourses: number; publishedLabs: number; publishedResources: number; activeChallenges: number }
   kpis: {
     users: DashboardMetricDto
     activeUsers: DashboardMetricDto
@@ -458,3 +462,4 @@ export interface GrowthSnapshotDto {
 }
 export * from './community'
 export * from './auth'
+export * from './landing'

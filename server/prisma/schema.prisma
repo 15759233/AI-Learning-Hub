@@ -310,6 +310,8 @@ model HomepageItem {
   targetType    String         @map("target_type")
   targetId      String         @map("target_id")
   titleOverride String?        @map("title_override")
+  summaryOverride String?      @map("summary_override")
+  coverOverride String?        @map("cover_override")
   sortOrder     Int            @default(0) @map("sort_order")
   enabled       Boolean        @default(true)
   module        HomepageModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)

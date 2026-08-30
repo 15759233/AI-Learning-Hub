@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type Prisma } from '@prisma/client'
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import { LANDING_DEFAULT_CONFIG, LANDING_MODULE_KEYS, type PublicHomepageDto } from '@ai-learning-hub/contracts'
+import { upgradeLanding } from '../src/modules/homepage/upgrade-landing'
 
 const base = process.env.E2E_BASE_URL
 const adminEmail = process.env.E2E_ADMIN_EMAIL
@@ -40,6 +42,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
   let heroModuleId = ''
   let homepageItemId = ''
   let homepageThemeItemId = ''
+  let displacedHeroItems: Array<{ targetType: string; targetId: string; titleOverride?: string; summaryOverride?: string; coverOverride?: string; sortOrder: number }> = []
   let notificationId = ''
   const suffix = Date.now()
   const slug = `e2ecourse${suffix}`
@@ -188,11 +191,13 @@ describe('真实 PostgreSQL 数据闭环', () => {
     await call(`/admin/themes/${themeId}/publish`, { method: 'POST' }, adminToken)
     expect((await call<{ title: string }>(`/themes/e2e-theme-${suffix}`)).title).toBe('主题未发布新标题')
 
-    const modules = await call<Array<{ id: string; moduleKey: string; config: Record<string, unknown> }>>('/admin/homepage/modules', {}, adminToken)
-    const hero = modules.find((item) => item.moduleKey === 'hero_banner')
+    const modules = await call<Array<{ id: string; moduleKey: string; config: Record<string, unknown>; items: Array<{ id: string; targetType: string; targetId: string; titleOverride?: string; summaryOverride?: string; coverOverride?: string; sortOrder: number }> }>>('/admin/homepage/modules', {}, adminToken)
+    const hero = modules.find((item) => item.moduleKey === 'landing_hero')
     expect(hero).toBeTruthy()
-    originalHeroTitle = String(hero?.config.title || '')
+    originalHeroTitle = String(hero?.config.titleFirst || '')
     heroModuleId = String(hero?.id || '')
+    displacedHeroItems = hero!.items.slice(-2).map(({ targetType, targetId, titleOverride, summaryOverride, coverOverride, sortOrder }) => ({ targetType, targetId, titleOverride, summaryOverride, coverOverride, sortOrder }))
+    for (const item of hero!.items.slice(-2)) await call(`/admin/homepage/modules/${heroModuleId}/items/${item.id}`, { method: 'DELETE' }, adminToken)
     const homepageItem = await call<{ id: string }>(`/admin/homepage/modules/${heroModuleId}/items`, {
       method: 'POST',
       body: JSON.stringify({ targetType: 'course', targetId: courseId, sortOrder: 1 }),
@@ -200,7 +205,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
     homepageItemId = homepageItem.id
     const homepageThemeItem = await call<{ id: string }>(`/admin/homepage/modules/${heroModuleId}/items`, {
       method: 'POST',
-      body: JSON.stringify({ targetType: 'theme', targetId: themeId, sortOrder: 2 }),
+      body: JSON.stringify({ targetType: 'course', targetId: 'llm-zero', sortOrder: 2 }),
     }, adminToken)
     homepageThemeItemId = homepageThemeItem.id
     const reorderedModules = await call<Array<{ id: string; items: Array<{ id: string }> }>>(`/admin/homepage/modules/${heroModuleId}/items/reorder`, {
@@ -216,19 +221,19 @@ describe('真实 PostgreSQL 数据闭环', () => {
     expect(createdItemOrder).toEqual([homepageThemeItemId, homepageItemId])
     await call(`/admin/homepage/modules/${hero?.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ config: { ...hero?.config, title: '端到端首页发布标题' } }),
+      body: JSON.stringify({ config: { ...hero?.config, titleFirst: '端到端首页发布标题' } }),
     }, adminToken)
     await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
     const homepage = await call<{ modules: Array<{ moduleKey: string; config: Record<string, unknown>; items: unknown[] }> }>('/public/homepage')
-    const publicHero = homepage.modules.find((item) => item.moduleKey === 'hero_banner')
-    expect(publicHero?.config.title).toBe('端到端首页发布标题')
+    const publicHero = homepage.modules.find((item) => item.moduleKey === 'landing_hero')
+    expect(publicHero?.config.titleFirst).toBe('端到端首页发布标题')
     expect(publicHero?.items.length).toBeGreaterThan(0)
-    await call(`/admin/homepage/modules/${heroModuleId}`, { method: 'PATCH', body: JSON.stringify({ config: { ...hero?.config, title: '尚未发布的首页标题' } }) }, adminToken)
+    await call(`/admin/homepage/modules/${heroModuleId}`, { method: 'PATCH', body: JSON.stringify({ config: { ...hero?.config, titleFirst: '尚未发布的首页标题' } }) }, adminToken)
     const unchanged = await call<{ modules: Array<{ moduleKey: string; config: Record<string, unknown> }> }>('/public/homepage')
-    expect(unchanged.modules.find((item) => item.moduleKey === 'hero_banner')?.config.title).toBe('端到端首页发布标题')
+    expect(unchanged.modules.find((item) => item.moduleKey === 'landing_hero')?.config.titleFirst).toBe('端到端首页发布标题')
     await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
     const republished = await call<{ modules: Array<{ moduleKey: string; config: Record<string, unknown> }> }>('/public/homepage')
-    expect(republished.modules.find((item) => item.moduleKey === 'hero_banner')?.config.title).toBe('尚未发布的首页标题')
+    expect(republished.modules.find((item) => item.moduleKey === 'landing_hero')?.config.titleFirst).toBe('尚未发布的首页标题')
   })
 
   it('实训步骤由后台发布并形成服务端运行记录', async () => {
@@ -448,14 +453,16 @@ describe('真实 PostgreSQL 数据闭环', () => {
 
   it('清理创建内容并验证公开接口不再返回', async () => {
     const modules = await call<Array<{ id: string; moduleKey: string; config: Record<string, unknown> }>>('/admin/homepage/modules', {}, adminToken)
-    const hero = modules.find((item) => item.moduleKey === 'hero_banner')
-    await call(`/admin/homepage/modules/${hero?.id}`, { method: 'PATCH', body: JSON.stringify({ config: { ...hero?.config, title: originalHeroTitle } }) }, adminToken)
+    const hero = modules.find((item) => item.moduleKey === 'landing_hero')
+    await call(`/admin/homepage/modules/${hero?.id}`, { method: 'PATCH', body: JSON.stringify({ config: { ...hero?.config, titleFirst: originalHeroTitle } }) }, adminToken)
     await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
     await call(`/admin/courses/${courseId}/archive`, { method: 'POST' }, adminToken)
-    const homepage = await call<{ modules: Array<{ moduleKey: string; items: Array<{ id: string }> }> }>('/public/homepage')
-    expect(homepage.modules.find((item) => item.moduleKey === 'hero_banner')?.items.some((item) => item.id === homepageItemId)).toBe(false)
+    const homepage = await call<PublicHomepageDto>('/public/homepage')
+    expect(homepage.modules.find((item) => item.moduleKey === 'landing_hero')?.items.some((item) => item.slug === slug)).toBe(false)
     await call(`/admin/homepage/modules/${heroModuleId}/items/${homepageItemId}`, { method: 'DELETE' }, adminToken)
     await call(`/admin/homepage/modules/${heroModuleId}/items/${homepageThemeItemId}`, { method: 'DELETE' }, adminToken)
+    for (const item of displacedHeroItems) await call(`/admin/homepage/modules/${heroModuleId}/items`, { method: 'POST', body: JSON.stringify(Object.fromEntries(Object.entries(item).filter(([, value]) => value !== null))) }, adminToken)
+    await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
     await call(`/admin/themes/${themeId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/labs/${labId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/resources/${resourceId}/archive`, { method: 'POST' }, adminToken)
@@ -488,20 +495,174 @@ describe('真实 PostgreSQL 数据闭环', () => {
       const countAfterFirst = await prisma.homepagePublication.count()
       const firstPublic = await call<{ version: number; modules: unknown[] }>('/public/homepage')
       expect(first?.version).toBe(legacyVersion + 1)
-      expect(Array.isArray(first?.snapshot) ? first.snapshot : []).toHaveLength(12)
+      expect(Array.isArray(first?.snapshot) ? first.snapshot : []).toHaveLength(17)
       expect(firstPublic).toMatchObject({ version: legacyVersion + 1 })
-      expect(firstPublic.modules).toHaveLength(12)
+      expect(firstPublic.modules).toHaveLength(5)
 
       runSeed()
       const second = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
       const secondPublic = await call<{ version: number; modules: unknown[] }>('/public/homepage')
       expect(second?.version).toBe(first?.version)
       expect(await prisma.homepagePublication.count()).toBe(countAfterFirst)
-      expect(Array.isArray(second?.snapshot) ? second.snapshot : []).toHaveLength(12)
+      expect(Array.isArray(second?.snapshot) ? second.snapshot : []).toHaveLength(17)
       expect(secondPublic).toMatchObject({ version: legacyVersion + 1 })
-      expect(secondPublic.modules).toHaveLength(12)
+      expect(secondPublic.modules).toHaveLength(5)
     } finally {
       await prisma.$disconnect()
+    }
+  })
+
+  it('落地页服务端固定五区域、六能力与推荐上限，拒绝旧自由搭建和外链', async () => {
+    const modules = await call<Array<{ id: string; moduleKey: typeof LANDING_MODULE_KEYS[number]; config: Record<string, unknown>; items: unknown[] }>>('/admin/homepage/modules', {}, adminToken)
+    expect(modules.map((item) => item.moduleKey)).toEqual(LANDING_MODULE_KEYS)
+    const rejected = async (path: string, method: string, input: unknown) => (await fetch(`${base}${path}`, { method, headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }, body: JSON.stringify(input) })).status
+    expect(await rejected('/admin/homepage/modules', 'POST', { moduleKey: 'hero_banner', moduleName: '旧自由模块' })).toBe(400)
+    expect(await rejected('/admin/homepage/modules/reorder', 'PUT', { items: modules.map((item, index) => ({ id: item.id, sortOrder: 4 - index })) })).toBe(400)
+    const hero = modules[0], abilities = modules[1]
+    expect(await rejected(`/admin/homepage/modules/${hero.id}`, 'PATCH', { enabled: false })).toBe(400)
+    expect(await rejected(`/admin/homepage/modules/${hero.id}`, 'PATCH', { config: { ...hero.config, image: 'https://unsafe.example/a.svg' } })).toBe(400)
+    expect(await rejected(`/admin/homepage/modules/${hero.id}`, 'PATCH', { config: { ...hero.config, constructor: 'unexpected' } })).toBe(400)
+    expect(await rejected(`/admin/homepage/modules/${abilities.id}`, 'PATCH', { config: { ...abilities.config, items: LANDING_DEFAULT_CONFIG.landing_capabilities.items.slice(0, 5) } })).toBe(400)
+    expect(await rejected(`/admin/homepage/modules/${hero.id}/items`, 'POST', { targetType: 'theme', targetId: 'llm' })).toBe(400)
+    expect(await rejected(`/admin/homepage/modules/${hero.id}/items`, 'POST', { targetType: 'course', targetId: 'llm-zero' })).toBe(400)
+    const page = await call<PublicHomepageDto>('/public/homepage')
+    expect(page.pageMode).toBe('community_landing_v1')
+    expect(page.modules.map((item) => item.moduleKey)).toEqual(LANDING_MODULE_KEYS)
+  })
+
+  it('落地页公开关联实时过滤撤回内容、停用作者、私有资源，覆盖字段只随发布生效', async () => {
+    const prisma = new PrismaClient()
+    const modules = await call<Array<{ id: string; moduleKey: string; items: Array<{ id: string; targetType: string; targetId: string; sortOrder: number }> }>>('/admin/homepage/modules', {}, adminToken)
+    const featured = modules.find((item) => item.moduleKey === 'landing_featured')!
+    const postItem = featured.items.find((item) => item.targetType === 'community_post')!
+    const row = await prisma.communityPost.findUniqueOrThrow({ where: { id: postItem.targetId } })
+    const owner = await prisma.user.findUniqueOrThrow({ where: { id: row.authorId } })
+    const containsPost = async () => (await call<PublicHomepageDto>('/public/homepage')).modules.flatMap((module) => module.items).some((item) => item.targetType === 'community_post' && item.slug === row.id)
+    try {
+      expect(await containsPost()).toBe(true)
+      const raw = JSON.stringify(await call('/public/homepage'))
+      for (const field of ['passwordHash', 'email', 'phone', 'userRoles', 'permissions', 'contentBlocks', 'schoolId']) expect(raw).not.toContain(`"${field}"`)
+      const override = { targetType: postItem.targetType, targetId: postItem.targetId, sortOrder: postItem.sortOrder, titleOverride: '落地页覆盖标题', summaryOverride: '落地页覆盖摘要', coverOverride: 'robotCar' }
+      await call(`/admin/homepage/modules/${featured.id}/items/${postItem.id}`, { method: 'PATCH', body: JSON.stringify(override) }, adminToken)
+      expect(JSON.stringify(await call('/public/homepage'))).not.toContain('落地页覆盖标题')
+      const preview = await call<PublicHomepageDto>('/admin/homepage/preview', {}, adminToken)
+      expect(preview.modules.flatMap((module) => module.items).find((item) => item.slug === row.id && item.title === '落地页覆盖标题')).toMatchObject({ summary: '落地页覆盖摘要', data: { cover: 'robotCar' } })
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      expect(JSON.stringify(await call('/public/homepage'))).toContain('落地页覆盖标题')
+      for (const mutation of [{ status: 'hidden' as const }, { status: 'published' as const, visibility: 'school' as const }, { visibility: 'public' as const, deletedAt: new Date() }]) {
+        await prisma.communityPost.update({ where: { id: row.id }, data: mutation })
+        expect(await containsPost()).toBe(false)
+        expect(JSON.stringify(await call('/public/homepage'))).not.toContain('落地页覆盖标题')
+      }
+      await prisma.communityPost.update({ where: { id: row.id }, data: { status: row.status, visibility: row.visibility, deletedAt: row.deletedAt } })
+      await prisma.user.update({ where: { id: owner.id }, data: { status: 'disabled' } })
+      expect(await containsPost()).toBe(false)
+      const admin = await call<Array<{ items: Array<{ id: string; relationValid: boolean }> }>>('/admin/homepage/modules', {}, adminToken)
+      expect(admin.flatMap((module) => module.items).find((item) => item.id === postItem.id)?.relationValid).toBe(false)
+    } finally {
+      await prisma.communityPost.update({ where: { id: row.id }, data: { status: row.status, visibility: row.visibility, deletedAt: row.deletedAt } })
+      await prisma.user.update({ where: { id: owner.id }, data: { status: owner.status } })
+      await prisma.$disconnect()
+    }
+    const db = new PrismaClient()
+    const hero = modules[0], removable = hero.items.at(-1)!
+    const resource = await db.resource.findFirstOrThrow({ where: { status: 'published', visibility: 'public', deletedAt: null, id: { notIn: hero.items.map((item) => item.targetId) }, slug: { notIn: hero.items.map((item) => item.targetId) } }, include: { publishedVersion: true } })
+    await call(`/admin/homepage/modules/${hero.id}/items/${removable.id}`, { method: 'DELETE' }, adminToken)
+    let relationId = '', privateVersionId = ''
+    try {
+      await db.resource.update({ where: { id: resource.id }, data: { visibility: 'authenticated' } })
+      const request = () => fetch(`${base}/admin/homepage/modules/${hero.id}/items`, { method: 'POST', headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ targetType: 'resource', targetId: resource.id, sortOrder: 4 }) })
+      expect((await request()).status).toBe(400)
+      await db.resource.update({ where: { id: resource.id }, data: { visibility: 'public' } })
+      const added = await call<{ id: string }>(`/admin/homepage/modules/${hero.id}/items`, { method: 'POST', body: JSON.stringify({ targetType: 'resource', targetId: resource.id, sortOrder: 4 }) }, adminToken)
+      relationId = added.id
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      await db.resource.update({ where: { id: resource.id }, data: { visibility: 'authenticated' } })
+      expect((await call<PublicHomepageDto>('/public/homepage')).modules.flatMap((module) => module.items).some((item) => item.targetType === 'resource' && item.slug === resource.slug)).toBe(false)
+      const lastVersion = await db.resourceVersion.findFirstOrThrow({ where: { resourceId: resource.id }, orderBy: { versionNo: 'desc' } })
+      const privateVersion = await db.resourceVersion.create({ data: { resourceId: resource.id, versionNo: lastVersion.versionNo + 1, snapshot: { ...(resource.publishedVersion!.snapshot as Prisma.InputJsonObject), visibility: 'authenticated' } } })
+      privateVersionId = privateVersion.id
+      await db.resource.update({ where: { id: resource.id }, data: { visibility: 'public', publishedVersionId: privateVersion.id } })
+      expect((await request()).status).toBe(400)
+      expect((await call<PublicHomepageDto>('/public/homepage')).modules.flatMap((module) => module.items).some((item) => item.targetType === 'resource' && item.slug === resource.slug)).toBe(false)
+    } finally {
+      await db.resource.update({ where: { id: resource.id }, data: { visibility: resource.visibility, publishedVersionId: resource.publishedVersionId } })
+      if (privateVersionId) await db.resourceVersion.delete({ where: { id: privateVersionId } })
+      if (relationId) await call(`/admin/homepage/modules/${hero.id}/items/${relationId}`, { method: 'DELETE' }, adminToken)
+      await call(`/admin/homepage/modules/${hero.id}/items`, { method: 'POST', body: JSON.stringify({ targetType: removable.targetType, targetId: removable.targetId, sortOrder: removable.sortOrder }) }, adminToken)
+      await db.$disconnect()
+    }
+  })
+
+  it('窄升级重复执行零写，旧模块与回滚兼容快照保持完整', async () => {
+    const prisma = new PrismaClient()
+    try {
+      const old = await prisma.homepageModule.findMany({ where: { moduleKey: { notIn: [...LANDING_MODULE_KEYS] } }, include: { items: true, versions: true }, orderBy: { id: 'asc' } })
+      const before = await prisma.homepagePublication.count()
+      expect((await upgradeLanding(prisma)).changed).toBe(false)
+      expect((await upgradeLanding(prisma)).changed).toBe(false)
+      expect(await prisma.homepagePublication.count()).toBe(before)
+      expect(await prisma.homepageModule.findMany({ where: { moduleKey: { notIn: [...LANDING_MODULE_KEYS] } }, include: { items: true, versions: true }, orderBy: { id: 'asc' } })).toEqual(old)
+      expect(old).toHaveLength(12)
+      const latest = await prisma.homepagePublication.findFirstOrThrow({ orderBy: { version: 'desc' } })
+      expect(latest.snapshot).toHaveLength(17)
+    } finally { await prisma.$disconnect() }
+  })
+
+  it('话题停用与创作者禁用后公共投影即时消失，配置数量在服务端约束', async () => {
+    const db = new PrismaClient()
+    const modules = await call<Array<{ id: string; moduleKey: string; items: Array<{ id: string; targetType: string; targetId: string }> }>>('/admin/homepage/modules', {}, adminToken)
+    const overview = modules.find((module) => module.moduleKey === 'landing_community_overview')!
+    const topicItem = overview.items.find((item) => item.targetType === 'community_topic')!
+    const creatorItem = overview.items.find((item) => item.targetType === 'community_user')!
+    const topic = await db.communityTopic.findUniqueOrThrow({ where: { id: topicItem.targetId } })
+    const user = await db.user.findUniqueOrThrow({ where: { id: creatorItem.targetId } })
+    try {
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      await db.communityTopic.update({ where: { id: topic.id }, data: { status: 'disabled' } })
+      await db.user.update({ where: { id: user.id }, data: { status: 'disabled' } })
+      const page = await call<PublicHomepageDto>('/public/homepage')
+      expect(page.modules.flatMap((module) => module.items).some((item) => item.targetType === 'community_topic' && item.slug === topic.slug)).toBe(false)
+      expect(page.community?.creators.some((creator) => creator.id === user.id)).toBe(false)
+      const states = await call<Array<{ items: Array<{ id: string; relationValid: boolean }> }>>('/admin/homepage/modules', {}, adminToken)
+      expect(states.flatMap((module) => module.items).filter((item) => [topicItem.id, creatorItem.id].includes(item.id)).every((item) => item.relationValid === false)).toBe(true)
+      const extraTopic = await db.communityTopic.findFirstOrThrow({ where: { status: 'active', id: { notIn: overview.items.map((item) => item.targetId) } } })
+      const response = await fetch(`${base}/admin/homepage/modules/${overview.id}/items`, { method: 'POST', headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ targetType: 'community_topic', targetId: extraTopic.id }) })
+      expect(response.status).toBe(400)
+    } finally {
+      await db.communityTopic.update({ where: { id: topic.id }, data: { status: topic.status } })
+      await db.user.update({ where: { id: user.id }, data: { status: user.status } })
+      await db.$disconnect()
+    }
+  })
+
+  it('并发添加最后一个推荐位仅成功一次，草稿版本与发布原子一致', async () => {
+    const db = new PrismaClient()
+    const hero = await db.homepageModule.findUniqueOrThrow({ where: { moduleKey: 'landing_hero' }, include: { items: { orderBy: { sortOrder: 'asc' } } } })
+    const displaced = hero.items.at(-1)!
+    const candidates = await db.course.findMany({ where: { status: 'published', deletedAt: null, id: { notIn: hero.items.map((item) => item.targetId) } }, take: 2 })
+    expect(candidates).toHaveLength(2)
+    const addedIds: string[] = []
+    try {
+      await call(`/admin/homepage/modules/${hero.id}/items/${displaced.id}`, { method: 'DELETE' }, adminToken)
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      const versions = await db.homepageModuleVersion.count({ where: { moduleId: hero.id } })
+      const responses = await Promise.all(candidates.map((course) => fetch(`${base}/admin/homepage/modules/${hero.id}/items`, { method: 'POST', headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ targetType: 'course', targetId: course.id, sortOrder: 4 }) })))
+      for (const response of responses) if (response.ok) addedIds.push(((await response.json()) as Envelope<{ id: string }>).data.id)
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 400])
+      expect(await db.homepageItem.count({ where: { moduleId: hero.id } })).toBe(5)
+      expect(await db.homepageModuleVersion.count({ where: { moduleId: hero.id } })).toBe(versions + 1)
+      const latest = await db.homepageModule.findUniqueOrThrow({ where: { id: hero.id }, include: { currentDraftVersion: true } })
+      expect((latest.currentDraftVersion!.snapshot as { items: unknown[] }).items).toHaveLength(5)
+      expect(latest.currentDraftVersionId).not.toBe(latest.publishedVersionId)
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      expect((await call<PublicHomepageDto>('/public/homepage')).modules[0].items).toHaveLength(5)
+    } finally {
+      for (const id of addedIds) await call(`/admin/homepage/modules/${hero.id}/items/${id}`, { method: 'DELETE' }, adminToken)
+      const { targetType, targetId, titleOverride, summaryOverride, coverOverride, sortOrder } = displaced
+      await call(`/admin/homepage/modules/${hero.id}/items`, { method: 'POST', body: JSON.stringify(Object.fromEntries(Object.entries({ targetType, targetId, titleOverride, summaryOverride, coverOverride, sortOrder }).filter(([, value]) => value !== null))) }, adminToken)
+      await call('/admin/homepage/publish', { method: 'POST' }, adminToken)
+      await db.$disconnect()
     }
   })
 })

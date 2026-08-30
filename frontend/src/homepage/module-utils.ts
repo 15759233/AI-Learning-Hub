@@ -27,4 +27,7 @@ export const itemPath = (item: HomepageResolvedItemDto) => ({
   resource: `/resources?preview=${item.slug}`,
   article: `/frontier?article=${item.slug}`,
   challenge: '/assessments',
+  community_post: `/community/post/${item.slug}`,
+  community_topic: `/community/topic/${item.slug}`,
+  community_user: `/community/user/${item.slug}`,
 }[item.targetType])

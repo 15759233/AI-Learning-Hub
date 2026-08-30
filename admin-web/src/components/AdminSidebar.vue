@@ -2,22 +2,10 @@
 import { computed } from 'vue'
 import { useSessionStore } from '../stores/session'
 import AdminIcon from './AdminIcon.vue'
+import { visibleAdminNavigation } from '../navigation'
 
 const session = useSessionStore()
-const nav = [
-  ['dashboard', '数据看板', '/dashboard', 'dashboard.read'],
-  ['article', '社区运营', '/community', 'community.read'],
-  ['homepage', '门户首页', '/homepage', 'homepage.read'],
-  ['theme', '学习主题', '/themes', 'theme.read'],
-  ['course', '课程内容', '/courses', 'course.read'],
-  ['lab', '实训项目', '/labs', 'lab.read'],
-  ['resource', '资源中心', '/resources', 'resource.read'],
-  ['article', 'AI 前沿', '/articles', 'article.read'],
-  ['challenge', '挑战测评', '/challenges', 'challenge.read'],
-  ['growth-user', '用户成长', '/growth', 'growth.read'],
-  ['settings', '系统设置', '/settings', 'settings.read'],
-]
-const visibleNav = computed(() => nav.filter((item) => session.user?.permissions.includes(item[3])))
+const groups = computed(() => visibleAdminNavigation(session.user?.permissions || []))
 </script>
 
 <template>
@@ -27,8 +15,9 @@ const visibleNav = computed(() => nav.filter((item) => session.user?.permissions
       <strong>AI数智化学习平台<small>统一学习与运营管理后台</small></strong>
     </RouterLink>
     <nav aria-label="管理导航">
-      <RouterLink v-for="[icon, label, path] in visibleNav" :key="path" :to="path"><i><AdminIcon :name="icon" :size="19" /></i><span>{{ label }}</span></RouterLink>
+      <section v-for="group in groups" :key="group.label" class="admin-nav-group"><h2>{{ group.label }}</h2><RouterLink v-for="[icon, label, path] in group.items" :key="path" :to="path"><i><AdminIcon :name="icon" :size="19" /></i><span>{{ label }}</span></RouterLink></section>
     </nav>
     <div class="sidebar-note"><span><AdminIcon name="lab" :size="22" /></span><strong>平台持续演进</strong><small>统一数据，稳定发布</small></div>
   </aside>
 </template>
+<style scoped>.admin-nav-group h2 { font-size: 10px; font-weight: 500; color: #8e8a86; margin: 9px 12px 3px; }.admin-nav-group a { min-height: 39px; }</style>

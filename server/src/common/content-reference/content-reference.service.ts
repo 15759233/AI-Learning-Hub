@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import type { CommunityBindingInput, LearningContentReferenceDto, LearningContentType } from '@ai-learning-hub/contracts'
+import type { CommunityBindingInput, HomepageResolvedItemDto, LandingPublicAuthor, LearningContentReferenceDto, LearningContentType } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
+import { authorDto, authorInclude } from '../../modules/community/community.mapper'
 
 const types: LearningContentType[] = ['theme', 'course', 'lesson', 'lab', 'resource', 'article', 'challenge', 'lab_run']
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -8,6 +9,36 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 @Injectable()
 export class ContentReferenceService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** 门户仅投影当前公开对象；不返回草稿、正文块、媒体令牌或账号内部字段。 */
+  async resolvePublicCommunity(type: string, id: string): Promise<HomepageResolvedItemDto | null> {
+    if (type === 'community_post') {
+      const row = await this.prisma.communityPost.findFirst({ where: { id, status: 'published', visibility: 'public', deletedAt: null, author: { status: 'active' } }, include: { author: { include: authorInclude } } })
+      if (!row) return null
+      const author = this.publicAuthor(row.author)
+      return { targetType: type, slug: row.id, title: row.title || row.plainText.slice(0, 60), summary: row.plainText.slice(0, 160), data: { route: `/community/post/${row.id}`, postType: row.postType, author, publishedAt: row.publishedAt?.toISOString(), commentCount: row.commentCount, likeCount: row.likeCount, bookmarkCount: row.bookmarkCount } }
+    }
+    if (type === 'community_topic') {
+      const row = await this.prisma.communityTopic.findFirst({ where: { OR: [{ id }, { slug: id }], status: 'active' } })
+      if (!row) return null
+      const postCount = await this.prisma.communityPostTopic.count({ where: { topicId: row.id, post: { status: 'published', visibility: 'public', deletedAt: null, author: { status: 'active' } } } })
+      return { targetType: type, slug: row.slug, title: row.name, summary: row.description, data: { id: row.id, route: `/community/topic/${row.slug}`, postCount, followerCount: row.followerCount, recommended: row.recommended } }
+    }
+    if (type === 'community_user') {
+      const user = await this.prisma.user.findFirst({ where: { OR: [{ id }, { username: id }], status: 'active', communityProfile: { isNot: null }, communityPosts: { some: { status: 'published', visibility: 'public', deletedAt: null } } }, include: authorInclude })
+      if (!user) return null
+      const author = this.publicAuthor(user)
+      // 公开创作者必须有公开作品；后台身份本身不构成允许展示。
+      if (user.userRoles.some((item) => ['admin', 'super_admin'].includes(item.role.code)) && author.verifiedType === 'none') return null
+      return { targetType: type, slug: user.username, title: user.displayName, summary: author.headline, data: { ...author, route: `/community/user/${user.username}` } }
+    }
+    return null
+  }
+
+  private publicAuthor(user: Parameters<typeof authorDto>[0]): LandingPublicAuthor {
+    const author = authorDto(user)
+    return { id: author.id, username: author.username, displayName: author.displayName, verifiedType: author.verifiedType, headline: user.communityProfile?.headline.slice(0, 100) || user.communityProfile?.bio.slice(0, 100) || '', followerCount: user.communityProfile?.followerCount || 0 }
+  }
 
   /** 每个类型一次查询；标题与摘要只来自已发布快照，绝不解析草稿 payload。 */
   async resolveMany(inputs: CommunityBindingInput[], viewerId: string, strict = false) {

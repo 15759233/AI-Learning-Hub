@@ -13,6 +13,7 @@ import { authorDto, authorInclude, json } from './community.mapper'
 import { AdminPostDto, CommunityQueryDto, ModerationDto, OfficialDto, PolicyDto, TopicDto } from './community.dto'
 import { Inject } from '@nestjs/common'
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.types'
+import { communityMetrics } from './community-metrics'
 
 @Controller('admin/community')
 @UseGuards(AuthGuard, PermissionsGuard)
@@ -44,14 +45,7 @@ export class CommunityAdminController {
     return { url: await this.storage.getSignedUrl(id) }
   }
   @Get('summary') async summary() {
-    const day = new Date(); day.setUTCHours(0, 0, 0, 0)
-    const [todayPosts, unanswered, pendingReports, active] = await Promise.all([
-      this.prisma.communityPost.count({ where: { publishedAt: { gte: day }, deletedAt: null } }),
-      this.prisma.communityQuestionState.count({ where: { status: 'open', post: { status: { in: ['published', 'limited'] }, deletedAt: null } } }),
-      this.prisma.communityReport.count({ where: { status: { in: ['pending', 'reviewing'] } } }),
-      this.prisma.activityEvent.groupBy({ by: ['userId'], where: { surface: 'community', occurredAt: { gte: day }, userId: { not: null } } }),
-    ])
-    return { todayPosts, unanswered, pendingReports, activeUsers: active.length }
+    return communityMetrics(this.prisma)
   }
   @Get('posts') async list(@CurrentUser() user: AuthUser, @Query() query: CommunityQueryDto) {
     const rows = await this.prisma.communityPost.findMany({ where: { status: { not: 'draft' }, ...(query.type !== 'all' ? { postType: query.type } : {}), ...(query.keyword ? { OR: [{ title: { contains: query.keyword, mode: 'insensitive' } }, { plainText: { contains: query.keyword, mode: 'insensitive' } }] } : {}) }, include: postInclude, orderBy: { createdAt: 'desc' }, take: 200 })

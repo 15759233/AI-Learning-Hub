@@ -42,6 +42,8 @@ DATABASE_URL='postgresql://...' npx prisma migrate deploy
 SEED_ADMIN_PASSWORD='...' SEED_STUDENT_PASSWORD='...' npm run prisma:seed
 ```
 
-Seed 与前端 Mock 共用 `packages/demo-fixtures`，保留稳定 slug。首次初始化写入原有领域及 90 条社区内容、180 条评论回复和 24 个话题；已发布平台仅幂等增补社区样例，不覆盖运营数据、账号凭据或历史快照。历史空首页发布只追加最近有效快照，不删除历史。管理员与学生密码必须通过运行环境提供；示例文件不包含真实值。
+Seed 与前端 Mock 共用 `packages/demo-fixtures`，保留稳定 slug。首次初始化写入原有领域、社区样例及五区落地页；已发布平台幂等增补社区样例和落地页，不覆盖运营数据、账号凭据或历史快照。历史空首页发布只追加最近有效快照。管理员与学生密码必须通过运行环境提供；示例文件不包含真实值。
+
+现有库先执行 `prisma migrate deploy`，再运行 `npm run homepage:upgrade`，无需重跑完整 Seed。事务锁内新增五个模块并追加一个发布版本，保留旧模块、人工草稿与历史快照；再次执行零写。检测到部分升级时停止自动操作。`homepage_items` 仅新增可空摘要和封面覆盖列，无数据重建。
 
 新增模型时创建新迁移，禁止修改已发布迁移。生产环境先备份，再由一次性迁移任务执行 `prisma migrate deploy`；Seed 仅用于首次初始化或明确的内容基线更新。

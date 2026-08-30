@@ -1,5 +1,5 @@
 @media (min-width: 1280px) and (max-width: 1499px) {
-  .community-shell { --amc-sidebar-width: 240px; --amc-rail-width: 304px; --amc-shell-gap: 22px; }
+  .community-shell { --amc-sidebar-width: 240px; --amc-rail-width: 304px; --amc-shell-gap: 22px; --amc-shell-viewport-inset: clamp(64px, calc(20vw - 192px), 104px); }
   .community-sidebar { padding-inline: 0; }
   .community-brand { gap: 9px; }
   .community-brand strong { font-size: 14px; }

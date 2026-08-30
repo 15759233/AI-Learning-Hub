@@ -13,7 +13,7 @@ import GrowthSummaryModule from './modules/GrowthSummaryModule.vue'
 import StudentActivityModule from './modules/StudentActivityModule.vue'
 import BottomActionModule from './modules/BottomActionModule.vue'
 
-const components: Record<HomepageModuleKey, Component> = {
+const components: Partial<Record<HomepageModuleKey, Component>> = {
   hero_banner: HeroBannerModule,
   ability_method: AbilityMethodModule,
   theme_direction: ThemeDirectionModule,

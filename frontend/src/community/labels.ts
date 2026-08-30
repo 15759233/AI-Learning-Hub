@@ -17,11 +17,11 @@ export const relativeTime = (value: string, now = Date.now()) => {
 }
 export const communityNavigation = [
   { label: '社区首页', path: '/community', icon: 'message', desktop: true, mobile: true, mobileOrder: 1, requiresAuth: true },
-  { label: '学习主题', path: '/topics', icon: 'layers', desktop: true, mobile: true, mobileOrder: 2, requiresAuth: false },
-  { label: '实训项目', path: '/labs', icon: 'terminal', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: false },
-  { label: '资源中心', path: '/resources', icon: 'folder', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: false },
-  { label: 'AI 前沿', path: '/frontier', icon: 'sparkles', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: false },
-  { label: '挑战与测评', path: '/assessments', icon: 'trophy', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: false },
+  { label: '学习主题', path: '/topics', icon: 'layers', desktop: true, mobile: true, mobileOrder: 2, requiresAuth: true },
+  { label: '实训项目', path: '/labs', icon: 'terminal', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: true },
+  { label: '资源中心', path: '/resources', icon: 'folder', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: true },
+  { label: 'AI 前沿', path: '/frontier', icon: 'sparkles', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: true },
+  { label: '挑战与测评', path: '/assessments', icon: 'trophy', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: true },
   { label: '我的成长', path: '/profile', icon: 'chart', desktop: true, mobile: true, mobileOrder: 5, requiresAuth: true },
   { label: '收藏与笔记', path: '/bookmarks', icon: 'bookmark', desktop: true, mobile: false, mobileOrder: 0, requiresAuth: true },
   { label: '消息通知', path: '/notifications', icon: 'bell', desktop: true, mobile: true, mobileOrder: 4, requiresAuth: true },

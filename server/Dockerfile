@@ -19,6 +19,7 @@ COPY --chown=node:node --from=build /workspace/packages /workspace/packages
 COPY --chown=node:node --from=build /workspace/server/node_modules ./node_modules
 COPY --chown=node:node --from=build /workspace/server/package.json /workspace/server/package-lock.json ./
 COPY --chown=node:node --from=build /workspace/server/prisma ./prisma
+COPY --chown=node:node --from=build /workspace/server/src/modules/homepage/upgrade-landing.ts ./src/modules/homepage/upgrade-landing.ts
 COPY --chown=node:node --from=build /workspace/server/dist ./dist
 USER node
 EXPOSE 3000

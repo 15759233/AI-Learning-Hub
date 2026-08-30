@@ -14,7 +14,8 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "homepage:upgrade": "tsx prisma/upgrade-landing.ts"
   },
   "dependencies": {
     "@ai-learning-hub/contracts": "file:../packages/contracts",

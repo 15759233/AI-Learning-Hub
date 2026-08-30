@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { HomepageModuleKey, HomepageResolvedItemDto, PublicHomepageDto } from '@ai-learning-hub/contracts'
+import { LANDING_MODULE_KEYS, isLandingModuleKey, landingConfigIssues, landingItemLimit, landingTargetTypes, isLandingImage, type HomepageModuleKey, type HomepageResolvedItemDto, type PublicHomepageDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { ArticleService } from '../articles/article.service'
 import { ChallengeService } from '../challenges/challenge.service'
@@ -9,16 +9,13 @@ import { LabService } from '../labs/lab.service'
 import { ResourceService } from '../resources/resource.service'
 import { ThemeService } from '../themes/theme.service'
 import type { CreateHomepageItemDto, CreateHomepageModuleDto, ReorderDto, UpdateHomepageModuleDto } from './homepage.dto'
+import { ContentReferenceService } from '../../common/content-reference/content-reference.service'
 
 type SnapshotModule = Record<string, unknown> & { items?: Array<Record<string, unknown>> }
 
 @Injectable()
 export class HomepageService {
-  private readonly allowedKeys = new Set<string>([
-    'hero_banner', 'ability_method', 'theme_direction', 'weekly_featured',
-    'featured_labs', 'maker_projects', 'frontier_news', 'resource_tools',
-    'weekly_challenge', 'growth_summary', 'student_activity', 'bottom_action',
-  ] satisfies HomepageModuleKey[])
+  private readonly allowedKeys = new Set<string>(LANDING_MODULE_KEYS)
 
   constructor(
     private readonly prisma: PrismaService,
@@ -28,10 +25,12 @@ export class HomepageService {
     private readonly resources: ResourceService,
     private readonly articles: ArticleService,
     private readonly challenges: ChallengeService,
+    private readonly references: ContentReferenceService,
   ) {}
 
   async adminModules() {
     const modules = await this.prisma.homepageModule.findMany({
+      where: { moduleKey: { in: [...LANDING_MODULE_KEYS] } },
       orderBy: { sortOrder: 'asc' },
       include: { items: { orderBy: { sortOrder: 'asc' } } },
     })
@@ -46,7 +45,7 @@ export class HomepageService {
 
   async preview(): Promise<PublicHomepageDto> {
     const modules = await this.prisma.homepageModule.findMany({
-      where: { enabled: true },
+      where: { enabled: true, moduleKey: { in: [...LANDING_MODULE_KEYS] } },
       orderBy: { sortOrder: 'asc' },
       include: { items: { where: { enabled: true }, orderBy: { sortOrder: 'asc' } } },
     })
@@ -60,76 +59,71 @@ export class HomepageService {
   }
 
   async createModule(input: CreateHomepageModuleDto) {
-    const module = await this.prisma.homepageModule.create({
-      data: {
-        moduleKey: input.moduleKey,
-        name: input.moduleName,
-        moduleType: input.moduleType,
-        config: input.config as Prisma.InputJsonValue,
-        sortOrder: input.sortOrder,
-      },
-    })
-    await this.createDraft(module.id)
-    return module
+    void input
+    throw new BadRequestException('门户落地页固定五个区域，不允许新增模块')
   }
 
   async updateModule(id: string, input: UpdateHomepageModuleDto) {
+    const current = await this.requireLandingModule(id)
+    if (input.sortOrder !== undefined && input.sortOrder !== LANDING_MODULE_KEYS.indexOf(current.moduleKey)) throw new BadRequestException('落地页区域顺序固定')
+    if (input.enabled === false && ['landing_hero', 'landing_bottom_cta'].includes(current.moduleKey)) throw new BadRequestException('首屏与底部行动区必须启用')
+    if (input.config) this.assertConfig(current.moduleKey, input.config)
     const { config, ...rest } = input
-    const module = await this.prisma.homepageModule.update({
+    return this.editDraft(id, (tx) => tx.homepageModule.update({
       where: { id },
       data: { ...rest, ...(config ? { config: config as Prisma.InputJsonValue } : {}) },
-    })
-    await this.createDraft(id)
-    return module
+    }))
   }
 
   async reorder(input: ReorderDto) {
-    await this.prisma.$transaction(input.items.map((item) => this.prisma.homepageModule.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } })))
-    for (const item of input.items) await this.createDraft(item.id)
+    const modules = await this.adminModules()
+    if (input.items.length !== 5 || input.items.some((item) => modules.find((module) => module.id === item.id)?.sortOrder !== item.sortOrder)) throw new BadRequestException('落地页区域顺序固定')
     return this.adminModules()
   }
 
   async addItem(moduleId: string, input: CreateHomepageItemDto) {
-    const item = await this.prisma.homepageItem.create({ data: { moduleId, ...input } })
-    await this.createDraft(moduleId)
-    return item
+    const module = await this.requireLandingModule(moduleId)
+    await this.validateItem(module.moduleKey, input)
+    return this.editDraft(moduleId, async (tx) => {
+      const items = await tx.homepageItem.findMany({ where: { moduleId } })
+      if (items.length >= landingItemLimit(module.moduleKey)) throw new BadRequestException('推荐数量已达上限')
+      if (module.moduleKey === 'landing_community_overview' && items.filter((row) => row.targetType === input.targetType).length >= (input.targetType === 'community_topic' ? 5 : 4)) throw new BadRequestException('话题最多五项，创作者最多四项')
+      return tx.homepageItem.create({ data: { moduleId, ...input } })
+    })
   }
 
   async reorderItems(moduleId: string, input: ReorderDto) {
+    await this.requireLandingModule(moduleId)
     const existing = await this.prisma.homepageItem.findMany({
       where: { moduleId, id: { in: input.items.map((item) => item.id) } },
       select: { id: true },
     })
     if (existing.length !== input.items.length) throw new NotFoundException('推荐内容不存在或不属于当前模块')
-    await this.prisma.$transaction(input.items.map((item) => this.prisma.homepageItem.update({
+    await this.editDraft(moduleId, (tx) => Promise.all(input.items.map((item) => tx.homepageItem.update({
       where: { id: item.id },
       data: { sortOrder: item.sortOrder },
-    })))
-    await this.createDraft(moduleId)
+    }))))
     return this.adminModules()
   }
 
   async deleteItem(moduleId: string, id: string) {
-    await this.prisma.homepageItem.deleteMany({ where: { id, moduleId } })
-    await this.createDraft(moduleId)
+    await this.requireLandingModule(moduleId)
+    await this.editDraft(moduleId, (tx) => tx.homepageItem.deleteMany({ where: { id, moduleId } }))
     return { deleted: true }
   }
 
   async publish() {
-    const draftModules = await this.adminModules()
-    const incomplete = draftModules
-      .filter((module) => module.enabled)
-      .map((module) => ({ module, issues: this.readinessIssues(module) }))
-      .filter((item) => item.issues.length)
-    if (incomplete.length) {
-      throw new BadRequestException(`首页存在配置未完成模块：${incomplete.map((item) => `${item.module.name}（${item.issues.join('、')}）`).join('；')}`)
-    }
     return this.prisma.$transaction(async (tx) => {
-      const modules = await tx.homepageModule.findMany({
-        where: { enabled: true },
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('homepage-community-landing-v1'))::text`
+      const draftModules = await tx.homepageModule.findMany({
+        where: { moduleKey: { in: [...LANDING_MODULE_KEYS] } },
         orderBy: { sortOrder: 'asc' },
         include: { items: { where: { enabled: true }, orderBy: { sortOrder: 'asc' } }, _count: { select: { versions: true } } },
       })
+      if (draftModules.length !== 5 || draftModules.some((module, index) => module.moduleKey !== LANDING_MODULE_KEYS[index] || module.sortOrder !== index)) throw new BadRequestException('落地页需完成固定五区域升级')
+      const modules = draftModules.filter((module) => module.enabled)
+      const incomplete = modules.map((module) => ({ module, issues: this.readinessIssues(module) })).filter((item) => item.issues.length)
+      if (incomplete.length) throw new BadRequestException(`首页存在配置未完成模块：${incomplete.map((item) => `${item.module.name}（${item.issues.join('、')}）`).join('；')}`)
       const published = []
       const publishedAt = new Date()
       for (const module of modules) {
@@ -162,8 +156,9 @@ export class HomepageService {
         published.push({ ...updated, items: module.items })
       }
       const latest = await tx.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+      const legacy = Array.isArray(latest?.snapshot) ? latest.snapshot.filter((item) => item && typeof item === 'object' && 'moduleKey' in item && !this.allowedKeys.has(String(item.moduleKey))) : []
       return tx.homepagePublication.create({
-        data: { version: (latest?.version || 0) + 1, snapshot: JSON.parse(JSON.stringify(published)) as Prisma.InputJsonValue },
+        data: { version: (latest?.version || 0) + 1, snapshot: JSON.parse(JSON.stringify([...legacy, ...published])) as Prisma.InputJsonValue },
       })
     })
   }
@@ -182,11 +177,13 @@ export class HomepageService {
           .filter((item) => item.enabled !== false)
           .map(async (item) => {
             const resolved = await this.resolve(String(item.targetType), String(item.targetId))
-            return resolved && item.titleOverride ? { ...resolved, title: String(item.titleOverride) } : resolved
+            return resolved ? { ...resolved, ...(item.titleOverride ? { title: String(item.titleOverride) } : {}), ...(item.summaryOverride ? { summary: String(item.summaryOverride) } : {}), data: { ...resolved.data, ...(isLandingImage(item.coverOverride) ? { cover: item.coverOverride } : {}) } } : null
           })))
           .filter((item) => item !== null),
       }))))
     return {
+      pageMode: 'community_landing_v1',
+      community: { members: await this.prisma.user.count({ where: { status: 'active', userType: 'student' } }), creators: rendered.flatMap((module) => module.items.filter((item) => item.targetType === 'community_user').map((item) => item.data as unknown as NonNullable<PublicHomepageDto['community']>['creators'][number])).slice(0, 4) },
       modules: version > 0 ? rendered.filter((module) => this.readinessIssues(module).length === 0) : rendered,
       updatedAt: updatedAt.toISOString(),
       version,
@@ -198,34 +195,20 @@ export class HomepageService {
     config: unknown
     items?: unknown[]
   }) {
-    const config = module.config && typeof module.config === 'object' && !Array.isArray(module.config)
-      ? module.config as Record<string, unknown>
-      : {}
-    const issues: string[] = []
-    const minimums: Record<string, number> = {
-      theme_direction: 4,
-      weekly_featured: 3,
-      featured_labs: 3,
-      maker_projects: 3,
-      frontier_news: 3,
-      resource_tools: 4,
-      weekly_challenge: 1,
-    }
-    if (module.moduleKey === 'hero_banner') {
-      if (!Array.isArray(config.titleLines) || config.titleLines.length < 2 || !config.subtitle || !config.visualVariant) issues.push('首屏标题、说明或视觉不完整')
-    } else if (!config.title) {
-      issues.push('缺少标题')
-    }
-    const validItems = (module.items || []).filter((item) => {
-      if (!item || typeof item !== 'object' || !('relationValid' in item)) return true
-      return (item as { relationValid?: boolean }).relationValid !== false
-    }).length
-    if ((minimums[module.moduleKey] || 0) > validItems) issues.push(`有效推荐少于 ${minimums[module.moduleKey]} 项`)
+    if (!isLandingModuleKey(module.moduleKey)) return ['旧模块只保留归档']
+    const issues = landingConfigIssues(module.moduleKey, module.config)
+    if ((module.items?.length || 0) > landingItemLimit(module.moduleKey)) issues.push('推荐数量超过上限')
     return issues
   }
 
   private async resolve(targetType: string, targetId: string) {
     try {
+      if (targetType.startsWith('community_')) return this.references.resolvePublicCommunity(targetType, targetId)
+      if (targetType === 'resource') {
+        const resource = await this.prisma.resource.findFirst({ where: { OR: [{ id: targetId }, { slug: targetId }], status: 'published', deletedAt: null, visibility: 'public' }, include: { publishedVersion: true } })
+        const snapshot = resource?.publishedVersion?.snapshot
+        if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || snapshot.visibility !== 'public') return null
+      }
       const item = targetType === 'theme' ? await this.themes.detail(targetId, true)
         : targetType === 'course' ? await this.courses.detail(targetId, true)
           : targetType === 'lab' ? await this.labs.detail(targetId, true)
@@ -244,8 +227,56 @@ export class HomepageService {
     return Boolean(await this.resolve(targetType, targetId))
   }
 
-  private async createDraft(moduleId: string) {
-    const module = await this.prisma.homepageModule.findUnique({
+  private async requireLandingModule(id: string) {
+    const module = await this.prisma.homepageModule.findUnique({ where: { id } })
+    if (!module || !isLandingModuleKey(module.moduleKey)) throw new BadRequestException('旧首页模块只保留归档，不允许编辑或重新发布')
+    return { ...module, moduleKey: module.moduleKey }
+  }
+
+  private assertConfig(key: Parameters<typeof landingConfigIssues>[0], config: unknown) {
+    const issues = landingConfigIssues(key, config)
+    if (issues.length) throw new BadRequestException(issues.join('；'))
+  }
+
+  private async validateItem(key: Parameters<typeof landingTargetTypes>[0], input: CreateHomepageItemDto) {
+    if (!(landingTargetTypes(key) as readonly string[]).includes(input.targetType)) throw new BadRequestException('当前区域不支持该关联类型')
+    if (input.coverOverride && !isLandingImage(input.coverOverride)) throw new BadRequestException('封面必须为本地正式资源')
+    if (!await this.isPublishedTarget(input.targetType, input.targetId)) throw new BadRequestException('关联内容不存在或不允许公开展示')
+  }
+
+  async updateItem(moduleId: string, id: string, input: CreateHomepageItemDto) {
+    const module = await this.requireLandingModule(moduleId)
+    const item = await this.prisma.homepageItem.findFirst({ where: { id, moduleId } })
+    if (!item) throw new NotFoundException('推荐内容不存在')
+    if (item.targetType !== input.targetType || item.targetId !== input.targetId) throw new BadRequestException('替换关联请先移除再添加')
+    await this.validateItem(module.moduleKey, input)
+    return this.editDraft(moduleId, (tx) => tx.homepageItem.update({ where: { id }, data: input }))
+  }
+
+  async contentOptions(type: string) {
+    if (!['community_post', 'community_topic', 'community_user', 'course', 'lab', 'article', 'resource'].includes(type)) throw new BadRequestException('不支持的内容类型')
+    const rows = type === 'community_post' ? await this.prisma.communityPost.findMany({ where: { status: 'published', visibility: 'public', deletedAt: null }, select: { id: true }, take: 100 })
+      : type === 'community_topic' ? await this.prisma.communityTopic.findMany({ where: { status: 'active' }, select: { id: true }, take: 100 })
+        : type === 'community_user' ? await this.prisma.user.findMany({ where: { status: 'active', communityProfile: { isNot: null } }, select: { id: true }, take: 100 })
+          : type === 'course' ? await this.prisma.course.findMany({ where: { status: 'published', deletedAt: null }, select: { id: true }, take: 100 })
+            : type === 'lab' ? await this.prisma.lab.findMany({ where: { status: 'published', deletedAt: null }, select: { id: true }, take: 100 })
+              : type === 'article' ? await this.prisma.article.findMany({ where: { status: 'published', deletedAt: null }, select: { id: true }, take: 100 })
+                : await this.prisma.resource.findMany({ where: { status: 'published', deletedAt: null, visibility: 'public' }, select: { id: true }, take: 100 })
+    return (await Promise.all(rows.map(async (row) => { const item = await this.resolve(type, row.id); return item ? { id: row.id, title: item.title } : null }))).filter((item) => item !== null)
+  }
+
+  private async editDraft<T>(moduleId: string, update: (tx: Prisma.TransactionClient) => Promise<T>) {
+    return this.prisma.$transaction(async (tx) => {
+      // ponytail: 低频门户编辑共用发布锁；高频多人编辑时再按模块细分锁。
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('homepage-community-landing-v1'))::text`
+      const result = await update(tx)
+      await this.createDraft(tx, moduleId)
+      return result
+    })
+  }
+
+  private async createDraft(tx: Prisma.TransactionClient, moduleId: string) {
+    const module = await tx.homepageModule.findUnique({
       where: { id: moduleId },
       include: { items: { orderBy: { sortOrder: 'asc' } }, _count: { select: { versions: true } } },
     })
@@ -260,12 +291,12 @@ export class HomepageService {
       items: module.items,
     })) as Prisma.InputJsonValue
     if (module.currentDraftVersionId && module.currentDraftVersionId !== module.publishedVersionId) {
-      await this.prisma.homepageModuleVersion.update({ where: { id: module.currentDraftVersionId }, data: { snapshot } })
+      await tx.homepageModuleVersion.update({ where: { id: module.currentDraftVersionId }, data: { snapshot } })
       return
     }
-    const version = await this.prisma.homepageModuleVersion.create({
+    const version = await tx.homepageModuleVersion.create({
       data: { moduleId, versionNo: module._count.versions + 1, snapshot },
     })
-    await this.prisma.homepageModule.update({ where: { id: moduleId }, data: { currentDraftVersionId: version.id } })
+    await tx.homepageModule.update({ where: { id: moduleId }, data: { currentDraftVersionId: version.id } })
   }
 }

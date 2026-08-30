@@ -71,7 +71,7 @@
 - 内容：`/admin/themes|courses|labs|resources|articles|challenges`
 - 内容结构：主题路径；课程章节、课时、内容块、关联与排序；实训五类配置、步骤、工具、资源和报告；文章推荐位；题库和试卷均有专用子资源接口
 - 操作：内容发布、撤回、归档与排序；课程、实训、文章和题目发布原子切换快照指针
-- 首页：`GET/PATCH /admin/homepage/modules`、推荐项选择与排序、`POST /admin/homepage/publish`
+- 门户落地页：`GET /admin/homepage/modules`、`PATCH /admin/homepage/modules/:id`、`GET /admin/homepage/content-options?type=…`、推荐项增删改与排序、`POST /admin/homepage/publish`。固定五区，不允许新增或重新排序区域；能力六项、精选最多三项、话题最多五项、创作者最多四项。`/public/homepage` 返回 `pageMode: community_landing_v1`，预览与发布隔离。
 - 数据：`GET /admin/dashboard`、用户成长、排行榜快照、内容统计
 - 文件：`POST /admin/files/upload`；类型、大小、路径和可见性由服务端校验
 - 设置：`GET/PATCH /admin/settings`，支持字符串、数字、布尔和字符串数组；通知发布、登录/操作/审计日志查询

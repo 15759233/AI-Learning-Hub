@@ -8,9 +8,10 @@ import { ResourceModule } from '../resources/resource.module'
 import { ThemeModule } from '../themes/theme.module'
 import { AdminHomepageController, PublicHomepageController } from './homepage.controller'
 import { HomepageService } from './homepage.service'
+import { ContentReferenceModule } from '../../common/content-reference/content-reference.module'
 
 @Module({
-  imports: [AuthModule, ThemeModule, CourseModule, LabModule, ResourceModule, ArticleModule, ChallengeModule],
+  imports: [AuthModule, ThemeModule, CourseModule, LabModule, ResourceModule, ArticleModule, ChallengeModule, ContentReferenceModule],
   controllers: [AdminHomepageController, PublicHomepageController],
   providers: [HomepageService],
 })

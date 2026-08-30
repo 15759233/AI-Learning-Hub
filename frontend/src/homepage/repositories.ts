@@ -1,18 +1,21 @@
-import type {
-  HomepageResolvedItemDto,
-  PublicHomepageDto,
-  PublicHomepageModuleDto,
+import {
+  LANDING_DEFAULT_CONFIG,
+  LANDING_MODULE_KEYS,
+  LANDING_MODULE_LABELS,
+  type LandingPublicAuthor,
+  type HomepageResolvedItemDto,
+  type PublicHomepageDto,
+  type PublicHomepageModuleDto,
 } from '@ai-learning-hub/contracts'
 import {
-  demoActivities,
+  createCommunityFixtures,
   demoArticles,
   demoChallenges,
   demoCourses,
-  demoHomepageModules,
-  demoHomepageRelations,
   demoLabs,
   demoResources,
   demoThemes,
+  demoStudents,
 } from '@ai-learning-hub/demo-fixtures'
 import { request } from '../services/api/client'
 
@@ -46,22 +49,23 @@ export const homepageRepository = (mode: 'mock' | 'api') => mode === 'api' ? Api
 
 export const MockHomepageRepository: HomepageRepository = {
   async load() {
-    const modules = demoHomepageModules.map((module, sortOrder): PublicHomepageModuleDto => {
-      const config = module.moduleKey === 'student_activity'
-        ? { ...module.config, items: demoActivities.slice(0, 6) }
-        : module.config
-      return {
-        id: `mock-homepage-${module.moduleKey}`,
-        moduleKey: module.moduleKey,
-        name: module.name,
-        sortOrder,
-        config: { ...config },
-        items: demoHomepageRelations[module.moduleKey]
-          .map((relation) => resolve(relation.type, relation.slug))
-          .filter((item): item is HomepageResolvedItemDto => item !== null),
-      }
-    })
-    return { version: 1, updatedAt: '2026-08-29T00:00:00.000Z', modules }
+    const fixture = createCommunityFixtures({ courses: demoCourses, labs: demoLabs, articles: demoArticles, themes: demoThemes, students: demoStudents }, new Date('2026-08-31T00:00:00Z'))
+    const creators: LandingPublicAuthor[] = fixture.users.slice(0, 4).map((user) => ({ id: user.username, username: user.username, displayName: user.displayName, verifiedType: user.verifiedType, headline: `${user.major} · 学习与实践`, followerCount: fixture.follows.filter((follow) => follow.followee === user.username).length }))
+    const post = fixture.posts.find((item) => item.type === 'note')!
+    const postAuthor = fixture.users.find((user) => user.username === post.author)!
+    const note: HomepageResolvedItemDto = { targetType: 'community_post', slug: post.id, title: post.title, summary: post.blocks.filter((block) => block.type === 'paragraph').map((block) => 'text' in block ? block.text : '').join('').slice(0, 160), data: { author: { username: postAuthor.username, displayName: postAuthor.displayName }, commentCount: fixture.comments.filter((comment) => comment.postId === post.id).length, likeCount: fixture.reactions.filter((reaction) => reaction.postId === post.id && reaction.type === 'like').length, cover: 'aiWorkspace' } }
+    const experiments = demoLabs.slice(0, 2).map((lab, index) => ({ ...resolve('lab', lab.slug)!, data: { ...lab, cover: index ? 'aiWorkspace' : 'robotVision' } }))
+    const modules = LANDING_MODULE_KEYS.map((key, sortOrder): PublicHomepageModuleDto => ({
+      id: `mock-homepage-${key}`, moduleKey: key, name: LANDING_MODULE_LABELS[key], sortOrder,
+      config: structuredClone(LANDING_DEFAULT_CONFIG[key]) as unknown as Record<string, unknown>,
+      items: key === 'landing_hero' ? [note, ...experiments, resolve('resource', demoResources[0].slug)!]
+        : key === 'landing_featured' ? [{ ...experiments[0], data: { ...experiments[0].data, cover: 'robotCar' } }, { ...experiments[1], data: { ...experiments[1].data, cover: 'robotVision' } }, note]
+          : key === 'landing_community_overview' ? [
+            ...fixture.topics.slice(0, 5).map((topic): HomepageResolvedItemDto => ({ targetType: 'community_topic', slug: topic.slug, title: topic.name, summary: topic.description, data: { id: topic.id, postCount: fixture.posts.filter((item) => item.topics.includes(topic.slug)).length, followerCount: 0, recommended: topic.recommended } })),
+            ...creators.map((creator): HomepageResolvedItemDto => ({ targetType: 'community_user', slug: creator.username, title: creator.displayName, summary: creator.headline, data: { ...creator } })),
+          ] : [],
+    }))
+    return { pageMode: 'community_landing_v1', community: { members: fixture.users.length, creators }, version: 1, updatedAt: '2026-08-31T00:00:00.000Z', modules }
   },
 }
 

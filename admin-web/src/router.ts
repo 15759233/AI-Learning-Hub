@@ -13,7 +13,7 @@ const router = createRouter({
         { path: '', redirect: '/dashboard' },
         { path: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: '数据看板', permission: 'dashboard.read' } },
         { path: 'community', component: () => import('./views/CommunityView.vue'), meta: { title: '社区运营', permission: 'community.read' } },
-        { path: 'homepage', component: () => import('./views/HomepageView.vue'), meta: { title: '门户首页', permission: 'homepage.read' } },
+        { path: 'homepage', component: () => import('./views/HomepageView.vue'), meta: { title: '门户落地页', permission: 'homepage.read' } },
         { path: 'themes', component: () => import('./views/management/ThemeManagementView.vue'), meta: { title: '学习主题管理', permission: 'theme.read' } },
         { path: 'courses', component: () => import('./views/management/CourseManagementView.vue'), meta: { title: '课程内容管理', permission: 'course.read' } },
         { path: 'labs', component: () => import('./views/management/LabManagementView.vue'), meta: { title: '实训项目管理', permission: 'lab.read' } },

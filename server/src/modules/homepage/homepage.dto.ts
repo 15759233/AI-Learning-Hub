@@ -5,9 +5,11 @@ import { ReorderDto } from '../../common/content/reorder.dto'
 export { ReorderDto }
 
 export class CreateHomepageItemDto {
-  @IsString() @IsIn(['theme', 'course', 'lab', 'resource', 'article', 'challenge']) targetType!: string
+  @IsString() @IsIn(['theme', 'course', 'lab', 'resource', 'article', 'challenge', 'community_post', 'community_topic', 'community_user']) targetType!: string
   @IsString() targetId!: string
-  @IsOptional() @IsString() titleOverride?: string
+  @IsOptional() @IsString() @Length(0, 120) titleOverride?: string
+  @IsOptional() @IsString() @Length(0, 240) summaryOverride?: string
+  @IsOptional() @IsString() @Length(0, 200) coverOverride?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder = 0
 }
 
@@ -17,6 +19,7 @@ export class CreateHomepageModuleDto {
     'hero_banner', 'ability_method', 'theme_direction', 'weekly_featured',
     'featured_labs', 'maker_projects', 'frontier_news', 'resource_tools',
     'weekly_challenge', 'growth_summary', 'student_activity', 'bottom_action',
+    'landing_hero', 'landing_capabilities', 'landing_featured', 'landing_community_overview', 'landing_bottom_cta',
   ])
   moduleKey!: string
   @IsString() @Length(2, 120) moduleName!: string

@@ -1,6 +1,6 @@
 html.community-layout-active, body.community-layout-active { height: 100%; overflow: hidden; }
 body.community-layout-active { background: radial-gradient(circle at 92% 4%, rgba(255, 167, 120, .08), transparent 24%), radial-gradient(circle at 4% 96%, rgba(118, 92, 255, .06), transparent 22%), var(--amc-bg-page); }
-.community-shell { display: grid; grid-template-columns: var(--amc-sidebar-width) minmax(0, 860px) var(--amc-rail-width); justify-content: center; column-gap: var(--amc-shell-gap); width: min(calc(100% - 40px), var(--amc-shell-max)); height: 100dvh; margin: auto; overflow: hidden; font-size: var(--amc-font-body); }
+.community-shell { display: grid; grid-template-columns: var(--amc-sidebar-width) minmax(0, 860px) var(--amc-rail-width); justify-content: center; column-gap: var(--amc-shell-gap); width: min(calc(100% - var(--amc-shell-viewport-inset)), var(--amc-shell-max)); height: 100dvh; margin: auto; overflow: hidden; font-size: var(--amc-font-body); }
 .community-shell.sidebar-collapsed { --amc-sidebar-width: 76px; max-width: 1334px; }
 .community-shell.community-wide { grid-template-columns: var(--amc-sidebar-width) minmax(0, 1fr); }
 .community-shell.community-wide.sidebar-collapsed { max-width: var(--amc-shell-max); }

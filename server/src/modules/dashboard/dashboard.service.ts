@@ -1,11 +1,25 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
+import { communityMetrics } from '../community/community-metrics'
+import { readChallengeSnapshot } from '../challenges/challenge-version'
 
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async get() {
+    const [community, publishedCourses, publishedLabs, publishedResources, challenges, limitedPosts] = await Promise.all([
+      communityMetrics(this.prisma),
+      this.prisma.course.count({ where: { status: 'published', deletedAt: null } }),
+      this.prisma.lab.count({ where: { status: 'published', deletedAt: null } }),
+      this.prisma.resource.count({ where: { status: 'published', deletedAt: null } }),
+      this.prisma.challenge.findMany({ where: { status: 'published', deletedAt: null }, include: { publishedVersion: true } }),
+      this.prisma.communityPost.count({ where: { status: 'limited', deletedAt: null } }),
+    ])
+    const activeChallenges = challenges.filter((item) => {
+      const data = readChallengeSnapshot(item.publishedVersion?.snapshot)?.data
+      return data && (!data.startAt || Date.parse(String(data.startAt)) <= Date.now()) && (!data.endAt || Date.parse(String(data.endAt)) >= Date.now())
+    }).length
     const end = new Date()
     const start = new Date(end.getTime() - 7 * 86_400_000)
     const previousStart = new Date(start.getTime() - 7 * 86_400_000)
@@ -77,6 +91,11 @@ export class DashboardService {
     })
     const moduleKeys = ['homepage', 'themes', 'courses', 'labs', 'resources', 'articles', 'challenges', 'growth']
     const todos = [
+      ...[
+        { id: 'community-reports', count: community.pendingReports, title: '条举报待处理' },
+        { id: 'community-questions', count: community.unanswered, title: '个学习问题待回答' },
+        { id: 'community-limited', count: limitedPosts, title: '条受限内容待复核' },
+      ].filter((item) => item.count > 0).map((item) => ({ id: item.id, type: 'community', title: `${item.count} ${item.title}`, module: 'community', dueAt: null, route: '/community', priority: 'high' })),
       ...drafts.map((count, index) => count ? {
         id: `draft-${index}`,
         type: 'draft',
@@ -97,6 +116,8 @@ export class DashboardService {
       })),
     ]
     return {
+      community,
+      learning: { publishedCourses, publishedLabs, publishedResources, activeChallenges },
       kpis: {
         users: metric(users, previousUsers),
         activeUsers: metric(activeRows.length, previousActiveRows.length),

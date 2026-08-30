@@ -39,7 +39,8 @@
   --amc-shadow-card: 0 8px 28px rgba(55, 39, 28, .045);
   --amc-shadow-hover: 0 14px 38px rgba(55, 39, 28, .075);
   --amc-shadow-float: 0 16px 42px rgba(55, 39, 28, .11);
-  --amc-shell-max: 1600px;
+  --amc-shell-max: 1480px;
+  --amc-shell-viewport-inset: clamp(64px, 7vw, 144px);
   --amc-sidebar-width: 288px;
   --amc-rail-width: 350px;
   --amc-shell-gap: 24px;

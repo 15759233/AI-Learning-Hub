@@ -19,6 +19,7 @@ import {
 import { hash } from 'bcryptjs'
 import { isDeepStrictEqual } from 'node:util'
 import { seedCommunity } from './seed-community'
+import { upgradeLanding } from '../src/modules/homepage/upgrade-landing'
 
 const prisma = new PrismaClient()
 
@@ -50,6 +51,7 @@ async function seed() {
       if (valid) await prisma.homepagePublication.create({ data: { version: existingPublication.version + 1, snapshot: valid.snapshot! } })
     }
     await seedCommunity(prisma)
+    await upgradeLanding(prisma)
     return
   }
   const permissions = [
@@ -687,6 +689,7 @@ async function seed() {
     })
   }
   await seedCommunity(prisma)
+  await upgradeLanding(prisma)
 }
 
 seed()
