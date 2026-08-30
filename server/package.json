@@ -3,19 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
+    "build:contracts": "tsc --project ../packages/contracts/tsconfig.json",
+    "build": "npm run build:contracts && nest build && npm run check:runtime",
+    "check:runtime": "node scripts/check-runtime-imports.cjs",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
+    "prestart:dev": "npm run build:contracts",
     "lint": "eslint \"{src,test,prisma}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "pretest": "npm run build:contracts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "pretest:e2e": "npm run build:contracts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "homepage:upgrade": "tsx prisma/upgrade-landing.ts"
+    "preprisma:seed": "npm run build:contracts",
+    "homepage:upgrade": "tsx prisma/upgrade-landing.ts",
+    "prehomepage:upgrade": "npm run build:contracts"
   },
   "dependencies": {
     "@ai-learning-hub/contracts": "file:../packages/contracts",
@@ -60,6 +67,6 @@
     "deepmerge-ts": "8.0.0"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "npm run prisma:seed"
   }
 }

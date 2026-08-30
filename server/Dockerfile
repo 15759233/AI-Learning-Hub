@@ -2,6 +2,7 @@ FROM node:22.14.0-bookworm-slim@sha256:1c18d9ab3af4585870b92e4dbc5cac5a0dc77dd13
 WORKDIR /workspace
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/contracts/tsconfig.json packages/contracts/tsconfig.json
 COPY packages/contracts/src packages/contracts/src
 COPY packages/demo-fixtures/package.json packages/demo-fixtures/package.json
 COPY packages/demo-fixtures/src packages/demo-fixtures/src
@@ -18,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -
 COPY --chown=node:node --from=build /workspace/packages /workspace/packages
 COPY --chown=node:node --from=build /workspace/server/node_modules ./node_modules
 COPY --chown=node:node --from=build /workspace/server/package.json /workspace/server/package-lock.json ./
+COPY --chown=node:node --from=build /workspace/server/scripts/check-runtime-imports.cjs ./scripts/check-runtime-imports.cjs
 COPY --chown=node:node --from=build /workspace/server/prisma ./prisma
 COPY --chown=node:node --from=build /workspace/server/src/modules/homepage/upgrade-landing.ts ./src/modules/homepage/upgrade-landing.ts
 COPY --chown=node:node --from=build /workspace/server/dist ./dist
