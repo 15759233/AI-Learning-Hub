@@ -14,10 +14,11 @@ const renderer = createRenderer<Node, Node>({
 })
 export const flushRender = async () => { for (let i = 0; i < 8; i++) await nextTick() }
 // Node 环境编译为 SSR SFC；挂载真实 setup/watch/动作，DOM 交互另由浏览器验收。
-export const setupComponent = <T>(component: Component, props: Record<string, unknown> = {}, plugins: Plugin[] = [createPinia()]) => {
+export const setupComponent = <T>(component: Component, props: Record<string, unknown> = {}, plugins: Plugin[] = [createPinia()], provides: Array<[symbol | string, unknown]> = []) => {
   const root = node('root'), app = renderer.createApp({ ...component, render: () => null }, props)
   for (const plugin of plugins) app.use(plugin)
   app.provide(ssrContextKey, {})
+  for (const [key, value] of provides) app.provide(key, value)
   const instance = app.mount(root)
   const state = (instance.$ as unknown as { setupState: T }).setupState
   return { state, unmount: () => app.unmount() }

@@ -1,38 +1,35 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth'
-import { useCommunityStore } from './stores/community'
 import { useAuthUiStore } from './stores/authUi'
 
 declare module 'vue-router' {
-  interface RouteMeta { layout?: 'public' | 'community' | 'immersive'; requiresAuth?: boolean; title?: string }
+  interface RouteMeta { layout?: 'public' | 'adaptive' | 'community' | 'immersive'; communityMode?: 'feed' | 'wide'; requiresAuth?: boolean; title?: string }
 }
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior: (to, _from, saved) => to.path === '/community'
-    ? { left: 0, top: useCommunityStore().feeds[`${to.query.mode || 'for_you'}:${to.query.type || 'all'}`]?.scroll || 0 }
-    : saved || { top: 0 },
+  scrollBehavior: (to, _from, saved) => to.meta.layout === 'community' || (to.meta.layout === 'adaptive' && useAuthStore().user) ? false : saved || { top: 0 },
   routes: [
     { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { title: '探索首页', layout: 'public', requiresAuth: false } },
     { path: '/welcome', name: 'welcome', component: () => import('./views/HomeView.vue'), meta: { title: '品牌门户', layout: 'public', requiresAuth: false } },
-    { path: '/community', component: () => import('./community/CommunityFeedView.vue'), meta: { title: '学习社区', requiresAuth: true, layout: 'community' } },
-    { path: '/community/post/:postId', component: () => import('./community/CommunityPostView.vue'), meta: { title: '学习讨论', requiresAuth: true, layout: 'community' } },
-    { path: '/community/topic/:slug', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '学习话题', communityView: 'topic', requiresAuth: true, layout: 'community' } },
-    { path: '/community/user/:username', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '社区主页', communityView: 'user', requiresAuth: true, layout: 'community' } },
-    { path: '/community/search', component: () => import('./community/CommunitySearchView.vue'), meta: { title: '社区搜索', requiresAuth: true, layout: 'community' } },
-    { path: '/community/drafts', component: () => import('./community/CommunityDraftsView.vue'), meta: { title: '草稿箱', requiresAuth: true, layout: 'community' } },
+    { path: '/community', component: () => import('./community/CommunityFeedView.vue'), meta: { title: '学习社区', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
+    { path: '/community/post/:postId', component: () => import('./community/CommunityPostView.vue'), meta: { title: '学习讨论', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
+    { path: '/community/topic/:slug', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '学习话题', communityView: 'topic', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
+    { path: '/community/user/:username', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '社区主页', communityView: 'user', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
+    { path: '/community/search', component: () => import('./community/CommunitySearchView.vue'), meta: { title: '社区搜索', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
+    { path: '/community/drafts', component: () => import('./community/CommunityDraftsView.vue'), meta: { title: '草稿箱', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
     { path: '/community/onboarding', component: () => import('./community/CommunityOnboardingView.vue'), meta: { title: '开始学习', requiresAuth: true, layout: 'public' } },
-    { path: '/bookmarks', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '收藏与笔记', communityView: 'bookmarks', requiresAuth: true, layout: 'community' } },
-    { path: '/notifications', component: () => import('./community/NotificationsView.vue'), meta: { title: '消息通知', requiresAuth: true, layout: 'community' } },
+    { path: '/bookmarks', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '收藏与笔记', communityView: 'bookmarks', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
+    { path: '/notifications', component: () => import('./community/NotificationsView.vue'), meta: { title: '消息通知', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
     { path: '/__homepage-preview', name: 'homepage-preview', component: () => import('./views/HomepagePreviewView.vue'), meta: { title: '首页草稿预览', layout: 'public', requiresAuth: false } },
-    { path: '/topics', name: 'topics', component: () => import('./views/TopicsView.vue'), meta: { title: '学习主题', layout: 'public', requiresAuth: false } },
-    { path: '/courses/:courseId', name: 'course', component: () => import('./views/CourseView.vue'), meta: { title: '课程学习', layout: 'public', requiresAuth: false } },
-    { path: '/labs', name: 'labs', component: () => import('./views/LabsView.vue'), meta: { title: '实训项目', layout: 'public', requiresAuth: false } },
+    { path: '/topics', name: 'topics', component: () => import('./views/TopicsView.vue'), meta: { title: '学习主题', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
+    { path: '/courses/:courseId', name: 'course', component: () => import('./views/CourseView.vue'), meta: { title: '课程学习', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
+    { path: '/labs', name: 'labs', component: () => import('./views/LabsView.vue'), meta: { title: '实训项目', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
     { path: '/labs/:labId', name: 'lab', component: () => import('./views/LabWorkspaceView.vue'), meta: { title: '实训工作台', dark: true, layout: 'immersive', requiresAuth: true } },
-    { path: '/resources', name: 'resources', component: () => import('./views/ResourcesView.vue'), meta: { title: '资源中心', layout: 'public', requiresAuth: false } },
-    { path: '/frontier', name: 'frontier', component: () => import('./views/FrontierView.vue'), meta: { title: 'AI 前沿', layout: 'public', requiresAuth: false } },
-    { path: '/assessments', name: 'assessments', component: () => import('./views/AssessmentsView.vue'), meta: { title: '挑战与测评', layout: 'public', requiresAuth: false } },
-    { path: '/profile', name: 'profile', component: () => import('./views/ProfileView.vue'), meta: { title: '个人中心', layout: 'community', requiresAuth: true } },
+    { path: '/resources', name: 'resources', component: () => import('./views/ResourcesView.vue'), meta: { title: '资源中心', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
+    { path: '/frontier', name: 'frontier', component: () => import('./views/FrontierView.vue'), meta: { title: 'AI 前沿', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
+    { path: '/assessments', name: 'assessments', component: () => import('./views/AssessmentsView.vue'), meta: { title: '挑战与测评', layout: 'adaptive', requiresAuth: false, communityMode: 'wide' } },
+    { path: '/profile', name: 'profile', component: () => import('./views/ProfileView.vue'), meta: { title: '个人中心', layout: 'community', requiresAuth: true, communityMode: 'wide' } },
     { path: '/terms', component: () => import('./views/LegalView.vue'), meta: { title: '用户协议', layout: 'public', requiresAuth: false } },
     { path: '/privacy', component: () => import('./views/LegalView.vue'), meta: { title: '隐私政策', layout: 'public', requiresAuth: false } },
     { path: '/reset-password', component: () => import('./views/AccountRecoveryView.vue'), meta: { title: '重置密码', layout: 'public', requiresAuth: false } },

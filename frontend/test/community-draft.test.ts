@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { nextTick, reactive } from 'vue'
+import { nextTick, reactive, ref } from 'vue'
 import { createMemoryHistory, createRouter, isNavigationFailure, NavigationFailureType, useLink } from 'vue-router'
 import { useCommunityDraft } from '../src/community/composables/useCommunityDraft'
 import { useCommunityStore } from '../src/stores/community'
@@ -9,6 +9,7 @@ import type { CommunityPostDetailDto } from '@ai-learning-hub/contracts'
 import CommunityQuickComposer from '../src/community/CommunityQuickComposer.vue'
 import CommunityComposer from '../src/community/CommunityComposer.vue'
 import { setupComponent } from '../src/community/test-renderer'
+import { communityScrollRoot } from '../src/community/composables/useCommunityScrollRoot'
 
 const account = reactive({ user: { id: 'owner-a' } as { id: string } | null, dataMode: 'mock' })
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => account }))
@@ -36,7 +37,8 @@ describe('共享发布器与草稿账号隔离', () => {
     editor.body = '第二次填写的有效正文'; await settle()
     expect(await editor.save()).toBe(true)
     expect(communityApi.save).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(communityApi.save).mock.calls[0][0].contentBlocks).toEqual([{ type: 'paragraph', text: editor.body }])
+    expect(vi.mocked(communityApi.save).mock.calls[0][0].contentBlocks).toEqual([{ type: 'paragraph', text: '第二次填写的有效正文' }])
+    expect(editor.body).toBe(''); expect(store.composerOpen).toBe(false)
   })
   it('快捷切高级共用正文、图片、关联与保存请求', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
@@ -106,16 +108,43 @@ describe('共享发布器与草稿账号隔离', () => {
     await editor.save()
     expect(communityApi.save).toHaveBeenLastCalledWith(expect.anything(), 'original-id')
   })
-  it('侧栏首次打开和再次聚焦均定位可见的内联编辑区', async () => {
-    const view = setupComponent<{ panel: HTMLElement }>(CommunityQuickComposer)
+  it('侧栏首次打开和再次聚焦不滚动可见编辑区，完全离开视口才移动中栏', async () => {
     const scroll = vi.fn(), focus = vi.fn()
-    view.state.panel = { scrollIntoView: scroll, querySelector: () => ({ focus }) } as unknown as HTMLElement
+    const root = ref({ scrollTop: 300, scrollTo: scroll, getBoundingClientRect: () => ({ top: 0, bottom: 600 }) })
+    const view = setupComponent<{ panel: HTMLElement }>(CommunityQuickComposer, {}, undefined, [[communityScrollRoot, root]])
+    let bounds = { top: 150, bottom: 450 }
+    view.state.panel = { getBoundingClientRect: () => bounds, querySelector: () => ({ focus }) } as unknown as HTMLElement
     const store = useCommunityStore()
     store.openComposer(); store.composerInline = true; await settle()
-    expect(scroll).toHaveBeenCalledOnce(); expect(focus).toHaveBeenCalledOnce()
+    expect(scroll).not.toHaveBeenCalled(); expect(focus).toHaveBeenCalledOnce()
     store.openComposer(); await settle()
-    expect(scroll).toHaveBeenCalledTimes(2); expect(focus).toHaveBeenCalledTimes(2)
+    expect(scroll).not.toHaveBeenCalled(); expect(focus).toHaveBeenCalledTimes(2)
+    bounds = { top: -500, bottom: -100 }
+    store.openComposer(); await settle()
+    expect(scroll).toHaveBeenCalledWith({ top: -320, behavior: 'smooth' }); expect(focus).toHaveBeenCalledTimes(3)
     view.unmount()
+  })
+  it('普通快捷打开不读取话题或学习目录，切换类型保留正文且空稿不写服务端', async () => {
+    const view = setupComponent<{ open: (type: 'note' | 'question') => void }>(CommunityQuickComposer)
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); store.composerInline = true; await settle()
+    expect(communityApi.topics).not.toHaveBeenCalled(); expect(communityApi.bindingContext).not.toHaveBeenCalled()
+    view.state.open('question'); await settle(); await vi.advanceTimersByTimeAsync(15000)
+    expect(communityApi.saveDraft).not.toHaveBeenCalled()
+    editor.body = '类型切换保留的正文'; await settle(); view.state.open('note'); await settle()
+    expect(editor.body).toBe('类型切换保留的正文'); expect(editor.form.type).toBe('note')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(editor.savedAt).toBe('已保存'); expect(communityApi.saveDraft).not.toHaveBeenCalled()
+    await editor.loadTopics(); expect(communityApi.topics).toHaveBeenCalledOnce()
+    view.unmount()
+  })
+  it('清空已暂存文字不会恢复旧正文，也不额外创建空服务端草稿', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle(); editor.body = '待清空的本地正文'; await settle()
+    await vi.advanceTimersByTimeAsync(2000); expect(storage.get(key('owner-a'))).toContain('待清空')
+    editor.body = ''; await settle(); await editor.saveAndClose()
+    expect(communityApi.saveDraft).not.toHaveBeenCalled(); expect(storage.has(key('owner-a'))).toBe(false)
+    store.openComposer(); await settle(); expect(editor.body).toBe('')
   })
 })
 

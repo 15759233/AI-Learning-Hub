@@ -1,3 +1,8 @@
+<script lang="ts">
+let bodyLockCount = 0
+let bodyOverflowBeforeDialogs = ''
+const openedDialogs: HTMLDialogElement[] = []
+</script>
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 
@@ -13,7 +18,14 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const dialog = ref<HTMLDialogElement>()
 const titleId = `dialog-${useId()}`
 let previousFocus: HTMLElement | null = null
-let previousOverflow = ''
+let holdsBodyLock = false
+const releaseBodyLock = () => {
+  if (!holdsBodyLock) return
+  holdsBodyLock = false
+  const index = dialog.value ? openedDialogs.indexOf(dialog.value) : -1
+  if (index >= 0) openedDialogs.splice(index, 1)
+  if (--bodyLockCount === 0) document.body.style.overflow = bodyOverflowBeforeDialogs
+}
 
 const close = () => emit('update:modelValue', false)
 
@@ -22,14 +34,17 @@ const syncDialog = async (open: boolean) => {
   if (!dialog.value) return
   if (open && !dialog.value.open) {
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    previousOverflow = document.body.style.overflow
+    if (bodyLockCount++ === 0) bodyOverflowBeforeDialogs = document.body.style.overflow
+    holdsBodyLock = true
+    openedDialogs.push(dialog.value)
     document.body.style.overflow = 'hidden'
     dialog.value.showModal()
-    dialog.value.querySelector<HTMLElement>('[autofocus], input, select, textarea, button, a')?.focus()
+    const target = dialog.value.querySelector<HTMLElement>('[autofocus]') || dialog.value.querySelector<HTMLElement>('input, select, textarea, button, a')
+    target?.focus({ preventScroll: true })
   } else if (!open && dialog.value.open) {
     dialog.value.close()
-    document.body.style.overflow = previousOverflow
-    previousFocus?.focus()
+    releaseBodyLock()
+    previousFocus?.focus({ preventScroll: true })
   }
 }
 
@@ -43,7 +58,7 @@ const onBackdrop = (event: MouseEvent) => {
 }
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (props.modelValue && event.key === 'Escape') {
+  if (props.modelValue && event.key === 'Escape' && openedDialogs.at(-1) === dialog.value) {
     event.preventDefault()
     close()
   }
@@ -53,7 +68,7 @@ watch(() => props.modelValue, syncDialog, { immediate: true })
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  document.body.style.overflow = previousOverflow
+  releaseBodyLock()
 })
 </script>
 

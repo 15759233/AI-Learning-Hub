@@ -31,6 +31,7 @@ const load = async () => {
       const [nextPosts, nextFollowing] = await Promise.all([communityApi.list(requestedTab === 'answers' ? 'answers' : 'user', nextProfile.id), requestedTab === 'following' ? communityApi.following(nextProfile.id) : Promise.resolve([])])
       if (!current()) return
       profile.value = nextProfile; posts.value = nextPosts; following.value = nextFollowing
+      settingsOpen.value = route.query.settings === '1' && nextProfile.id === auth.user?.id
     } else if (requestedView === 'topic') {
       const [nextTopics, nextPosts] = await Promise.all([communityApi.topics(), communityApi.list('topic', slug)])
       if (!current()) return
@@ -47,7 +48,7 @@ const load = async () => {
 const follow = async () => {
   const target = view.value === 'topic' ? topic.value : view.value === 'user' ? profile.value : null, epoch = loadEpoch
   if (!target) return
-  try { await store.follow(target.id, view.value === 'topic', !target.following); if (epoch === loadEpoch) await load() } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '关注失败' }
+  try { await store.follow(target.id, view.value === 'topic', !target.following, target) } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '关注失败' }
 }
 const saveProfile = async () => { if (!profile.value || view.value !== 'user') return; const epoch = loadEpoch; try { await communityApi.updateProfile({ bio: profile.value.bio, headline: profile.value.headline, expertiseTopics: profile.value.expertiseTopics, allowAchievementDrafts: profile.value.allowAchievementDrafts }); if (epoch === loadEpoch) { settingsOpen.value = false; await load() } } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '保存失败' } }
 const resetDemo = async () => { resetCommunityMock(); store.clear(); await load(); await store.loadContext() }
@@ -55,7 +56,7 @@ watch([() => route.path, () => route.query.tab], ([, value]) => { const allowed 
 watch([() => route.fullPath, tab], load, { immediate: true })
 onBeforeUnmount(() => { loadEpoch++ })
 </script>
-<template><section><header class="community-page-heading"><div><RouterLink to="/community">← 社区发现</RouterLink><h1>{{ title }}</h1><p v-if="topic">{{ topic.description }}</p><p v-if="profile">{{ profile.headline || '在学习与实践中，一起向前。' }}</p></div><button v-if="topic || (profile && profile.id !== auth.user?.id)" class="button primary small" @click="follow">{{ (topic?.following || profile?.following) ? '已关注' : '关注' }}</button></header>
+<template><section><header class="community-page-heading"><div><RouterLink to="/community">← 社区发现</RouterLink><h1>{{ title }}</h1><p v-if="topic">{{ topic.description }}</p><p v-if="profile">{{ profile.headline || '在学习与实践中，一起向前。' }}</p></div><button v-if="topic || (profile && profile.id !== auth.user?.id)" class="button primary small" :disabled="store.operations[`follow:${topic ? 'topic' : 'user'}:${topic?.id || profile?.id}`]" @click="follow">{{ (topic?.following || profile?.following) ? '已关注' : '关注' }}</button></header>
   <section v-if="profile" class="community-profile-summary"><span class="avatar large">{{ profile.displayName[0] }}</span><div><strong>{{ badgeLabels[profile.verifiedType] }}</strong><p>{{ profile.bio || '还没有填写个人介绍。' }}</p><small>{{ profile.school }} · {{ profile.major }}</small><div class="community-profile-stats"><span>{{ profile.postCount }} 动态</span><span>{{ profile.followerCount }} 关注者</span><span>{{ profile.followingCount }} 关注</span></div></div><template v-if="profile.id === auth.user?.id"><RouterLink class="button secondary small" to="/community/drafts">草稿箱</RouterLink><button class="button secondary small" @click="settingsOpen = !settingsOpen">个人设置</button></template></section>
   <form v-if="settingsOpen && profile" class="dialog-form community-profile-form" @submit.prevent="saveProfile"><label>一句话介绍<input v-model="profile.headline" maxlength="120" /></label><label>个人简介<textarea v-model="profile.bio" maxlength="500" rows="3" /></label><label class="community-checkbox"><input v-model="profile.allowAchievementDrafts" type="checkbox" />允许生成学习成就草稿（不会自动发布）</label><button class="button primary">保存设置</button></form>
   <form v-if="settingsOpen && profile?.id === auth.user?.id" class="dialog-form community-profile-form" @submit.prevent="changeUsername"><label>公开用户名（只能修改一次）<input v-model="username" required pattern="[a-z][a-z0-9_]{3,29}" placeholder="4–30位小写字母、数字、下划线" /></label><button class="button secondary">修改用户名</button><RouterLink to="/community/drafts">打开草稿箱</RouterLink></form>

@@ -13,6 +13,7 @@ interface CardState {
 }
 
 vi.mock('../stores/auth', () => ({ useAuthStore: () => ({ user: { id: 'viewer' } }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('../services/api/community', () => ({ communityApi: { post: vi.fn(), feedback: vi.fn(), remove: vi.fn(), reaction: vi.fn(), signals: vi.fn() } }))
 vi.mock('../components/base/AppIcon.vue', () => ({ default: { render: () => null } }))
 vi.mock('../components/base/AppDialog.vue', async () => {
@@ -21,7 +22,7 @@ vi.mock('../components/base/AppDialog.vue', async () => {
 })
 beforeEach(() => { vi.resetAllMocks(); resetCommunityMock(); vi.mocked(communityApi.feedback).mockResolvedValue({}); vi.mocked(communityApi.remove).mockResolvedValue({}); vi.mocked(communityApi.reaction).mockResolvedValue({}) })
 describe('帖子移除事件不刷新不可见详情', () => {
-  it('隐藏、减少此类、静音与屏蔽只发hidden事件，正常点赞仍发changed', async () => {
+  it('隐藏类操作只发hidden，点赞乐观更新且不拉取详情或重载列表', async () => {
     const post = await mockCommunity<CommunityPostDetailDto>('/posts/community-note-1', 'GET')
     vi.mocked(communityApi.post).mockResolvedValue(post)
     for (const action of ['hide', 'not-interested', 'mute', 'block'] as const) {
@@ -33,7 +34,8 @@ describe('帖子移除事件不刷新不可见详情', () => {
     }
     const changed = vi.fn(), view = setupComponent<CardState>(CommunityPostCard, { post, onChanged: changed })
     await view.state.reaction('like')
-    expect(changed).toHaveBeenCalledOnce(); expect(communityApi.post).toHaveBeenCalledWith(post.id)
+    expect(changed).not.toHaveBeenCalled(); expect(communityApi.post).not.toHaveBeenCalled()
+    expect(post.viewerState.liked).toBe(true); expect(post.stats.likes).toBe(5)
     view.unmount()
   })
   it('作者确认删除只移除卡片，不跟随404详情请求', async () => {

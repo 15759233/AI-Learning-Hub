@@ -5,6 +5,7 @@ import AppDialog from '../components/base/AppDialog.vue'
 import { useCommunityStore } from '../stores/community'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import CommunityAdvancedComposer from './CommunityAdvancedComposer.vue'
+import CommunityQuickComposer from './CommunityQuickComposer.vue'
 const store = useCommunityStore(), editor = useCommunityDraft(), router = useRouter()
 const leave = (event: BeforeUnloadEvent) => { if (store.composerOpen && editor.dirty) { event.preventDefault(); event.returnValue = '' } }
 let continuation: (() => void) | null = null
@@ -17,6 +18,6 @@ onBeforeUnmount(() => { removeGuard(); removeAfter(); window.removeEventListener
 </script>
 <template>
 <div v-if="store.publishNotice" class="community-publish-feedback" role="status" aria-live="polite"><span>{{ store.publishNotice.text }}</span><RouterLink :to="`/community/post/${store.publishNotice.id}`">查看动态</RouterLink><button type="button" aria-label="关闭发布提示" @click="store.publishNotice = null">×</button></div>
-<AppDialog :model-value="store.composerOpen && !store.composerInline" :title="store.composerMode === 'advanced' ? '高级编辑' : '分享学习收获'" class="community-composer" @update:model-value="editor.close()"><CommunityAdvancedComposer /></AppDialog>
+<AppDialog :model-value="store.composerOpen && !store.composerInline" :title="store.composerMode === 'advanced' ? '高级编辑' : '分享学习收获'" class="community-composer" @update:model-value="editor.close()"><template v-if="store.composerOpen && !store.composerInline"><CommunityAdvancedComposer v-if="store.composerMode === 'advanced'" /><CommunityQuickComposer v-else dialog /></template></AppDialog>
 <AppDialog :model-value="editor.closePrompt" title="保留未完成的内容" @update:model-value="cancel"><p>还有正在编辑的内容，你希望怎样离开？</p><div class="composer-actions"><button class="button primary" :disabled="editor.saving" @click="finish(true)">保存草稿</button><button class="button secondary" @click="finish(false)">放弃修改</button><button class="button secondary" @click="cancel">继续编辑</button></div></AppDialog>
 </template>

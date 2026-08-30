@@ -53,7 +53,7 @@ const showApiError = (event: Event) => {
 
 const clearApiSession = () => auth.clearSession()
 const reconnect = async () => { await auth.restore(true); if (!auth.user && auth.authState === 'anonymous') useAuthUiStore().open({ redirect: route.fullPath, reason: '登录已失效，请重新登录后继续当前页面' }) }
-const layout = computed(() => route.meta.layout === 'immersive' ? ImmersiveLabLayout : route.meta.layout === 'community' ? CommunityLayout : PublicLayout)
+const layout = computed(() => route.meta.layout === 'immersive' ? ImmersiveLabLayout : route.meta.layout === 'community' || (route.meta.layout === 'adaptive' && auth.user) ? CommunityLayout : PublicLayout)
 
 const retry = () => {
   if (apiState.value === 'error') {
