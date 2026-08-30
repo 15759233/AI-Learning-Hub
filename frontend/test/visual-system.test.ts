@@ -120,4 +120,33 @@ describe('学习社区视觉契约', () => {
     expect(decoration).toContain('pointer-events: none')
     expect(decoration).not.toContain('mask-image')
   })
+
+  it('引导页资料字段独立对齐，主题复选与移动单列不依赖弹层样式', () => {
+    const style = source('community/CommunityOnboardingView.vue').match(/<style scoped>([\s\S]+)<\/style>/)?.[1]
+    expect(style).toContain('.dialog-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))')
+    expect(style).toContain('.dialog-form > label { display: grid; gap: 8px; min-width: 0')
+    expect(style).toContain('.dialog-form > label :is(input, select) { width: 100%; min-width: 0')
+    expect(style).toContain('.dialog-form > :not(label) { grid-column: 1 / -1')
+    expect(style).toContain('.onboarding-themes label { display: flex; align-items: center')
+    expect(style).toContain('min-height: 16px')
+    expect(style).toMatch(/@media \(max-width: 767px\)[\s\S]*\.dialog-form, \.onboarding-themes \{ grid-template-columns: minmax\(0, 1fr\)/)
+    expect(style).toContain('border-radius: var(--amc-radius-large)')
+    expect(style).not.toMatch(/background:\s*white|#[0-9a-f]{3,8}/i)
+  })
+
+  it('API实训动作表单限定深色工作台作用域，禁用参数仍清晰可读', () => {
+    const style = source('styles/workspaces.css')
+    const scope = '.lab-page .workspace-type > .dialog-form'
+    expect(style).toContain(`${scope} { display: grid; grid-template-columns: minmax(0, 1fr)`)
+    expect(style).toContain(`${scope} > label { display: grid`)
+    const textarea = style.match(/\.lab-page \.workspace-type > \.dialog-form textarea \{([^}]+)\}/)?.[1]
+    expect(textarea).toContain('width: 100%')
+    expect(textarea).toContain('color: var(--lab-text)')
+    expect(textarea).toContain('background: var(--lab-surface-raised)')
+    const disabled = style.match(/\.lab-page \.workspace-type > \.dialog-form textarea:disabled \{([^}]+)\}/)?.[1]
+    expect(disabled).toContain('color: var(--lab-muted)')
+    expect(disabled).toContain('opacity: 1')
+    expect(style).toContain(`${scope} > button:disabled`)
+    expect(source('views/LabWorkspaceView.vue')).toContain(':disabled="state !== \'running\'"')
+  })
 })
