@@ -1,0 +1,25 @@
+.resource-toolbar { justify-content: flex-start; flex-wrap: wrap; }
+.resource-toolbar > strong { margin-right: auto; }
+.resource-toolbar label { display: flex; align-items: center; gap: 7px; color: var(--secondary); font-size: .78rem; }
+.check-label input { min-height: auto; }
+.rank-list { padding-left: 25px; }
+.rank-list li { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.rank-list button { display: block; width: 100%; margin-bottom: 3px; padding: 0; text-align: left; border: 0; background: transparent; cursor: pointer; }
+.rank-list small { color: var(--muted); }
+.recent-table { margin-top: 58px; }
+.table-row { display: grid; grid-template-columns: 2fr 1fr .8fr 1fr .8fr 48px; align-items: center; gap: 8px; width: 100%; min-height: 52px; padding: 13px; text-align: left; border: 0; border-bottom: 1px solid var(--border); background: white; }
+.table-title { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 0; text-align: left; border: 0; background: transparent; cursor: pointer; }
+.table-title small { color: var(--muted); }
+.table-head { color: var(--muted); background: #f7f5f2; font-size: .75rem; }
+.dialog-preview { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; }
+.notice { padding: 12px; color: #8d531e; background: #fff4df; border-radius: 9px; font-size: .78rem; line-height: 1.6; }
+.featured-resources .section-heading { margin-top: 55px; }
+.featured-resource-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.featured-resource-row button { display: grid; grid-template-columns: 120px 1fr; gap: 15px; align-items: center; padding: 0; overflow: hidden; text-align: left; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; cursor: pointer; }
+.featured-resource-row img { width: 120px; height: 120px; object-fit: cover; }
+.featured-resource-row button > span { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding-right: 12px; }
+.featured-resource-row small { color: var(--purple); }
+.featured-resource-row em { color: var(--brand); font-size: var(--amc-font-meta); font-style: normal; }
+.resource-favorites { display: grid; gap: 6px; }
+.resource-favorites button { display: flex; justify-content: space-between; gap: 8px; padding: 9px; text-align: left; border: 0; border-radius: 7px; background: #f8f6f3; cursor: pointer; }
+.resource-favorites small { color: var(--brand); }

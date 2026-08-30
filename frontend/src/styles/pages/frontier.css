@@ -1,0 +1,27 @@
+.page-title { padding: 65px 0 25px; }
+.page-title h1 { margin-bottom: 12px; }
+.compact-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.compact-tabs button { min-height: 40px; }
+.focus-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 18px; margin-top: 25px; }
+.focus-article { display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 25px; min-height: 390px; padding: 32px; overflow: hidden; border-radius: var(--radius-hero); background: linear-gradient(135deg, #fff, #edeaff); box-shadow: var(--shadow); }
+.focus-article h2 { margin: 18px 0 10px; font-size: clamp(2rem, 3vw, 3.2rem); }
+.focus-article img { width: 100%; height: 310px; object-fit: cover; border-radius: 15px; }
+.topic-ranking { display: flex; flex-direction: column; gap: 10px; }
+.topic-ranking ol { margin: 0; padding: 0; list-style: none; }
+.topic-ranking li { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.topic-ranking li strong { color: var(--brand); font-size: 1.2rem; }
+.topic-ranking button { border: 0; background: none; cursor: pointer; }
+.topic-ranking > a { padding: 8px 0; color: var(--secondary); font-size: .8rem; }
+.editorial-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; }
+.editorial-list { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--border); }
+.editorial-list .editorial-item { display: grid; grid-template-columns: 220px 1fr; gap: 22px; padding: 18px; background: white; }
+.editorial-list img { width: 100%; height: 145px; object-fit: cover; border-radius: 12px; }
+.editorial-list h3 { margin: 9px 0 5px; }
+.editorial-list p { margin-bottom: 7px; font-size: .83rem; }
+.editorial-list small { color: var(--muted); }
+.editorial-layout > .study-aside { margin-top: 82px; }
+.tech-list { display: grid; }
+.tech-list button { display: flex; justify-content: space-between; gap: 10px; min-height: 46px; border: 0; border-top: 1px solid var(--border); background: white; cursor: pointer; }
+.tech-list span { color: var(--muted); }
+.newsletter { padding: 18px; border-radius: 13px; background: #f0edff; }
+.newsletter form { display: grid; gap: 8px; }

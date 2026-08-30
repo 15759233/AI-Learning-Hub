@@ -1,3 +1,2 @@
 <script setup lang="ts">withDefaults(defineProps<{ rows?: number }>(), { rows: 3 })</script>
 <template><div class="community-skeleton" role="status" aria-label="正在加载"><div v-for="row in rows" :key="row" class="skeleton-card"><i /><span /><span /><span /></div></div></template>
-<style scoped>.skeleton-card{padding:24px;margin-bottom:16px;background:#fff;border:1px solid #ece9e3;border-radius:16px}.skeleton-card i,.skeleton-card span{display:block;background:#edeae4;border-radius:8px;height:13px;margin-bottom:14px;animation:pulse 1.5s ease-in-out infinite}.skeleton-card i{width:42px;height:42px;border-radius:50%}.skeleton-card span:last-child{width:65%}@keyframes pulse{50%{opacity:.4}}@media(prefers-reduced-motion:reduce){.skeleton-card *{animation:none}}</style>

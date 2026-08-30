@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CommunityAvatar from '../components/base/CommunityAvatar.vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import AppDialog from '../components/base/AppDialog.vue'
@@ -93,7 +94,7 @@ onMounted(() => {
   <nav class="community-profile-links"><RouterLink :to="`/community/user/${auth.user?.id}`">我的动态与回答</RouterLink><RouterLink :to="`/community/user/${auth.user?.id}?tab=topics`">关注的话题</RouterLink><RouterLink :to="`/community/user/${auth.user?.id}?tab=following`">关注的人</RouterLink><RouterLink to="/bookmarks">我的收藏与笔记</RouterLink><RouterLink to="/notifications">社区通知</RouterLink></nav>
   <div class="page-container profile-page">
     <section class="profile-hero">
-      <div class="profile-user"><span class="large-avatar">{{ displayName.slice(0, 1) }}</span><div><h1>{{ displayName }} <small>{{ dataMode === 'api' ? '统一学习账号' : '高校认证' }}</small></h1><p>{{ dataMode === 'api' ? (auth.user?.email || '尚未登录') : userProfile.program }}</p><span>{{ dataMode === 'api' ? (auth.user ? '个人介绍尚未配置' : '登录后查看个人学习档案') : store.profile.bio }}</span><div v-if="dataMode === 'mock'" class="hero-actions"><button class="button secondary small" type="button" @click="openEdit">编辑资料</button></div></div></div>
+      <div class="profile-user"><CommunityAvatar :src="auth.user?.avatarUrl" :username="auth.user?.username" :name="displayName" size="lg" /><div><h1>{{ displayName }} <small>{{ dataMode === 'api' ? '统一学习账号' : '高校认证' }}</small></h1><p>{{ dataMode === 'api' ? (auth.user?.email || '尚未登录') : userProfile.program }}</p><span>{{ dataMode === 'api' ? (auth.user ? '个人介绍尚未配置' : '登录后查看个人学习档案') : store.profile.bio }}</span><div v-if="dataMode === 'mock'" class="hero-actions"><button class="button secondary small" type="button" @click="openEdit">编辑资料</button></div></div></div>
       <div class="profile-level"><div><strong>{{ dataMode === 'api' ? '等级 —' : `Lv.${userProfile.level}` }}</strong><span>{{ dataMode === 'api' ? '等级规则尚未配置' : '离下一等级还差 1200 经验值' }}</span></div><ProgressBar v-if="dataMode === 'mock'" :value="82" /><span v-else>等级进度 —</span><div class="profile-kpis"><span><strong>{{ dataMode === 'api' ? '—' : userProfile.streak }}</strong>连续学习/天</span><span><strong>{{ dataMode === 'api' ? '—' : `${userProfile.weeklyHours}h` }}</strong>本周学习</span><span><strong>{{ dataMode === 'api' ? (accountDataReady ? (store.serverGrowth?.points ?? 0) : '—') : userProfile.points }}</strong>成就点</span></div></div>
     </section>
     <section><div class="section-heading"><h2>学习总览</h2><RouterLink to="/assessments">学习数据详情 <AppIcon name="arrow-right" :size="15" /></RouterLink></div><p v-if="!accountDataReady" class="notice">{{ accountDataMessage }}</p><div class="stat-row six"><article v-for="[label, value] in overviewRows" :key="label"><strong>{{ value }}</strong><span>{{ label }}</span></article></div></section>

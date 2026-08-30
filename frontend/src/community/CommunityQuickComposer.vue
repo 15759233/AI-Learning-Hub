@@ -6,6 +6,8 @@ import { useAuthStore } from '../stores/auth'
 import CommunityComposerTools from './CommunityComposerTools.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
 import AppIcon from '../components/base/AppIcon.vue'
+import CommunityAvatar from '../components/base/CommunityAvatar.vue'
+import { communityArt } from '../assets/community/manifest'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { useCommunityScrollRoot } from './composables/useCommunityScrollRoot'
 import { postLabels } from './labels'
@@ -16,9 +18,9 @@ const scrollRoot = useCommunityScrollRoot(), textarea = ref<HTMLTextAreaElement>
 const { form, body, images, saving, error, savedAt } = storeToRefs(editor)
 const active = computed(() => store.composerOpen && store.composerMode === 'quick' && (props.dialog || store.composerInline))
 const tool = ref<'images' | 'binding' | 'topics' | null>(null)
-const types: Array<[CommunityPostType, string]> = [['question', '提出问题'], ['note', '发布笔记'], ['lab_result', '分享实训'], ['project', '展示项目']]
+const types: Array<[CommunityPostType, string, string]> = [['question', '提出问题', 'question'], ['note', '发布笔记', 'note-edit'], ['lab_result', '分享实训', 'lab-share'], ['project', '展示项目', 'project-folder']]
 const open = (type: CommunityPostType = 'general') => { if (active.value) form.value.type = type; else store.openComposer({ type }) }
-const resize = () => { const node = textarea.value; if (!node) return; node.style.height = '72px'; node.style.height = `${Math.min(240, Math.max(72, node.scrollHeight))}px` }
+const resize = () => { const node = textarea.value; if (!node) return; node.style.height = '84px'; node.style.height = `${Math.min(240, Math.max(84, node.scrollHeight))}px` }
 const focus = () => {
   if (!active.value) return
   const rect = panel.value?.getBoundingClientRect(), viewport = scrollRoot.value?.getBoundingClientRect()
@@ -39,10 +41,14 @@ onMounted(() => { window.addEventListener('community-composer-focus', focus); if
 onBeforeUnmount(() => window.removeEventListener('community-composer-focus', focus))
 </script>
 <template>
-  <section :id="dialog ? undefined : 'community-quick-composer'" ref="panel" class="community-quick-composer" :class="{ 'quick-dialog': dialog }">
-    <template v-if="!active"><button class="quick-prompt" @click="open()"><span class="avatar">{{ auth.user?.displayName.slice(0, 1) }}</span><span>分享你今天学到的 AI 知识……</span></button><div class="quick-types"><button v-for="[type, label] in types" :key="type" @click="open(type)">{{ label }}</button><CommunityPostMenu label="更多发布类型"><template #trigger>更多</template><button type="button" role="menuitem" @click="open('general')">普通交流</button><button type="button" role="menuitem" @click="open('frontier_discussion')">前沿讨论</button></CommunityPostMenu></div></template>
+  <section :id="dialog ? undefined : 'community-quick-composer'" ref="panel" class="community-quick-composer" :class="{ 'quick-dialog': dialog, 'quick-active': active }">
+    <template v-if="!active">
+      <img v-bind="communityArt.composer" class="composer-decoration" alt="" fetchpriority="high" />
+      <button class="quick-prompt" @click="open()"><CommunityAvatar :src="auth.user?.avatarUrl" :username="auth.user?.username" :name="auth.user?.displayName || '学习者'" /><span>分享你今天学到的 AI 知识……</span></button>
+      <div class="quick-types"><button v-for="[type, label, icon] in types" :key="type" :class="`quick-type-${type}`" @click="open(type)"><AppIcon :name="icon" :size="21" />{{ label }}</button><CommunityPostMenu label="更多发布类型"><template #trigger><AppIcon name="more-circle" :size="21" />更多</template><button type="button" role="menuitem" @click="open('general')">普通交流</button><button type="button" role="menuitem" @click="open('frontier_discussion')">前沿讨论</button></CommunityPostMenu></div>
+    </template>
     <form v-else class="quick-editor" @submit.prevent="editor.save()" @keydown="keydown" @paste="paste" @dragover.prevent @drop="drop">
-      <header class="quick-editor-heading"><span class="avatar">{{ auth.user?.displayName.slice(0, 1) }}</span><select v-model="form.type" aria-label="发布内容类型"><option v-for="(label, type) in postLabels" :key="type" :value="type">{{ label }}</option></select><select v-model="form.visibility" aria-label="可见范围"><option value="public">登录社区用户</option><option value="school">仅同校用户</option></select><button class="icon-button" type="button" aria-label="收起快捷发布" @click="editor.close()">×</button></header>
+      <header class="quick-editor-heading"><CommunityAvatar :src="auth.user?.avatarUrl" :username="auth.user?.username" :name="auth.user?.displayName || '学习者'" /><select v-model="form.type" aria-label="发布内容类型"><option v-for="(label, type) in postLabels" :key="type" :value="type">{{ label }}</option></select><select v-model="form.visibility" aria-label="可见范围"><option value="public">登录社区用户</option><option value="school">仅同校用户</option></select><button class="icon-button" type="button" aria-label="收起快捷发布" @click="editor.close()"><AppIcon name="close" :size="18" /></button></header>
       <label v-if="['question', 'project'].includes(form.type)">标题（必填）<input v-model="form.title" required maxlength="160" placeholder="用一句话说明问题或项目" /></label>
       <textarea ref="textarea" v-model="body" aria-label="正文" maxlength="15000" autofocus required placeholder="分享你今天学到的 AI 知识……" />
       <CommunityComposerTools v-if="tool" :panel="tool" />

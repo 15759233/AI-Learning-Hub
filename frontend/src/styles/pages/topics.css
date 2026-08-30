@@ -1,0 +1,37 @@
+.learning-path { padding: 25px; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; }
+.learning-path .section-heading { align-items: baseline; justify-content: flex-start; margin: 0 0 24px; }
+.learning-path .section-heading h2 { font-size: 1.1rem; }
+.learning-path .section-heading span { color: var(--secondary); font-size: .82rem; }
+.learning-path .section-heading a { margin-left: auto; color: var(--brand); font-size: .78rem; font-weight: 750; }
+.path-steps { display: grid; grid-template-columns: repeat(6, 1fr); }
+.path-steps > div { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 6px 8px; min-width: 0; padding: 0 12px; border-left: 2px solid var(--border); font-size: var(--font-meta); }
+.path-steps > div > .app-icon { grid-row: 2 / 4; color: var(--purple); }
+.path-steps > div > strong, .path-steps > div > small { grid-column: 2; min-width: 0; }
+.path-steps > div > small { color: var(--muted); line-height: 1.5; }
+.path-steps span { color: var(--muted); }
+.path-steps .done, .path-steps .current { border-color: var(--brand); }
+.path-steps .done span, .path-steps .current span { color: var(--brand); }
+.catalog-layout { display: grid; grid-template-columns: 205px minmax(0, 1fr) 280px; align-items: start; gap: 18px; margin-top: 18px; }
+.filter-panel label { display: grid; gap: 8px; margin-top: 24px; color: var(--secondary); font-size: .8rem; font-weight: 700; }
+.filter-panel .full-width { margin-top: 24px; }
+.study-aside { display: flex; flex-direction: column; gap: 17px; }
+.study-aside h3 { margin: 4px 0; }
+.study-aside > a:not(.button) { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border); font-size: .84rem; }
+.study-aside > a small { color: var(--brand); }
+.progress-ring { display: grid; place-items: center; width: 112px; height: 112px; margin: 5px auto 10px; border: 11px solid #f2eee9; border-top-color: var(--brand); border-right-color: var(--brand); border-radius: 50%; }
+.progress-ring strong, .progress-ring span { grid-area: 1 / 1; }
+.progress-ring strong { margin-top: -16px; font-size: 1.55rem; }
+.progress-ring span { margin-top: 28px; color: var(--muted); font-size: var(--amc-font-meta); }
+.mini-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.mini-stats span { color: var(--muted); text-align: center; font-size: var(--amc-font-meta); }
+.mini-stats strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 1rem; }
+.activity-heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.activity-heatmap span { aspect-ratio: 1; border-radius: 4px; background: #f0ebe6; }
+.activity-heatmap .level-1 { background: #ffe0d5; }
+.activity-heatmap .level-2 { background: #ffbea9; }
+.activity-heatmap .level-3 { background: #ff8b68; }
+.activity-heatmap .level-4 { background: var(--brand); }
+.mini-achievements { display: grid; gap: 7px; }
+.mini-achievements span { display: flex; align-items: center; gap: 8px; color: var(--secondary); font-size: .75rem; }
+.mini-achievements strong { display: grid; place-items: center; width: 30px; height: 30px; color: #6a4ce8; background: #eeeaff; border-radius: 8px; }
+.recommendation-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }

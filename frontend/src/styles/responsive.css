@@ -1,3 +1,190 @@
+@media (max-width: 1199px) {
+  .header-inner, .page-container { width: min(calc(100% - 32px), var(--container)); }
+  .header-cta, .brand small { display: none; }
+  .main-nav { gap: 16px; }
+  .home-hero { grid-template-columns: 1fr 1fr; min-height: 550px; }
+  .home-hero h1 { font-size: clamp(2.7rem, 5.2vw, 4.4rem); }
+  .featured-grid { grid-template-columns: 1.25fr repeat(2, minmax(0, 1fr)); }
+  .four-grid { grid-template-columns: repeat(2, 1fr); }
+  .resource-strip { grid-template-columns: repeat(3, 1fr); }
+  .home-frontier-grid { grid-template-columns: 1fr 1fr; }
+  .frontier-topic-card { grid-column: 1 / -1; min-height: 260px; }
+  .growth-section { grid-template-columns: 1fr 240px; }
+  .growth-section > div:first-child { grid-column: 1 / -1; }
+  .student-activity-grid { grid-template-columns: repeat(2, 1fr); }
+  .recommendation-row, .hot-lab-ranking, .five-resource-grid { grid-template-columns: repeat(3, 1fr); }
+  .featured-resource-row { grid-template-columns: repeat(2, 1fr); }
+  .assessment-achievements { grid-template-columns: repeat(3, 1fr); }
+  .catalog-layout { grid-template-columns: 190px minmax(0, 1fr); }
+  .catalog-layout > .study-aside { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .card-grid.three { grid-template-columns: repeat(2, 1fr); }
+  .course-hero { grid-template-columns: 1fr .65fr; }
+  .course-hero .hero-progress { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto auto; align-items: center; }
+  .learning-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .lesson-aside { grid-column: 1 / -1; grid-template-columns: repeat(4, 1fr); }
+  .lesson-aside.sticky { position: static; }
+  .workspace-layout { grid-template-columns: 210px minmax(0, 1fr); }
+  .guidance-panel { grid-column: 1 / -1; }
+  .guidance-panel > template { display: grid; }
+  .challenge-hero { grid-template-columns: 1fr 300px; }
+  .challenge-target { grid-column: 1 / -1; }
+  .badge-wall { grid-template-columns: repeat(4, 1fr); }
+  .ability-profile-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 991px) {
+  .app-header { height: auto; min-height: 68px; }
+  .header-inner { flex-wrap: wrap; padding: 10px 0; }
+  .main-nav { order: 3; width: 100%; height: 40px; overflow-x: auto; }
+  .main-nav a { flex: 0 0 auto; }
+  .main-nav a.router-link-active::after { bottom: 1px; }
+  .home-hero, .page-hero, .section-grid, .focus-layout, .editorial-layout, .assessment-grid, .profile-hero, .profile-two-column, .capability-layout { grid-template-columns: 1fr; }
+  .homepage-skeleton-hero { grid-template-columns: 1fr; }
+  .homepage-skeleton-hero > i { order: -1; height: 360px; }
+  .homepage-skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .home-hero { padding-top: 36px; }
+  .home-hero .hero-visual { max-width: 650px; margin: auto; }
+  .ability-section { gap: 0; }
+  .featured-grid { grid-template-columns: repeat(2, 1fr); }
+  .maker-projects { grid-template-columns: 1fr; }
+  .home-frontier-grid, .home-tools-grid { grid-template-columns: 1fr; }
+  .frontier-topic-card { grid-column: auto; }
+  .growth-section { grid-template-columns: 1fr; }
+  .growth-section > div:first-child { grid-column: auto; }
+  .featured-course { grid-column: 1 / -1; grid-row: auto; min-height: 390px; }
+  .page-hero { padding: 35px; }
+  .page-hero > img { order: -1; height: 220px; }
+  .catalog-layout { grid-template-columns: 1fr; }
+  .filter-panel { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .filter-panel .panel-title { grid-column: 1 / -1; }
+  .filter-panel label, .filter-panel .full-width { margin-top: 0; }
+  .catalog-layout > .study-aside { grid-template-columns: 1fr; }
+  .path-steps { grid-template-columns: repeat(3, 1fr); gap: 18px 0; }
+  .learning-layout { grid-template-columns: 1fr; }
+  .outline-panel.sticky { position: static; }
+  .lesson-aside { grid-template-columns: repeat(2, 1fr); }
+  .featured-lab { grid-template-columns: 220px 1fr; }
+  .featured-actions { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+  .labs-layout, .resource-layout { grid-template-columns: 1fr; }
+  .workspace-layout { grid-template-columns: 1fr; }
+  .step-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .step-panel .panel-title, .step-panel .report-link { grid-column: 1 / -1; }
+  .step-panel > button { margin: 0; }
+  .lab-hero { grid-template-columns: 1fr 300px; }
+  .lab-hero-actions { grid-column: 1 / -1; }
+  .lab-result { grid-template-columns: 1fr auto; }
+  .lab-result .button { grid-column: 1 / -1; }
+  .editorial-layout > .study-aside { margin-top: 0; }
+  .assessment-title { align-items: flex-start; }
+  .challenge-hero { grid-template-columns: 1fr 260px; }
+  .ability-cards { grid-template-columns: repeat(2, 1fr); }
+  .profile-level { padding-top: 20px; border-top: 1px solid var(--border); }
+  .stat-row.six { grid-template-columns: repeat(3, 1fr); }
+  .profile-two-column .favorites-panel, .profile-two-column .plan-card { margin-top: 20px; }
+  .profile-cta { grid-template-columns: 1fr auto; }
+  .profile-cta .profile-kpis { grid-column: 1 / -1; }
+  .lab-bottom-actions { grid-template-columns: 1fr 1fr; }
+  .lab-bottom-actions .quick-links { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .homepage-module-boundary { opacity: 1; transform: none; }
+}
+@media (max-width: 767px) {
+  .page-container { width: min(calc(100% - 24px), var(--container)); }
+  .header-inner { position: relative; width: calc(100% - 24px); flex-wrap: nowrap; gap: 10px; }
+  .header-actions .icon-button, .header-actions .header-avatar { display: none; }
+  .header-actions { margin-left: auto; gap: 8px; }
+  .header-actions .mobile-nav-toggle { display: inline-grid; flex: 0 0 40px; }
+  .header-actions .header-cta, .header-actions .api-mode-badge { display: none; }
+  .main-nav {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 9px);
+    right: 0;
+    left: 0;
+    display: none;
+    width: auto;
+    height: auto;
+    max-height: calc(100vh - 92px);
+    padding: 10px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 0 18px 44px rgba(33, 27, 22, .16);
+  }
+  .main-nav.mobile-open { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .main-nav a { min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 9px; }
+  .main-nav a.router-link-active { background: var(--brand-soft); }
+  .main-nav a.router-link-active::after { display: none; }
+  .main-nav .mobile-nav-cta { display: flex; grid-column: 1 / -1; justify-content: center; color: #fff; background: var(--brand); }
+  .brand strong { font-size: .84rem; }
+  .brand small { display: none; }
+  .brand-mark { width: 34px; height: 34px; }
+  .home-hero { display: flex; flex-direction: column; min-height: auto; }
+  .home-hero .hero-copy { order: 2; }
+  .home-hero h1 { font-size: clamp(28px, 8.2vw, 40px); line-height: 1.12; letter-spacing: -.03em; text-wrap: nowrap; }
+  .home-hero h1 > span { white-space: nowrap; }
+  .floating-label { display: none; }
+  .direction-grid, .featured-grid, .three-grid, .four-grid, .card-grid.three, .resource-strip, .stat-row, .state-panel, .key-grid, .badge-wall, .ability-profile-grid { grid-template-columns: 1fr; }
+  .homepage-skeleton-grid, .homepage-skeleton-grid.large { grid-template-columns: 1fr; }
+  .homepage-skeleton-hero { min-height: 0; }
+  .student-activity-grid, .recommendation-row, .hot-lab-ranking, .five-resource-grid, .featured-resource-row, .assessment-achievements { grid-template-columns: 1fr; }
+  .maker-projects article { grid-template-columns: 1fr; }
+  .maker-projects .project-card, .weekly-challenge-module { grid-template-columns: 1fr; }
+  .project-card > .category-cover { min-height: 210px; }
+  .challenge-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .maker-projects img { height: 210px; }
+  .home-tools-grid .resource-strip { grid-template-columns: 1fr; }
+  .featured-course { grid-template-columns: 1fr; }
+  .featured-course img { width: 100%; margin: 20px 0 0; }
+  .growth-section, .assessment-title { flex-direction: column; align-items: stretch; }
+  .bottom-cta { flex-direction: column; align-items: flex-start; padding: 30px; }
+  .bottom-cta h2 { font-size: 2rem; }
+  .page-hero { display: flex; flex-direction: column; padding: 24px; }
+  .page-hero > img { width: 100%; }
+  .category-tabs { display: flex; overflow-x: auto; }
+  .category-tabs button { flex: 0 0 auto; }
+  .path-steps { grid-template-columns: 1fr 1fr; }
+  .filter-panel { grid-template-columns: 1fr; }
+  .filter-panel .panel-title { grid-column: auto; }
+  .course-hero { grid-template-columns: 1fr; padding: 24px; }
+  .course-hero .hero-progress { grid-column: auto; display: flex; }
+  .lesson-content { padding: 20px; }
+  .lesson-aside { grid-template-columns: 1fr; }
+  .video-placeholder img { height: 220px; }
+  .featured-lab { grid-template-columns: 1fr; }
+  .featured-lab img { height: 230px; }
+  .featured-actions { grid-column: auto; }
+  .lab-hero { grid-template-columns: 1fr; }
+  .lab-hero > img { order: -1; }
+  .step-panel { grid-template-columns: 1fr 1fr; }
+  .io-grid { grid-template-columns: 1fr; }
+  .lab-result { grid-template-columns: 1fr; }
+  .lab-bottom-actions { grid-template-columns: 1fr; }
+  .lab-bottom-actions .quick-links { grid-column: auto; }
+  .recent-table { overflow-x: auto; }
+  .table-row { min-width: 650px; }
+  .focus-article { grid-template-columns: 1fr; }
+  .focus-article img { order: -1; height: 220px; }
+  .editorial-list .editorial-item { grid-template-columns: 1fr; }
+  .editorial-list img { height: 210px; }
+  .assessment-title aside { width: 100%; }
+  .challenge-hero { grid-template-columns: 1fr; }
+  .challenge-hero img { order: -1; }
+  .exam-stats { grid-template-columns: 1fr; }
+  .profile-user { flex-direction: column; align-items: flex-start; }
+  .profile-kpis, .stat-row.six { grid-template-columns: 1fr 1fr; }
+  .profile-level > div:first-child { flex-direction: column; gap: 5px; }
+  .profile-cta { grid-template-columns: 1fr; }
+  .trophy { order: -1; text-align: left; }
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .footer-grid > div:first-child { grid-column: 1 / -1; }
+  .featured-resource-row button { grid-template-columns: 100px 1fr; }
+  .featured-resource-row img { width: 100px; height: 120px; }
+  .toast { right: 12px; bottom: 12px; left: 12px; max-width: none; }
+}
 @media (max-width: 991px) {
   .service-status,
   .sensor-grid,

@@ -4,13 +4,20 @@ defineProps<{ name?: string; size?: number }>()
 
 <template>
   <svg class="app-icon" :width="size || 20" :height="size || 20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <template v-if="name === 'message'"><path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5" /></template>
+    <template v-if="name === 'question'"><circle cx="12" cy="12" r="9" /><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 17h.01" /></template>
+    <template v-else-if="name === 'note-edit'"><path d="M12 4H5v16h15v-7M9 15l1-4 8-8 3 3-8 8zM15 6l3 3" /></template>
+    <template v-else-if="name === 'lab-share'"><path d="M6 4h12v17l-6-4-6 4zM9 8h6" /></template>
+    <template v-else-if="name === 'more-circle'"><circle cx="12" cy="12" r="9" /><path d="M7 12h.01M12 12h.01M17 12h.01" /></template>
+    <template v-else-if="name === 'target'"><circle cx="11" cy="13" r="8" /><circle cx="11" cy="13" r="3" /><path d="m11 13 9-10M16 3h4v4" /></template>
+    <template v-else-if="name === 'course'"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3v18M13 3v8l2-2 2 2V3" /></template>
+    <template v-else-if="name === 'arrow-up-right'"><path d="M6 18 18 6M7 6h11v11" /></template>
+    <template v-else-if="name === 'message'"><path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5" /></template>
     <template v-else-if="name === 'heart'"><path d="M12 20 4 12a5 5 0 0 1 8-6 5 5 0 0 1 8 6z" /></template>
     <template v-else-if="name === 'bell'"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4" /></template>
     <template v-else-if="name === 'plus'"><path d="M12 4v16M4 12h16" /></template>
     <template v-else-if="name === 'refresh'"><path d="M20 8a8 8 0 1 0 0 8M20 3v5h-5" /></template>
     <template v-else-if="name === 'book'"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1v15" /></template>
-    <template v-else-if="name === 'folder'"><path d="M3 6h7l2 3h9v11H3zM3 6V4h6l2 2h10v3" /></template>
+    <template v-else-if="name === 'folder' || name === 'project-folder'"><path d="M3 6h7l2 3h9v11H3zM3 6V4h6l2 2h10v3" /></template>
     <template v-else-if="name === 'sparkles'"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></template>
     <template v-else-if="['bot', 'agent', 'tool', 'workflow', 'memory'].includes(name || '')">
       <rect x="5" y="7" width="14" height="11" rx="3" /><path d="M12 3v4M8.5 12h.01M15.5 12h.01M9 16h6" />

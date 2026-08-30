@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/base/AppIcon.vue'
 import AppDialog from '../components/base/AppDialog.vue'
+import CommunityAvatar from '../components/base/CommunityAvatar.vue'
+import { communityArt } from '../assets/community/manifest'
 import { useAuthStore } from '../stores/auth'
 import { useCommunityStore } from '../stores/community'
 import { communityApi } from '../services/api/community'
@@ -34,8 +36,11 @@ onBeforeUnmount(() => window.clearInterval(polling))
       <button class="sidebar-collapse icon-button" type="button" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" @click="collapsed = !collapsed"><AppIcon name="menu" :size="20" /></button>
       <nav class="community-sidebar-nav" aria-label="学习社区导航"><section v-for="group in groups" :key="group.label" class="community-nav-group"><h2 class="nav-label">{{ group.label }}</h2><RouterLink v-for="item in group.items" :key="item.path" :to="item.path" :title="item.label" :class="{ active: communityNavActive(route.path, item.path) }" :aria-current="communityNavActive(route.path, item.path) ? 'page' : undefined"><AppIcon :name="item.icon" :size="21" /><span class="nav-label">{{ item.label }}</span><b v-if="item.path === '/notifications' && store.unread" class="notification-count">{{ store.unread }}</b></RouterLink></section></nav>
       <button class="button primary community-publish" type="button" title="发布内容" @click="store.openComposer()"><AppIcon name="plus" :size="20" /><span class="nav-label">发布内容</span></button>
-      <div class="community-account"><CommunityPostMenu label="账户菜单"><template #trigger><span class="avatar">{{ auth.user?.displayName.slice(0, 1) }}</span><span class="nav-label"><strong>{{ auth.user?.displayName }}</strong><small>{{ auth.dataMode === 'mock' ? '显式演示模式' : '统一学习账号' }}</small></span></template><RouterLink :to="profileRoute" role="menuitem">个人主页</RouterLink><RouterLink :to="`${profileRoute}?settings=1`" role="menuitem">账号设置</RouterLink><RouterLink to="/welcome" role="menuitem">查看品牌门户</RouterLink><button type="button" role="menuitem" @click="logout">退出登录</button></CommunityPostMenu></div>
-      <RouterLink class="text-link nav-label portal-link" to="/welcome">查看品牌门户</RouterLink>
+      <div class="community-account">
+        <CommunityPostMenu label="账户菜单"><template #trigger><CommunityAvatar :src="auth.user?.avatarUrl" :username="auth.user?.username" :name="auth.user?.displayName || '学习者'" /><span class="nav-label"><strong>{{ auth.user?.displayName }}</strong><small>{{ auth.dataMode === 'mock' ? '显式演示模式' : '统一学习账号' }}</small></span><AppIcon class="nav-label account-more" name="more-circle" :size="18" /></template><RouterLink :to="profileRoute" role="menuitem">个人主页</RouterLink><RouterLink :to="`${profileRoute}?settings=1`" role="menuitem">账号设置</RouterLink><button type="button" role="menuitem" @click="logout">退出登录</button></CommunityPostMenu>
+        <RouterLink class="text-link nav-label portal-link" to="/welcome">查看品牌门户 <AppIcon name="arrow-right" :size="14" /></RouterLink>
+      </div>
+      <img v-bind="communityArt.sidebarPlanet" class="sidebar-decoration" alt="" loading="lazy" />
     </aside>
     <header class="community-mobile-header"><RouterLink class="brand" to="/community"><span class="brand-mark">A</span><strong>AI MAKER CAMPUS</strong></RouterLink><button class="icon-button" aria-label="更多功能" @click="menuOpen = true"><AppIcon name="menu" /></button></header>
     <main id="main-content" ref="mainScroll" class="community-main" tabindex="-1"><slot /></main>

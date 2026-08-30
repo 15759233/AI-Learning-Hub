@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CommunityAvatar from './base/CommunityAvatar.vue'
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppDialog from './base/AppDialog.vue'
@@ -50,7 +51,7 @@ watch(() => route.query.login, (value) => { if (value === '1') { authUi.open({ r
       <div class="header-actions">
         <span v-if="auth.dataMode === 'api'" class="api-mode-badge">真实 API</span>
         <button class="icon-button" type="button" aria-label="全站搜索" @click="searchOpen = true"><AppIcon name="search" :size="18" /></button>
-        <RouterLink v-if="auth.user" class="avatar" to="/profile" aria-label="进入个人中心">{{ auth.user.displayName.slice(0, 1) }}</RouterLink>
+        <RouterLink v-if="auth.user" class="header-avatar" to="/profile" aria-label="进入个人中心"><CommunityAvatar :src="auth.user.avatarUrl" :username="auth.user.username" :name="auth.user.displayName" /></RouterLink>
         <button v-else class="button secondary small" type="button" @click="authUi.open()">登录 / 注册</button>
         <RouterLink v-if="auth.user" class="text-link" to="/community">进入学习社区</RouterLink>
         <button v-if="auth.user" class="text-link" type="button" @click="logout">退出</button>
