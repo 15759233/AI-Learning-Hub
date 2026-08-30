@@ -1,4 +1,4 @@
-import { createRenderer, nextTick, ssrContextKey, type Component } from 'vue'
+import { createRenderer, nextTick, ssrContextKey, type Component, type Plugin } from 'vue'
 import { createPinia } from 'pinia'
 
 interface Node { type: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null }
@@ -14,9 +14,9 @@ const renderer = createRenderer<Node, Node>({
 })
 export const flushRender = async () => { for (let i = 0; i < 8; i++) await nextTick() }
 // Node 环境编译为 SSR SFC；挂载真实 setup/watch/动作，DOM 交互另由浏览器验收。
-export const setupComponent = <T>(component: Component, props: Record<string, unknown> = {}) => {
+export const setupComponent = <T>(component: Component, props: Record<string, unknown> = {}, plugins: Plugin[] = [createPinia()]) => {
   const root = node('root'), app = renderer.createApp({ ...component, render: () => null }, props)
-  app.use(createPinia())
+  for (const plugin of plugins) app.use(plugin)
   app.provide(ssrContextKey, {})
   const instance = app.mount(root)
   const state = (instance.$ as unknown as { setupState: T }).setupState

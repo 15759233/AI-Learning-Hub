@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick, reactive } from 'vue'
+import { createMemoryHistory, createRouter, isNavigationFailure, NavigationFailureType, useLink } from 'vue-router'
 import { useCommunityDraft } from '../src/community/composables/useCommunityDraft'
 import { useCommunityStore } from '../src/stores/community'
 import { communityApi } from '../src/services/api/community'
 import type { CommunityPostDetailDto } from '@ai-learning-hub/contracts'
 import CommunityQuickComposer from '../src/community/CommunityQuickComposer.vue'
+import CommunityComposer from '../src/community/CommunityComposer.vue'
 import { setupComponent } from '../src/community/test-renderer'
 
 const account = reactive({ user: { id: 'owner-a' } as { id: string } | null, dataMode: 'mock' })
@@ -114,5 +116,82 @@ describe('共享发布器与草稿账号隔离', () => {
     store.openComposer(); await settle()
     expect(scroll).toHaveBeenCalledTimes(2); expect(focus).toHaveBeenCalledTimes(2)
     view.unmount()
+  })
+})
+
+describe('发布器到草稿箱的真实路由生命周期', () => {
+  const views: Array<{ unmount: () => void }> = []
+  afterEach(() => { for (const view of views.splice(0).reverse()) view.unmount() })
+  const setupNavigation = async (initial = '/community', mode: 'quick' | 'advanced' = 'quick') => {
+    const pinia = createPinia(), router = createRouter({ history: createMemoryHistory(), routes: ['/community', '/community/drafts', '/welcome'].map((path) => ({ path, component: { render: () => null } })) })
+    setActivePinia(pinia)
+    await router.push(initial)
+    const composer = setupComponent<{ finish: (save: boolean) => Promise<void>; cancel: () => void }>(CommunityComposer, {}, [pinia, router])
+    const link = setupComponent<{ navigate: (event: MouseEvent) => Promise<unknown> }>({ setup: () => useLink({ to: '/community/drafts' }) }, {}, [pinia, router])
+    views.push(composer, link)
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); store.composerMode = mode; store.composerInline = false
+    await settle()
+    const clickDrafts = () => link.state.navigate(new Event('click', { cancelable: true }) as MouseEvent)
+    return { router, editor, store, composer: composer.state, clickDrafts }
+  }
+  it.each(['quick', 'advanced'] as const)('%s 已保存草稿点击链接后到达草稿箱并关闭全局面板', async (mode) => {
+    const { router, editor, store, clickDrafts } = await setupNavigation('/community', mode)
+    editor.body = '保留同一条草稿'; await settle(); expect(await editor.save(true)).toBe(true)
+    await clickDrafts(); await settle()
+    expect(router.currentRoute.value.path).toBe('/community/drafts')
+    expect(store.composerOpen).toBe(false); expect(editor.closePrompt).toBe(false)
+    expect(editor.draftId).toBe('server-draft'); expect(storage.get(key('owner-a'))).toContain('保留同一条草稿')
+    expect(communityApi.saveDraft).toHaveBeenCalledTimes(1)
+  })
+  it('未保存选择继续编辑取消导航，后续关闭也不会恢复被取消的跳转', async () => {
+    const { router, editor, store, composer, clickDrafts } = await setupNavigation()
+    editor.body = '取消后仍在原稿'; await settle()
+    expect(isNavigationFailure(await clickDrafts(), NavigationFailureType.aborted)).toBe(true)
+    expect(editor.closePrompt).toBe(true); composer.cancel(); await settle()
+    expect(router.currentRoute.value.path).toBe('/community'); expect(store.composerOpen).toBe(true)
+    expect(editor.body).toBe('取消后仍在原稿'); expect(editor.dirty).toBe(true)
+    expect(communityApi.saveDraft).not.toHaveBeenCalled()
+    editor.close(); await composer.finish(true); await settle()
+    expect(router.currentRoute.value.path).toBe('/community'); expect(store.composerOpen).toBe(false)
+  })
+  it.each([true, false])('未保存选择保存=%s后才允许导航并关闭，保存失败不丢稿', async (save) => {
+    const { router, editor, store, composer, clickDrafts } = await setupNavigation()
+    editor.body = '三选决定之前保留内容'; await settle(); await clickDrafts()
+    expect(router.currentRoute.value.path).toBe('/community'); expect(store.composerOpen).toBe(true)
+    if (save) {
+      vi.mocked(communityApi.saveDraft).mockRejectedValueOnce(new Error('隔离保存失败'))
+      await composer.finish(true); await settle()
+      expect(router.currentRoute.value.path).toBe('/community'); expect(store.composerOpen).toBe(true)
+      expect(editor.closePrompt).toBe(true); expect(editor.body).toBe('三选决定之前保留内容')
+    }
+    await composer.finish(save)
+    for (let i = 0; i < 10; i++) await settle()
+    expect(router.currentRoute.value.path).toBe('/community/drafts'); expect(store.composerOpen).toBe(false)
+    expect(editor.closePrompt).toBe(false)
+    expect(storage.has(key('owner-a'))).toBe(save)
+  })
+  it('已在草稿箱的重复导航仍关闭已保存稿，未保存稿则确认后再关闭', async () => {
+    const { router, editor, store, composer, clickDrafts } = await setupNavigation('/community/drafts')
+    editor.body = '同路由已保存稿'; await settle(); await editor.save(true)
+    expect(isNavigationFailure(await clickDrafts(), NavigationFailureType.duplicated)).toBe(true)
+    expect(store.composerOpen).toBe(false); expect(editor.draftId).toBe('server-draft')
+    store.openComposer(); await settle(); editor.body = '同路由尚未保存的修改'; await settle()
+    await clickDrafts(); expect(editor.closePrompt).toBe(true); expect(store.composerOpen).toBe(true)
+    composer.cancel(); expect(editor.body).toBe('同路由尚未保存的修改')
+    expect(router.currentRoute.value.path).toBe('/community/drafts'); expect(store.composerOpen).toBe(true)
+    await clickDrafts(); await composer.finish(true); await settle()
+    expect(store.composerOpen).toBe(false); expect(router.currentRoute.value.path).toBe('/community/drafts')
+    expect(editor.draftId).toBe('server-draft')
+    expect(communityApi.saveDraft).toHaveBeenLastCalledWith(expect.anything(), 'server-draft')
+  })
+  it('其他守卫取消目标导航时保留已保存的全局编辑面板', async () => {
+    const { router, editor, store, clickDrafts } = await setupNavigation()
+    editor.body = '其他守卫取消也不关闭'; await settle(); await editor.save(true)
+    const remove = router.beforeEach(() => false)
+    expect(isNavigationFailure(await clickDrafts(), NavigationFailureType.aborted)).toBe(true)
+    expect(router.currentRoute.value.path).toBe('/community'); expect(store.composerOpen).toBe(true)
+    expect(editor.body).toBe('其他守卫取消也不关闭'); expect(editor.closePrompt).toBe(false)
+    remove()
   })
 })
