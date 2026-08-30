@@ -34,6 +34,28 @@
 
 测评提交必须携带 `Idempotency-Key`。实训 SSE 只推送受控状态与日志。
 
+## 学习社区
+
+`GET /community/bindings/context?type=course&id=<id或slug>` 复用内容解析服务返回可见的关联卡片和建议话题；私人实训记录仍验证本人所有权。发布器的内容查找复用既有各领域公开列表，不创建平行内容源。
+
+所有 `/community` 接口均要求有效登录。跨校内容、隐藏/屏蔽内容及非本人草稿统一按不可见处理。
+
+| 能力 | 路径 |
+| --- | --- |
+| 三类信息流 | `GET /community/feed?mode=for_you|following|latest&type=all&cursor=…&limit=20` |
+| 学习上下文与新内容提示 | `GET /community/context`、`GET /community/feed/updates?since=…&mode=…&type=…` |
+| 动态与评论 | `/community/posts`、`/community/posts/:id`、`/community/posts/:id/comments`、`/community/comments/:id` |
+| 回答采纳 | `POST /community/questions/:postId/accept/:commentId` |
+| 幂等互动 | `PUT/DELETE /community/posts/:id/reactions/:type`、`/community/posts/:id/bookmark`、`/community/comments/:id/like` |
+| 用户与话题 | `/community/users/:id`、`/community/users/:id/posts|answers|following`、`/community/topics`、`/community/topics/:slug/posts` |
+| 幂等关注 | `PUT/DELETE /community/users/:id/follow`、`/community/topics/:id/follow` |
+| 负反馈 | `POST /community/posts/:id/hide|not-interested|report`、`/community/users/:id/mute|block`、`/community/comments/:id/report` |
+| 通知 | `GET /community/notifications`、`/community/notifications/unread-count`，`POST /community/notifications/:id/read`、`/community/notifications/read-all` |
+| 行为 | `POST /community/signals`、`/community/feed/impressions`、`/community/feed/dwell`，曝光和停留支持批量提交 |
+| 文件 | `POST /community/media`、`GET /community/media/:id/url`，最多四张、每张 5MB 的 PNG/JPEG/WebP |
+
+运营入口 `/admin/community` 使用独立 `community.read/write/moderate/topic.manage/report.manage/official.publish/feed.manage` 权限。官方账号发布、内容编辑、审核、认证和策略调整均记录理由。策略只接受命名参数及安全数值范围，禁止任意代码或公式。
+
 ## 管理端
 
 - 组织与用户：`/admin/schools`、`/admin/departments`、`/admin/users`、`/admin/users/:id/identities`

@@ -11,6 +11,7 @@ import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
 import { useLabsStore } from '../stores/content/labs'
 import { useLearningStore } from '../stores/learning'
+import { useCommunityStore } from '../stores/community'
 
 const route = useRoute()
 const store = useLearningStore()
@@ -44,6 +45,10 @@ const progress = computed(() => {
   const stored = store.labProgress[definition.value.id] ?? definition.value.initialProgress
   return Math.max(stored, progressForState(state.value, definition.value.initialProgress))
 })
+const shareResult = () => {
+  if (!definition.value || state.value !== 'submitted') return
+  useCommunityStore().openComposer({ type: 'lab_result', title: `${definition.value.title} · 我的实训复盘`, contentBlocks: [{ type: 'paragraph', text: `已完成${definition.value.title}。使用工具：${definition.value.tools.map((tool) => tool.label).join('、') || '受控实训工作台'}。结果摘要：${definition.value.result}。我的经验与改进：` }], bindings: [{ type: 'lab', id: definition.value.id }, ...(apiRun.value ? [{ type: 'lab_run' as const, id: apiRun.value.id }] : [])], ...(apiRun.value ? { sourceType: 'lab_run', sourceId: apiRun.value.id } : {}) })
+}
 
 const stopTimer = () => {
   window.clearInterval(timer)
@@ -267,6 +272,7 @@ onBeforeUnmount(stopTimer)
     @reset="reset"
     @submit="submit"
   >
+    <section v-if="state === 'submitted'" class="community-lab-share"><strong>把这次实践变成有帮助的学习交流</strong><p>只预填实训名称和结果摘要，不包含日志、评分细则或敏感输入。</p><button class="button primary" type="button" @click="shareResult">分享实训成果</button></section>
     <section v-if="dataMode === 'api'" class="workspace-type">
       <div class="workspace-heading"><div><strong>服务端步骤动作</strong><small>当前只允许：{{ currentApiAction }}</small></div><span class="status" :class="state">{{ state }}</span></div>
       <form class="dialog-form" @submit.prevent="submitApiAction">

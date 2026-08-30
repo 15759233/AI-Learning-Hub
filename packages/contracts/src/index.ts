@@ -456,3 +456,4 @@ export interface GrowthSnapshotDto {
   achievements: unknown[]
   certificates: unknown[]
 }
+export * from './community'

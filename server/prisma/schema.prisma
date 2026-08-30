@@ -53,51 +53,67 @@ enum QuestionType {
 }
 
 model User {
-  id                String               @id @default(cuid())
-  username          String               @unique
-  displayName       String               @map("display_name")
-  email             String               @unique
-  passwordHash      String?              @map("password_hash")
-  phone             String?
-  schoolId          String?              @map("school_id")
-  departmentId      String?              @map("department_id")
-  studentNo         String?              @map("student_no")
-  teacherNo         String?              @map("teacher_no")
-  major             String?
-  grade             String?
-  userType          String               @default("student") @map("user_type")
-  status            UserStatus           @default(active)
-  profile           Json                 @default("{}") @map("profile_json")
-  lastLoginAt       DateTime?            @map("last_login_at")
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  refreshTokens     RefreshToken[]
-  userRoles         UserRole[]
-  favorites         Favorite[]
-  notes             LearningNote[]
-  lessonProgress    LessonProgress[]
-  labRuns           LabRun[]
-  attempts          AssessmentAttempt[]
-  assessmentAnswers AssessmentAnswer[]
-  wrongQuestions    WrongQuestion[]
-  knowledgeStats    UserKnowledgeStat[]
-  plans             LearningPlan[]
-  growthPoints      GrowthPoint[]
-  activities        ActivityEvent[]
-  uploadedFiles     FileRecord[]
-  achievements      UserAchievement[]
-  certificates      UserCertificate[]
-  identities        AuthIdentity[]
-  loginLogs         LoginLog[]
-  notificationReads NotificationRead[]
-  recommendations   UserRecommendation[]
-  courseAssignments CourseInstructor[]
-  resourceDownloads ResourceDownload[]
-  resourceViews     ResourceView[]
-  articleViews      ArticleView[]
-  challengeScores   ChallengeBestScore[]
-  school            School?              @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  department        Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  id                        String                      @id @default(cuid())
+  username                  String                      @unique
+  displayName               String                      @map("display_name")
+  email                     String                      @unique
+  passwordHash              String?                     @map("password_hash")
+  phone                     String?
+  schoolId                  String?                     @map("school_id")
+  departmentId              String?                     @map("department_id")
+  studentNo                 String?                     @map("student_no")
+  teacherNo                 String?                     @map("teacher_no")
+  major                     String?
+  grade                     String?
+  userType                  String                      @default("student") @map("user_type")
+  status                    UserStatus                  @default(active)
+  profile                   Json                        @default("{}") @map("profile_json")
+  lastLoginAt               DateTime?                   @map("last_login_at")
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  updatedAt                 DateTime                    @updatedAt @map("updated_at")
+  refreshTokens             RefreshToken[]
+  userRoles                 UserRole[]
+  favorites                 Favorite[]
+  notes                     LearningNote[]
+  lessonProgress            LessonProgress[]
+  labRuns                   LabRun[]
+  attempts                  AssessmentAttempt[]
+  assessmentAnswers         AssessmentAnswer[]
+  wrongQuestions            WrongQuestion[]
+  knowledgeStats            UserKnowledgeStat[]
+  plans                     LearningPlan[]
+  growthPoints              GrowthPoint[]
+  activities                ActivityEvent[]
+  uploadedFiles             FileRecord[]
+  achievements              UserAchievement[]
+  certificates              UserCertificate[]
+  identities                AuthIdentity[]
+  loginLogs                 LoginLog[]
+  notificationReads         NotificationRead[]
+  recommendations           UserRecommendation[]
+  courseAssignments         CourseInstructor[]
+  resourceDownloads         ResourceDownload[]
+  resourceViews             ResourceView[]
+  articleViews              ArticleView[]
+  challengeScores           ChallengeBestScore[]
+  school                    School?                     @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  department                Department?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  communityProfile          CommunityProfile?
+  communityPosts            CommunityPost[]
+  communityComments         CommunityComment[]
+  communityReactions        CommunityPostReaction[]
+  communityCommentReactions CommunityCommentReaction[]
+  communityBookmarks        CommunityBookmark[]
+  communityFollowing        CommunityUserFollow[]       @relation("CommunityFollower")
+  communityFollowers        CommunityUserFollow[]       @relation("CommunityFollowee")
+  communityTopicFollows     CommunityTopicFollow[]
+  communityFeedback         CommunityFeedback[]
+  communityReports          CommunityReport[]
+  communityModeration       CommunityModerationAction[]
+  communityImpressions      CommunityFeedImpression[]
+  communityNotifications    UserNotification[]
+  communitySignalSnapshot   UserFeedSignalSnapshot?
+  communityFeedSessions     CommunityFeedSession[]
 
   @@map("users")
 }
@@ -1272,10 +1288,16 @@ model ActivityEvent {
   targetType String?  @map("target_type")
   targetId   String?  @map("target_id")
   payload    Json     @default("{}")
+  surface    String?  @map("surface")
+  sessionId  String?  @map("session_id")
+  requestId  String?  @map("request_id")
+  position   Int?
+  occurredAt DateTime @default(now()) @map("occurred_at")
   createdAt  DateTime @default(now()) @map("created_at")
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([eventType, createdAt])
+  @@index([userId, occurredAt])
   @@map("activity_events")
 }
 
@@ -1423,4 +1445,351 @@ model LoginThrottle {
 
   @@index([expiresAt])
   @@map("login_throttles")
+}
+
+enum CommunityPostType {
+  question
+  note
+  lab_result
+  project
+  frontier_discussion
+  achievement
+  general
+}
+
+enum CommunityPostStatus {
+  draft
+  published
+  limited
+  hidden
+  removed
+}
+
+enum CommunityVisibility {
+  public
+  school
+}
+
+enum CommunityReactionType {
+  like
+  useful
+}
+
+model CommunityProfile {
+  userId                 String   @id @map("user_id")
+  bio                    String   @default("")
+  headline               String   @default("")
+  verifiedType           String   @default("none") @map("verified_type")
+  expertiseTopics        String[] @default([]) @map("expertise_topics")
+  allowAchievementDrafts Boolean  @default(false) @map("allow_achievement_drafts")
+  postCount              Int      @default(0) @map("post_count")
+  followerCount          Int      @default(0) @map("follower_count")
+  followingCount         Int      @default(0) @map("following_count")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("community_profiles")
+}
+
+model CommunityPost {
+  id              String                  @id @default(cuid())
+  authorId        String                  @map("author_id")
+  postType        CommunityPostType       @map("post_type")
+  status          CommunityPostStatus     @default(draft)
+  visibility      CommunityVisibility     @default(public)
+  schoolId        String?                 @map("school_id")
+  title           String?
+  body            String
+  contentBlocks   Json                    @map("content_blocks")
+  plainText       String                  @map("plain_text")
+  sourceType      String?                 @map("source_type")
+  sourceId        String?                 @map("source_id")
+  contentHash     String                  @map("content_hash")
+  labels          String[]                @default([])
+  publishedAt     DateTime?               @map("published_at")
+  editedAt        DateTime?               @map("edited_at")
+  likeCount       Int                     @default(0) @map("like_count")
+  usefulCount     Int                     @default(0) @map("useful_count")
+  commentCount    Int                     @default(0) @map("comment_count")
+  bookmarkCount   Int                     @default(0) @map("bookmark_count")
+  impressionCount Int                     @default(0) @map("impression_count")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  deletedAt       DateTime?               @map("deleted_at")
+  author          User                    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  bindings        CommunityPostBinding[]
+  topics          CommunityPostTopic[]
+  question        CommunityQuestionState?
+  comments        CommunityComment[]
+  reactions       CommunityPostReaction[]
+  bookmarks       CommunityBookmark[]
+  reports         CommunityReport[]
+
+  @@index([status, publishedAt, id])
+  @@index([authorId, status, publishedAt])
+  @@index([schoolId, status, publishedAt])
+  @@index([postType, status, publishedAt])
+  @@index([contentHash, status])
+  @@map("community_posts")
+}
+
+model CommunityPostBinding {
+  id            String        @id @default(cuid())
+  postId        String        @map("post_id")
+  targetType    String        @map("target_type")
+  targetId      String        @map("target_id")
+  titleSnapshot String        @map("title_snapshot")
+  sortOrder     Int           @default(0) @map("sort_order")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  post          CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@map("community_post_bindings")
+}
+
+model CommunityQuestionState {
+  postId            String            @id @map("post_id")
+  status            String            @default("open")
+  acceptedCommentId String?           @unique @map("accepted_comment_id")
+  solvedAt          DateTime?         @map("solved_at")
+  post              CommunityPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  acceptedComment   CommunityComment? @relation(fields: [acceptedCommentId], references: [id], onDelete: SetNull)
+
+  @@map("community_question_states")
+}
+
+model CommunityComment {
+  id            String                     @id @default(cuid())
+  postId        String                     @map("post_id")
+  authorId      String                     @map("author_id")
+  parentId      String?                    @map("parent_id")
+  rootId        String?                    @map("root_id")
+  body          String
+  contentBlocks Json                       @map("content_blocks")
+  status        String                     @default("published")
+  likeCount     Int                        @default(0) @map("like_count")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  deletedAt     DateTime?                  @map("deleted_at")
+  post          CommunityPost              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User                       @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parent        CommunityComment?          @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict)
+  replies       CommunityComment[]         @relation("CommentReplies")
+  acceptedFor   CommunityQuestionState?
+  reactions     CommunityCommentReaction[]
+  reports       CommunityReport[]
+
+  @@index([postId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("community_comments")
+}
+
+model CommunityPostReaction {
+  userId       String                @map("user_id")
+  postId       String                @map("post_id")
+  reactionType CommunityReactionType @map("reaction_type")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  post         CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId, reactionType])
+  @@map("community_post_reactions")
+}
+
+model CommunityCommentReaction {
+  userId       String                @map("user_id")
+  commentId    String                @map("comment_id")
+  reactionType CommunityReactionType @default(like) @map("reaction_type")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  comment      CommunityComment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId, reactionType])
+  @@map("community_comment_reactions")
+}
+
+model CommunityBookmark {
+  userId    String        @map("user_id")
+  postId    String        @map("post_id")
+  createdAt DateTime      @default(now()) @map("created_at")
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@map("community_bookmarks")
+}
+
+model CommunityUserFollow {
+  followerId String   @map("follower_id")
+  followeeId String   @map("followee_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  follower   User     @relation("CommunityFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee   User     @relation("CommunityFollowee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+  @@index([followeeId])
+  @@map("community_user_follows")
+}
+
+model CommunityTopic {
+  id            String                 @id @default(cuid())
+  slug          String                 @unique
+  name          String
+  description   String                 @default("")
+  accent        String                 @default("purple")
+  themeId       String?                @map("theme_id")
+  status        String                 @default("active")
+  recommended   Boolean                @default(false)
+  sortOrder     Int                    @default(0) @map("sort_order")
+  postCount     Int                    @default(0) @map("post_count")
+  followerCount Int                    @default(0) @map("follower_count")
+  posts         CommunityPostTopic[]
+  follows       CommunityTopicFollow[]
+
+  @@map("community_topics")
+}
+
+model CommunityPostTopic {
+  postId  String         @map("post_id")
+  topicId String         @map("topic_id")
+  post    CommunityPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  topic   CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
+  @@id([postId, topicId])
+  @@index([topicId])
+  @@map("community_post_topics")
+}
+
+model CommunityTopicFollow {
+  userId    String         @map("user_id")
+  topicId   String         @map("topic_id")
+  createdAt DateTime       @default(now()) @map("created_at")
+  topic     CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+  @@map("community_topic_follows")
+}
+
+model CommunityFeedback {
+  id           String             @id @default(cuid())
+  userId       String             @map("user_id")
+  targetId     String             @map("target_id")
+  feedbackType String             @map("feedback_type")
+  postType     CommunityPostType? @map("post_type")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetId, feedbackType])
+  @@index([userId, feedbackType])
+  @@index([targetId, feedbackType])
+  @@map("community_feedback")
+}
+
+model CommunityReport {
+  id          String            @id @default(cuid())
+  reporterId  String            @map("reporter_id")
+  postId      String?           @map("post_id")
+  commentId   String?           @map("comment_id")
+  targetKey   String            @map("target_key")
+  reason      String
+  description String            @default("")
+  status      String            @default("pending")
+  handledBy   String?           @map("handled_by")
+  handledAt   DateTime?         @map("handled_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  post        CommunityPost?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment     CommunityComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporter    User              @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+
+  @@unique([reporterId, targetKey])
+  @@index([status, createdAt])
+  @@map("community_reports")
+}
+
+model CommunityModerationAction {
+  id         String   @id @default(cuid())
+  actorId    String   @map("actor_id")
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  action     String
+  reason     String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([targetType, targetId, createdAt])
+  @@map("community_moderation_actions")
+}
+
+model CommunityFeedImpression {
+  requestId       String    @map("request_id")
+  viewerId        String    @map("viewer_id")
+  postId          String    @map("post_id")
+  position        Int
+  candidateSource String    @map("candidate_source")
+  policyVersion   String    @map("policy_version")
+  reasonCodes     String[]  @map("reason_codes")
+  scoreBucket     Int       @map("score_bucket")
+  impressedAt     DateTime? @map("impressed_at")
+  clickedAt       DateTime? @map("clicked_at")
+  dwellMs         Int       @default(0) @map("dwell_ms")
+  viewer          User      @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, postId])
+  @@index([viewerId, impressedAt])
+  @@index([postId, impressedAt])
+  @@map("community_feed_impressions")
+}
+
+model UserNotification {
+  id               String    @id @default(cuid())
+  recipientId      String    @map("recipient_id")
+  actorId          String?   @map("actor_id")
+  notificationType String    @map("notification_type")
+  entityType       String    @map("entity_type")
+  entityId         String    @map("entity_id")
+  dedupeKey        String    @unique @map("dedupe_key")
+  payload          Json      @default("{}")
+  actorIds         String[]  @default([]) @map("actor_ids")
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  recipient        User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@map("user_notifications")
+}
+
+model UserFeedSignalSnapshot {
+  userId                  String   @id @map("user_id")
+  topicAffinity           Json     @default("{}") @map("topic_affinity")
+  authorAffinity          Json     @default("{}") @map("author_affinity")
+  postTypeAffinity        Json     @default("{}") @map("post_type_affinity")
+  learningContentAffinity Json     @default("{}") @map("learning_content_affinity")
+  negativeFeedback        Json     @default("{}") @map("negative_feedback")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+  version                 Int      @default(1)
+  eventCount              Int      @default(0) @map("event_count")
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_feed_signal_snapshots")
+}
+
+model CommunityFeedSession {
+  id            String   @id @default(cuid())
+  viewerId      String   @map("viewer_id")
+  mode          String
+  contentType   String   @map("content_type")
+  policyVersion String   @map("policy_version")
+  entries       Json
+  context       Json
+  degraded      Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+  expiresAt     DateTime @map("expires_at")
+  viewer        User     @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("community_feed_sessions")
 }

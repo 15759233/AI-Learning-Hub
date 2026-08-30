@@ -2,7 +2,8 @@
 
 | 管理端 | 学生端 | 数据/API |
 | --- | --- | --- |
-| 首页运营 | `/` | 已发布整页快照、允许的 `moduleKey`、`resolvedItems` |
+| 社区运营 | `/community`、动态/话题/用户详情、`/bookmarks`、`/notifications` | 统一社区 DTO、可见性门禁、真实学习对象绑定与不透明推荐游标 |
+| 门户首页（原 `/homepage`） | 未登录 `/`、`/welcome` | 已发布整页快照、允许的 `moduleKey`、`resolvedItems` |
 | 学习主题 | `/topics` | 主题详情、学习路径、稳定 `stageKey` |
 | 课程内容 | `/courses/:courseId` | 课程版本、章节、课时、内容块、课时完成聚合 |
 | 实训项目 | `/labs`、`/labs/:labId` | 已发布步骤、活动运行、动作事件、服务端评分 |
@@ -13,7 +14,7 @@
 
 通用映射：
 
-- 学生端 `id` 使用稳定 `slug`；数据库主键 `databaseId` 仅出现在管理 DTO。
+- 既有内容列表 `id` 使用稳定 `slug`；社区动态和关系使用独立稳定 ID，学习绑定同时携带公开路由与可选 slug，不能将他人的私人 LabRun ID 暴露给普通用户。
 - 前端 `description` 对应服务端 `summary`。
 - 领域扩展数据位于 `data`，不得覆盖 `id`、`slug`、状态和时间字段。
 - 状态值使用英文枚举，中文标签由界面映射。

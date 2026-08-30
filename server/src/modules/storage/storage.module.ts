@@ -6,11 +6,13 @@ import { LocalStorageAdapter } from './local-storage.service'
 import { MinioStorageAdapter, S3StorageAdapter } from './s3-storage.service'
 import { LocalFileController, StorageController } from './storage.controller'
 import { STORAGE_SERVICE } from './storage.types'
+import { CommunityVisibilityModule } from '../community/visibility.module'
+import { FileAccessService } from './file-access.service'
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CommunityVisibilityModule],
   controllers: [StorageController, LocalFileController],
-  providers: [{
+  providers: [FileAccessService, {
     provide: STORAGE_SERVICE,
     inject: [PrismaService, ConfigService],
     useFactory: (prisma: PrismaService, config: ConfigService) => {
@@ -20,6 +22,6 @@ import { STORAGE_SERVICE } from './storage.types'
       return new LocalStorageAdapter(prisma, config)
     },
   }],
-  exports: [STORAGE_SERVICE],
+  exports: [STORAGE_SERVICE, FileAccessService],
 })
 export class StorageModule {}

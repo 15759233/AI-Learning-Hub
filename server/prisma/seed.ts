@@ -18,6 +18,7 @@ import {
 } from '@ai-learning-hub/demo-fixtures'
 import { hash } from 'bcryptjs'
 import { isDeepStrictEqual } from 'node:util'
+import { seedCommunity } from './seed-community'
 
 const prisma = new PrismaClient()
 
@@ -39,6 +40,18 @@ const articles = demoArticles
 const resources = demoResources
 
 async function seed() {
+  // 已发布平台仅增补社区固定样例；不重写运营内容、发布快照或现有账号凭据。
+  const existingPublication = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
+  if (existingPublication) {
+    // 兼容历史空 publication：追加最近有效发布，不覆盖真实内容或任何历史版本。
+    if (Array.isArray(existingPublication.snapshot) && existingPublication.snapshot.length === 0) {
+      const history = await prisma.homepagePublication.findMany({ where: { version: { lt: existingPublication.version } }, orderBy: { version: 'desc' }, take: 100 })
+      const valid = history.find((row) => Array.isArray(row.snapshot) && row.snapshot.length > 0)
+      if (valid) await prisma.homepagePublication.create({ data: { version: existingPublication.version + 1, snapshot: valid.snapshot! } })
+    }
+    await seedCommunity(prisma)
+    return
+  }
   const permissions = [
     'dashboard.read', 'homepage.read', 'homepage.write', 'homepage.publish',
     'platform.manage',
@@ -554,8 +567,6 @@ async function seed() {
     })
   }
 
-  const homepageKeys = demoHomepageModules.map((item) => item.moduleKey)
-  await prisma.homepageModule.deleteMany({ where: { moduleKey: { notIn: homepageKeys } } })
   const homepageTargetIds = {
     theme: themeIds,
     course: courseIds,
@@ -672,6 +683,7 @@ async function seed() {
       create: { userId, challengeId: weeklyChallenge.id, attemptId, score },
     })
   }
+  await seedCommunity(prisma)
 }
 
 seed()

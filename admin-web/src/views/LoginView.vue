@@ -8,7 +8,7 @@ const session = useSessionStore()
 const router = useRouter()
 const route = useRoute()
 const submit = async () => {
-  await session.login(form.email, form.password)
+  try { await session.login(form.email, form.password) } catch { return }
   await router.replace(String(route.query.redirect || '/dashboard'))
 }
 </script>

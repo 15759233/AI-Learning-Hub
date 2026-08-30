@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { ElDialog, ElDropdown, ElDropdownItem, ElDropdownMenu, ElSwitch } from 'element-plus'
 import 'element-plus/dist/index.css'
 import './styles.css'
+import './community.css'
 import App from './App.vue'
 import router from './router'
 

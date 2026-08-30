@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppHeader from './components/AppHeader.vue'
-import AppFooter from './components/AppFooter.vue'
+import PublicLayout from './layouts/PublicLayout.vue'
+import CommunityLayout from './layouts/CommunityLayout.vue'
+import ImmersiveLabLayout from './layouts/ImmersiveLabLayout.vue'
 import PageState from './components/PageState.vue'
 import QuizBridgeDialog from './components/QuizBridgeDialog.vue'
 import { AUTH_SESSION_CLEARED_EVENT, dataMode } from './services/api/client'
@@ -47,6 +48,7 @@ const showApiError = (event: Event) => {
 }
 
 const clearApiSession = () => auth.clearSession()
+const layout = computed(() => route.meta.layout === 'immersive' ? ImmersiveLabLayout : route.meta.layout === 'community' ? CommunityLayout : PublicLayout)
 
 const retry = () => {
   if (apiState.value === 'error') {
@@ -73,15 +75,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppHeader />
-  <main id="main-content" :class="{ 'dark-page': route.meta.dark }">
+  <component :is="layout">
     <RouterView v-slot="{ Component }">
       <PageState :state="viewState" :error-message="apiMessage" @retry="retry">
         <component :is="Component" />
       </PageState>
     </RouterView>
-  </main>
-  <AppFooter v-if="!route.meta.dark" />
+  </component>
   <QuizBridgeDialog />
   <div v-if="bridgeMessage" class="toast" role="status">{{ bridgeMessage }}</div>
 </template>

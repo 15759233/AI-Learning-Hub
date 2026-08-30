@@ -423,3 +423,5 @@ export const fixtureMinimums = {
   activities: 20,
   dailyStatistics: 30,
 } as const
+
+export { createCommunityFixtures } from './community'

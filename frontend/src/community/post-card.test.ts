@@ -1,0 +1,49 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CommunityPostDetailDto } from '@ai-learning-hub/contracts'
+import CommunityPostCard from './CommunityPostCard.vue'
+import { communityApi } from '../services/api/community'
+import { mockCommunity, resetCommunityMock } from '../services/api/community.mock'
+import { setupComponent } from './test-renderer'
+
+interface CardState {
+  hide: (kind: 'hide' | 'not-interested' | 'mute' | 'block') => Promise<void>
+  reaction: (kind: 'like' | 'useful' | 'bookmark') => Promise<void>
+  remove: () => Promise<void>
+  deleteOpen: boolean
+}
+
+vi.mock('../stores/auth', () => ({ useAuthStore: () => ({ user: { id: 'viewer' } }) }))
+vi.mock('../services/api/community', () => ({ communityApi: { post: vi.fn(), feedback: vi.fn(), remove: vi.fn(), reaction: vi.fn(), signals: vi.fn() } }))
+vi.mock('../components/base/AppIcon.vue', () => ({ default: { render: () => null } }))
+vi.mock('../components/base/AppDialog.vue', async () => {
+  const { defineComponent, h } = await import('vue')
+  return { default: defineComponent({ props: ['modelValue'], setup(props, { slots }) { return () => props.modelValue ? h('div', slots.default?.()) : null } }) }
+})
+beforeEach(() => { vi.resetAllMocks(); resetCommunityMock(); vi.mocked(communityApi.feedback).mockResolvedValue({}); vi.mocked(communityApi.remove).mockResolvedValue({}); vi.mocked(communityApi.reaction).mockResolvedValue({}) })
+describe('帖子移除事件不刷新不可见详情', () => {
+  it('隐藏、减少此类、静音与屏蔽只发hidden事件，正常点赞仍发changed', async () => {
+    const post = await mockCommunity<CommunityPostDetailDto>('/posts/community-note-1', 'GET')
+    vi.mocked(communityApi.post).mockResolvedValue(post)
+    for (const action of ['hide', 'not-interested', 'mute', 'block'] as const) {
+      const changed = vi.fn(), hidden = vi.fn(), view = setupComponent<CardState>(CommunityPostCard, { post, onChanged: changed, onHidden: hidden })
+      await view.state.hide(action)
+      expect(hidden).toHaveBeenCalledWith(post.id); expect(changed).not.toHaveBeenCalled()
+      expect(communityApi.post).not.toHaveBeenCalled()
+      view.unmount()
+    }
+    const changed = vi.fn(), view = setupComponent<CardState>(CommunityPostCard, { post, onChanged: changed })
+    await view.state.reaction('like')
+    expect(changed).toHaveBeenCalledOnce(); expect(communityApi.post).toHaveBeenCalledWith(post.id)
+    view.unmount()
+  })
+  it('作者确认删除只移除卡片，不跟随404详情请求', async () => {
+    const fixture = await mockCommunity<CommunityPostDetailDto>('/posts/community-note-1', 'GET')
+    const post = { ...fixture, author: { ...fixture.author, id: 'viewer' } }, changed = vi.fn(), hidden = vi.fn()
+    const view = setupComponent<CardState>(CommunityPostCard, { post, onChanged: changed, onHidden: hidden })
+    view.state.deleteOpen = true; await view.state.remove()
+    expect(communityApi.remove).toHaveBeenCalledWith(post.id); expect(hidden).toHaveBeenCalledWith(post.id)
+    expect(changed).not.toHaveBeenCalled(); expect(communityApi.post).not.toHaveBeenCalled()
+    expect(view.state.deleteOpen).toBe(false)
+    view.unmount()
+  })
+})

@@ -7,4 +7,5 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@xterm/xterm/css/xterm.css'
 
-createApp(App).use(createPinia()).use(router).mount('#app')
+const app = createApp(App).use(createPinia()).use(router)
+void router.isReady().then(() => app.mount('#app'))

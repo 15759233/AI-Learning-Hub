@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppDialog from './base/AppDialog.vue'
 import AppIcon from './base/AppIcon.vue'
 import { useAuthStore } from '../stores/auth'
 import { useLearningStore } from '../stores/learning'
+import { safeLoginRedirect } from '../community/redirect'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const learning = useLearningStore()
 const searchOpen = ref(false)
@@ -31,14 +33,19 @@ const submitSearch = () => {
   router.push({ path: '/topics', query: { q: value } })
 }
 const login = async () => {
-  await auth.login(loginEmail.value, loginPassword.value)
-  if (!await learning.syncFromApi()) return
-  loginPassword.value = ''
-  loginOpen.value = false
+  try {
+    await auth.login(loginEmail.value, loginPassword.value)
+    if (auth.dataMode === 'api') await learning.syncFromApi()
+    loginPassword.value = ''
+    loginOpen.value = false
+    await router.replace(safeLoginRedirect(route.query.redirect))
+  } catch { /* 登录错误由统一认证 Store 展示。 */ }
 }
 const logout = async () => {
   await auth.logout()
+  await router.replace('/')
 }
+watch(() => route.query.login, (value) => { if (value === '1') loginOpen.value = true }, { immediate: true })
 </script>
 
 <template>
@@ -73,10 +80,10 @@ const logout = async () => {
   </AppDialog>
   <AppDialog v-model="loginOpen" title="登录统一学习账号">
     <form class="dialog-form" @submit.prevent="login">
-      <label>邮箱<input v-model="loginEmail" type="email" autocomplete="username" required autofocus /></label>
-      <label>密码<input v-model="loginPassword" type="password" autocomplete="current-password" minlength="8" required /></label>
+      <template v-if="auth.dataMode === 'api'"><label>邮箱<input v-model="loginEmail" type="email" autocomplete="username" required autofocus /></label>
+      <label>密码<input v-model="loginPassword" type="password" autocomplete="current-password" minlength="8" required /></label></template><p v-else>当前是显式演示模式，不使用真实账号或服务端数据。</p>
       <p v-if="auth.error" class="answer-wrong" role="alert">{{ auth.error }}</p>
-      <button class="button primary" type="submit" :disabled="auth.loading">{{ auth.loading ? '正在登录…' : '登录' }}</button>
+      <button class="button primary" type="submit" :disabled="auth.loading">{{ auth.loading ? '正在登录…' : auth.dataMode === 'mock' ? '进入演示社区' : '登录' }}</button>
     </form>
   </AppDialog>
 </template>

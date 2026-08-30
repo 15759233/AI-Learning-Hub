@@ -90,6 +90,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <nav class="community-profile-links"><RouterLink :to="`/community/user/${auth.user?.id}`">我的动态与回答</RouterLink><RouterLink :to="`/community/user/${auth.user?.id}?tab=topics`">关注的话题</RouterLink><RouterLink :to="`/community/user/${auth.user?.id}?tab=following`">关注的人</RouterLink><RouterLink to="/bookmarks">我的收藏与笔记</RouterLink><RouterLink to="/notifications">社区通知</RouterLink></nav>
   <div class="page-container profile-page">
     <section class="profile-hero">
       <div class="profile-user"><span class="large-avatar">{{ displayName.slice(0, 1) }}</span><div><h1>{{ displayName }} <small>{{ dataMode === 'api' ? '统一学习账号' : '高校认证' }}</small></h1><p>{{ dataMode === 'api' ? (auth.user?.email || '尚未登录') : userProfile.program }}</p><span>{{ dataMode === 'api' ? (auth.user ? '个人介绍尚未配置' : '登录后查看个人学习档案') : store.profile.bio }}</span><div v-if="dataMode === 'mock'" class="hero-actions"><button class="button secondary small" type="button" @click="openEdit">编辑资料</button></div></div></div>

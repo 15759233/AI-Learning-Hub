@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
@@ -57,7 +59,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <dialog ref="dialog" class="app-dialog" :aria-labelledby="titleId" @cancel="onCancel" @click="onBackdrop">
+    <dialog v-bind="$attrs" ref="dialog" class="app-dialog" :aria-labelledby="titleId" @cancel="onCancel" @click="onBackdrop">
       <div class="dialog-card" @click.stop>
         <div class="dialog-title">
           <strong :id="titleId">{{ title }}</strong>

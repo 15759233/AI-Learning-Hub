@@ -6,7 +6,8 @@ import AdminIcon from './AdminIcon.vue'
 const session = useSessionStore()
 const nav = [
   ['dashboard', '数据看板', '/dashboard', 'dashboard.read'],
-  ['homepage', '首页运营', '/homepage', 'homepage.read'],
+  ['article', '社区运营', '/community', 'community.read'],
+  ['homepage', '门户首页', '/homepage', 'homepage.read'],
   ['theme', '学习主题', '/themes', 'theme.read'],
   ['course', '课程内容', '/courses', 'course.read'],
   ['lab', '实训项目', '/labs', 'lab.read'],

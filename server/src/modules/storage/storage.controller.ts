@@ -13,6 +13,7 @@ import { Permissions } from '../auth/permissions.decorator'
 import { PermissionsGuard } from '../auth/permissions.guard'
 import type { AuthUser } from '../auth/auth.types'
 import { STORAGE_SERVICE, type StorageService, type UploadedFile as StoredUpload } from './storage.types'
+import { FileAccessService } from './file-access.service'
 
 @Controller('admin/files')
 @UseGuards(AuthGuard, PermissionsGuard)
@@ -48,6 +49,7 @@ export class LocalFileController {
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
+    private readonly fileAccess: FileAccessService,
   ) {
     this.root = path.resolve(config.get('STORAGE_LOCAL_PATH') || './var/uploads')
   }
@@ -55,7 +57,7 @@ export class LocalFileController {
   @Get(':id/download')
   @RawResponse()
   async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res({ passthrough: true }) response: Response) {
-    const file = await this.prisma.fileRecord.findUnique({ where: { id } })
+    const file = await this.fileAccess.assert(user.id, id)
     if (!file || file.storageDriver !== 'local') throw new NotFoundException('文件不存在')
     const target = path.resolve(this.root, file.objectKey)
     if (!target.startsWith(`${this.root}${path.sep}`)) throw new NotFoundException('文件不存在')

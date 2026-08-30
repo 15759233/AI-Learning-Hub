@@ -19,6 +19,7 @@ import { ChallengeModule } from './modules/challenges/challenge.module'
 import { HomepageModule } from './modules/homepage/homepage.module'
 import { QuestionModule } from './modules/questions/question.module'
 import { GrowthModule } from './modules/growth/growth.module'
+import { CommunityModule } from './modules/community/community.module'
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { GrowthModule } from './modules/growth/growth.module'
     SettingsModule,
     StorageModule,
     QuizBoxModule,
+    CommunityModule,
   ],
   controllers: [AppController],
   providers: [OperationLogInterceptor],

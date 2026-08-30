@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service'
 import { readChallengeSnapshot } from '../challenges/challenge-version'
 import type { LabActionDto, SubmitAssessmentDto } from './behavior.dto'
 import { evaluateAnswer } from './assessment-evaluator'
+import { SignalsService } from '../signals/signals.service'
 
 type VersionedQuestion = Prisma.QuestionGetPayload<{ include: { publishedVersion: true } }>
 const publishedQuestion = (question: VersionedQuestion) => {
@@ -22,7 +23,7 @@ const publishedQuestion = (question: VersionedQuestion) => {
 
 @Injectable()
 export class BehaviorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly signals: SignalsService) {}
 
   async recordView(userId: string, targetType: 'resource' | 'article', targetSlug: string) {
     const target = targetType === 'resource'
@@ -76,6 +77,7 @@ export class BehaviorService {
           payload: { completed, positionSeconds },
         },
       })
+      await this.signals.learningConversion(tx, userId, 'course', courseId)
       if (completed && !previous?.completedAt) {
         await tx.growthPoint.upsert({
           where: { userId_eventType_reference: { userId, eventType: 'lesson_complete', reference: lessonId } },
@@ -91,6 +93,7 @@ export class BehaviorService {
           lesson: { chapter: { courseVersionId: lesson.chapter.version.id } },
         },
       })
+      if (total > 0 && completedLessons === total) await this.signals.achievementDraft(tx, userId, 'course', courseId, courseId)
       return {
         lessonId: record.lessonId,
         completed: !!record.completedAt,
@@ -150,6 +153,7 @@ export class BehaviorService {
       await tx.labRunEvent.create({ data: { runId: run.id, sequence: 1, type: 'log', step: 'ready', message: '受控实训环境已准备' } })
       await tx.labRunSnapshot.create({ data: { runId: run.id, sequence: 1, state: JSON.parse(JSON.stringify(run)) as Prisma.InputJsonValue } })
       await tx.activityEvent.create({ data: { userId, eventType: 'lab_start', targetType: 'lab', targetId: lab.id } })
+      await this.signals.learningConversion(tx, userId, 'lab', lab.id)
       return run
     })
   }
@@ -234,6 +238,7 @@ export class BehaviorService {
         create: { userId, eventType: 'lab_submit', points: Math.max(0, updated.score), reference: runId },
       })
       await tx.activityEvent.create({ data: { userId, eventType: 'lab_complete', targetType: 'lab', targetId: run.labId } })
+      await this.signals.achievementDraft(tx, userId, 'lab', run.labId, runId)
       const achievement = await tx.achievement.findUnique({ where: { code: 'first-lab' } })
       if (achievement?.enabled) {
         await tx.userAchievement.upsert({
@@ -326,6 +331,7 @@ export class BehaviorService {
         })
       }
       await tx.activityEvent.create({ data: { userId, eventType: 'assessment_submit', targetType: 'challenge', targetId: challenge.id, payload: { score } } })
+      await this.signals.achievementDraft(tx, userId, 'challenge', challenge.id, attempt.id)
       const previousBest = await tx.challengeBestScore.findUnique({ where: { userId_challengeId: { userId, challengeId: challenge.id } } })
       if (!previousBest || score > previousBest.score) {
         await tx.challengeBestScore.upsert({

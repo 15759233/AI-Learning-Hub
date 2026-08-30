@@ -13,6 +13,7 @@ import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
 import { mapCourse, useCoursesStore } from '../stores/content/courses'
 import { useLearningStore } from '../stores/learning'
+import { useCommunityStore } from '../stores/community'
 
 const route = useRoute()
 const router = useRouter()
@@ -68,6 +69,7 @@ const copyCode = async () => {
 const saveNote = async () => {
   if (await store.saveNote(courseId.value, noteDraft.value, dataMode === 'api' ? currentApiLesson.value?.id : undefined)) noteOpen.value = false
 }
+const shareNote = () => useCommunityStore().openComposer({ type: 'note', title: `${course.value?.title || '课程'}学习笔记`, contentBlocks: [{ type: 'paragraph', text: store.notes[noteKey.value] || noteDraft.value }], bindings: [{ type: 'course', id: courseId.value }, ...(currentApiLesson.value ? [{ type: 'lesson' as const, id: currentApiLesson.value.id }] : [])] })
 const completeCurrentLesson = () => {
   const lessonId = dataMode === 'api' ? currentApiLesson.value?.id : currentLesson.value
   if (lessonId) void store.completeCourseStep(courseId.value, lessonId, displayLessons.value.length)
@@ -148,7 +150,7 @@ watch(courseId, async () => {
         <div class="lesson-actions"><button type="button" @click="noteOpen = true">记录笔记</button><template v-if="dataMode === 'mock'"><button type="button" @click="questionSent = !questionSent">{{ questionSent ? '问题已记录' : '向老师提问' }}</button><button type="button" :class="{ active: liked }" @click="liked = !liked">{{ liked ? '已点赞' : '点赞本节' }}</button></template></div>
       </article>
       <aside class="lesson-aside sticky">
-        <section><div class="panel-title"><strong>我的笔记</strong><button type="button" @click="noteOpen = true">编辑</button></div><p>{{ store.notes[noteKey] || '还没有笔记，记录一个关键想法吧。' }}</p></section>
+        <section><div class="panel-title"><strong>我的笔记</strong><button type="button" @click="noteOpen = true">编辑</button></div><p>{{ store.notes[noteKey] || '还没有笔记，记录一个关键想法吧。' }}</p><button class="text-link" type="button" :disabled="!store.notes[noteKey]" @click="shareNote">发布为学习笔记</button><small class="muted">仅在预览并确认后公开。</small></section>
         <section><h3>相关资料</h3><template v-if="dataMode === 'api'"><RouterLink v-for="resource in courseDetail?.relatedResources || []" :key="resource.slug" :to="{ path: '/resources', query: { preview: resource.slug } }">{{ resource.title }}</RouterLink><p v-if="!courseDetail?.relatedResources.length">尚未关联已发布资源。</p></template><template v-else><RouterLink to="/resources">Transformer 图解 · PDF</RouterLink><RouterLink to="/resources">注意力机制学习手册</RouterLink><RouterLink to="/resources">课程视频索引 · 视频</RouterLink><RouterLink to="/resources">示例代码仓库 · GitHub</RouterLink></template></section>
         <section><h3>学习进度</h3><template v-if="accountDataReady"><ProgressBar :value="store.courseProgress[course.id] || 0" /><small>完成本节会同步更新课程进度。</small></template><p v-else class="notice">{{ accountDataMessage }}</p></section>
         <section><h3>学习成就</h3><div v-if="dataMode === 'mock'" class="mini-achievements"><span><AppIcon name="layers" />模型入门</span><span><AppIcon name="check" />连续学习</span><span><AppIcon name="trophy" />小测达人</span></div><p v-else>课程成就规则尚未配置。</p></section>

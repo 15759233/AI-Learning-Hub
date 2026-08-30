@@ -170,7 +170,7 @@ const saveAndPublish = async () => { await save(); await publish() }
 </script>
 
 <template>
-  <AdminPageHeader title="首页运营" description="管理学生端首页模块内容、展示顺序与发布状态">
+  <AdminPageHeader title="门户首页" description="管理门户首页模块内容、展示顺序与发布状态">
     <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="save">保存草稿</button><button class="admin-primary" type="button" :disabled="!canPublish" @click="publish">发布更新</button></template>
   </AdminPageHeader>
   <div class="kpi-grid">

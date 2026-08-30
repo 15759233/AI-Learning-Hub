@@ -4,7 +4,15 @@ defineProps<{ name?: string; size?: number }>()
 
 <template>
   <svg class="app-icon" :width="size || 20" :height="size || 20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <template v-if="['bot', 'agent', 'tool', 'workflow', 'memory'].includes(name || '')">
+    <template v-if="name === 'message'"><path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5" /></template>
+    <template v-else-if="name === 'heart'"><path d="M12 20 4 12a5 5 0 0 1 8-6 5 5 0 0 1 8 6z" /></template>
+    <template v-else-if="name === 'bell'"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4" /></template>
+    <template v-else-if="name === 'plus'"><path d="M12 4v16M4 12h16" /></template>
+    <template v-else-if="name === 'refresh'"><path d="M20 8a8 8 0 1 0 0 8M20 3v5h-5" /></template>
+    <template v-else-if="name === 'book'"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1v15" /></template>
+    <template v-else-if="name === 'folder'"><path d="M3 6h7l2 3h9v11H3zM3 6V4h6l2 2h10v3" /></template>
+    <template v-else-if="name === 'sparkles'"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></template>
+    <template v-else-if="['bot', 'agent', 'tool', 'workflow', 'memory'].includes(name || '')">
       <rect x="5" y="7" width="14" height="11" rx="3" /><path d="M12 3v4M8.5 12h.01M15.5 12h.01M9 16h6" />
     </template>
     <template v-else-if="['server', 'deployment', 'container', 'api', 'pulse'].includes(name || '')">
