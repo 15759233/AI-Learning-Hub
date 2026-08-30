@@ -107,4 +107,17 @@ describe('学习社区视觉契约', () => {
     expect(source('styles/tokens.css')).toContain('--muted: var(--amc-text-secondary)')
     for (const file of imports.filter((name) => name !== 'styles/workspaces.css')) expect(source(file)).not.toMatch(/font-size: (?:0?\.(?:[0-6][0-9]*|7[0-4]?)rem|1[01]px);/)
   })
+
+  it('右栏内容按自然高度排列，不能裁切话题操作；发布插画完整显示', () => {
+    const rail = source('styles/community/rail.css')
+    const railLayout = rail.match(/\.community-right-rail\s*\{([^}]+)\}/)?.[1]
+    expect(railLayout).toContain('grid-auto-rows: max-content')
+    expect(railLayout).toContain('overflow-y: auto')
+    expect(rail).not.toMatch(/\.rail-topics-card\s*\{[^}]*overflow:\s*(?:hidden|clip)/)
+    const decoration = source('styles/community/composer.css').match(/\.composer-decoration\s*\{([^}]+)\}/)?.[1]
+    expect(decoration).toContain('object-fit: contain')
+    expect(decoration).toContain('max-width: 420px')
+    expect(decoration).toContain('pointer-events: none')
+    expect(decoration).not.toContain('mask-image')
+  })
 })

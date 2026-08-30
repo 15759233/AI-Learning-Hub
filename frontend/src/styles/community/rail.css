@@ -1,4 +1,4 @@
-.community-right-rail { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 0; display: grid; align-content: start; gap: 16px; scrollbar-width: thin; }
+.community-right-rail { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 0; display: grid; grid-auto-rows: max-content; align-content: start; gap: 16px; scrollbar-width: thin; }
 .community-rail-card { position: relative; isolation: isolate; border: 1px solid var(--amc-border); background: var(--amc-surface); border-radius: var(--amc-radius-card); padding: 20px 22px; box-shadow: var(--amc-shadow-card); }
 .community-rail-card h2 { font-size: 17px; line-height: 1.45; margin-bottom: 12px; font-weight: 650; }
 .rail-notebook { position: absolute; top: 0; right: 0; width: 180px; height: 90px; object-fit: contain; pointer-events: none; z-index: -1; }
@@ -13,7 +13,6 @@
 .task-course { --task-color: var(--amc-yellow); }
 .task-lab { --task-color: var(--amc-blue); }
 .task-challenge { --task-color: var(--amc-purple); }
-.rail-topics-card { overflow: hidden; }
 .rail-topics-card::before { content: ""; position: absolute; right: 12px; top: 17px; width: 95px; height: 30px; background-image: radial-gradient(var(--amc-orange-border) 1px, transparent 1px); background-size: 12px 12px; opacity: .65; pointer-events: none; z-index: -1; }
 .rail-planet { position: absolute; bottom: 0; right: 0; width: 195px; height: 91px; object-fit: contain; pointer-events: none; opacity: .7; z-index: -1; }
 .rail-topic, .rail-person { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
