@@ -1,6 +1,7 @@
 import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentInput, CommunityContextDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { dataMode, request, writeRequest } from './client'
 import { mockCommunity } from './community.mock'
+import { randomId } from './random-id'
 import type { AuthUser, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
 const demoImages = new Map<string, File>()
 const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
@@ -43,7 +44,7 @@ export const communityApi = {
   impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
   async upload(file: File) {
     if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !/\.(png|jpe?g|webp)$/i.test(file.name)) throw new Error('请选择不超过 5MB 的 PNG、JPEG 或 WebP 图片')
-    if (dataMode === 'mock') { const id = `demo-image-${crypto.randomUUID()}`; demoImages.set(id, file); return { id } }
+    if (dataMode === 'mock') { const id = `demo-image-${randomId()}`; demoImages.set(id, file); return { id } }
     const form = new FormData(); form.append('file', file)
     return request<{ id: string }>('/community/media', { method: 'POST', body: form })
   },

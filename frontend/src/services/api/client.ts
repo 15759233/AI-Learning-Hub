@@ -1,4 +1,5 @@
 import { resolveDataMode } from './data-mode'
+import { randomId } from './random-id'
 export const dataMode = resolveDataMode(import.meta.env.VITE_DATA_MODE, import.meta.env.PROD, import.meta.env.MODE)
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -63,7 +64,7 @@ export async function writeRequest<T>(path: string, method: string, body: unknow
   const serialized = JSON.stringify(body), operation = `${method}:${path}:${serialized}`
   if (!pendingWrites.has(operation)) {
     if (pendingWrites.size >= 64) pendingWrites.delete(pendingWrites.keys().next().value!)
-    pendingWrites.set(operation, key || crypto.randomUUID())
+    pendingWrites.set(operation, key || randomId())
   }
   const result = await request<T>(path, { method, body: serialized, headers: { 'idempotency-key': pendingWrites.get(operation)! } }, retry)
   pendingWrites.delete(operation)

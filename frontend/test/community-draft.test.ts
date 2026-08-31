@@ -31,7 +31,8 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
-  it.each([false, true])('创建响应丢失后修改正文，draft=%s先确认旧键再更新同一真实ID', async (asDraft) => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])('创建响应丢失后修改正文，draft=%s普通HTTP=%s先确认旧键再更新同一真实ID', async (asDraft, http) => {
+    if (http) { const source = globalThis.crypto; vi.stubGlobal('crypto', { getRandomValues: source.getRandomValues.bind(source) }); expect(crypto.randomUUID).toBeUndefined() }
     const editor = useCommunityDraft(), store = useCommunityStore()
     const api = asDraft ? vi.mocked(communityApi.saveDraft) : vi.mocked(communityApi.save)
     api.mockRejectedValueOnce(new ApiError('server committed; response lost', 0))
@@ -39,6 +40,7 @@ describe('共享发布器与草稿账号隔离', () => {
     store.openComposer(); await settle(); editor.body = '第一版已在服务器提交'; await settle()
     expect(await editor.save(asDraft)).toBe(false)
     const firstKey = api.mock.calls[0][2]
+    expect(firstKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     editor.body = '响应丢失后继续修改第二版'; await settle()
     expect(await editor.save(asDraft)).toBe(true)
     expect(api).toHaveBeenCalledTimes(3)

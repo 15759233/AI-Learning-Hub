@@ -1,9 +1,24 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockCommunity, resetCommunityMock } from '../services/api/community.mock'
 import type { CommunityCommentDto, CommunityFeedDto, CommunityPostDetailDto, CommunityPostInput, CommunityNotificationDto } from '@ai-learning-hub/contracts'
 
 beforeEach(resetCommunityMock)
+afterEach(() => vi.unstubAllGlobals())
 describe('显式社区 Mock 与统一 Fixtures', () => {
+  it('普通HTTP缺少randomUUID时仍可分页、发布与评论', async () => {
+    const source = globalThis.crypto
+    vi.stubGlobal('crypto', { getRandomValues: source.getRandomValues.bind(source) })
+    expect(crypto.randomUUID).toBeUndefined()
+    const first = await mockCommunity<CommunityFeedDto>('/feed?mode=latest&type=all', 'GET')
+    const second = await mockCommunity<CommunityFeedDto>(`/feed?mode=latest&type=all&cursor=${first.nextCursor}`, 'GET')
+    expect(first.requestId).toBe(second.requestId)
+    expect(new Set([...first.items, ...second.items].map((post) => post.id)).size).toBe(40)
+    const post = await mockCommunity<CommunityPostDetailDto>('/posts', 'POST', { type: 'note', contentBlocks: [{ type: 'paragraph', text: '普通HTTP演示发布' }], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
+    const comment = await mockCommunity<CommunityCommentDto>(`/posts/${post.id}/comments`, 'POST', { contentBlocks: [{ type: 'paragraph', text: '普通HTTP演示评论' }] })
+    expect(comment.postId).toBe(post.id); expect(comment.id).not.toBe(post.id)
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    for (const id of [first.requestId, first.nextCursor, post.id, comment.id]) expect(id).toMatch(uuid)
+  })
   it('固定规模、初始互动与通知使用同一语义，重置清除状态', async () => {
     const posts = await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')
     expect(posts).toHaveLength(90)

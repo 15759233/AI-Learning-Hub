@@ -11,6 +11,7 @@ import { useResourcesStore } from '../../stores/content/resources'
 import { useThemesStore } from '../../stores/content/themes'
 import { useChallengesStore } from '../../stores/content/challenges'
 import { ApiError } from '../../services/api/client'
+import { randomId } from '../../services/api/random-id'
 export const useCommunityDraft = defineStore('community-draft', () => {
   const store = useCommunityStore(), auth = useAuthStore()
   const form = ref<CommunityPostInput>({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
@@ -123,7 +124,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
         if (asDraft && store.editingId && !draftId.value && !replay) { localSave(); savedAt.value = '仅保留本地副本，尚未同步到服务器'; return true }
         const captured = JSON.stringify(input())
         const operationBody = `${asDraft ? 'draft' : 'publish'}:${captured}`
-        if (requestBody !== operationBody) { requestBody = operationBody; requestKey = crypto.randomUUID() }
+        if (requestBody !== operationBody) { requestBody = operationBody; requestKey = randomId() }
         if (!replay) unconfirmed = { input: JSON.parse(captured), asDraft, id: asDraft ? draftId.value : store.editingId || draftId.value, key: requestKey }
         localSave()
         const post = replay || await send(unconfirmed!)

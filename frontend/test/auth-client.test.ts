@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, AUTH_SESSION_CLEARED_EVENT, request, restoreRefresh } from '../src/services/api/client'
+import { authApi } from '../src/services/api/auth'
+import { assessmentApi } from '../src/services/api/assessments'
 const stored = new Map<string, string>()
 beforeEach(() => {
   stored.clear(); stored.set('student-access-token', 'local-test-token')
@@ -8,6 +10,24 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it.each(['注册', '测评'] as const)('普通HTTP%s可发送请求，丢失响应后同键重试，成功后新操作换键', async (kind) => {
+    const source = globalThis.crypto
+    vi.stubGlobal('crypto', { getRandomValues: source.getRandomValues.bind(source) })
+    expect(crypto.randomUUID).toBeUndefined()
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(new TypeError('response lost')).mockImplementation(async () => new Response(JSON.stringify({ code: 0, data: { user: { id: 'http-registered' }, accessToken: 'isolated-test-token', score: 100 } })))
+    vi.stubGlobal('fetch', fetcher)
+    const input = { displayName: 'HTTP测试用户', email: 'http-registration@example.test', password: 'IsolatedTestOnly123!', agreementVersion: 'v1' }
+    const submit = kind === '注册' ? () => authApi.register(input) : () => assessmentApi.submit('http-quiz', [{ questionId: 'q1', answer: 'a' }])
+    await expect(submit()).rejects.toMatchObject({ status: 0 })
+    expect(fetcher).toHaveBeenCalledOnce()
+    await expect(submit()).resolves.toMatchObject(kind === '注册' ? { id: 'http-registered' } : { score: 100 })
+    await submit()
+    const keys = fetcher.mock.calls.map(([, init]) => (init?.headers as Record<string, string>)['idempotency-key'])
+    expect(keys[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(keys[1]).toBe(keys[0]); expect(keys[2]).not.toBe(keys[0])
+    expect(fetcher.mock.calls.every(([url, init]) => String(url).endsWith(kind === '注册' ? '/auth/register' : '/challenges/http-quiz/submit') && init?.method === 'POST')).toBe(true)
+    expect(fetcher.mock.calls[1][1]?.body).toBe(fetcher.mock.calls[0][1]?.body)
+  })
   it('刷新503不清空会话，网络错误不回退演示数据', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 503 })))
     await expect(restoreRefresh()).rejects.toMatchObject({ status: 503 })

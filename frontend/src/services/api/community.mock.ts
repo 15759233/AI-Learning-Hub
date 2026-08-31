@@ -1,5 +1,6 @@
 import { createCommunityFixtures, demoArticles, demoChallenges, demoCourses, demoLabs, demoResources, demoStudents, demoThemes } from '@ai-learning-hub/demo-fixtures'
 import type { CommunityAuthorDto, CommunityCommentDto, CommunityContentBlock, CommunityContextDto, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityProfileDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
+import { randomId } from './random-id'
 const fixtures = createCommunityFixtures({ courses: demoCourses, labs: demoLabs, articles: demoArticles, themes: demoThemes, students: demoStudents })
 const authors: CommunityAuthorDto[] = fixtures.users.map((user) => ({ id: user.username, username: user.username, displayName: user.displayName, verifiedType: user.verifiedType, avatar: null, major: user.major, school: 'AI 创客学院' }))
 const initialPosts: CommunityPostDetailDto[] = fixtures.posts.map((post) => ({
@@ -86,10 +87,10 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     else if (method !== 'GET') value = { received: true }
     else {
       const cursor = url.searchParams.get('cursor'), type = url.searchParams.get('type') || 'all', mode = url.searchParams.get('mode') || 'for_you'
-      const session = cursor ? cursors.get(cursor) : { ids: filtered(url).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)).map((p) => p.id), offset: 0, type, mode, requestId: crypto.randomUUID() }
+      const session = cursor ? cursors.get(cursor) : { ids: filtered(url).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)).map((p) => p.id), offset: 0, type, mode, requestId: randomId() }
       if (!session || session.type !== type || session.mode !== mode) throw new Error('游标已失效或筛选不匹配，请刷新')
       const list = visible().filter((p) => session.ids.slice(session.offset, session.offset + 20).includes(p.id)).sort((a, b) => session.ids.indexOf(a.id) - session.ids.indexOf(b.id))
-      const nextCursor = session.offset + 20 < session.ids.length ? crypto.randomUUID() : null
+      const nextCursor = session.offset + 20 < session.ids.length ? randomId() : null
       if (nextCursor) cursors.set(nextCursor, { ...session, offset: session.offset + 20 })
       value = { requestId: session.requestId, policyVersion: 'demo-fixtures', degraded: false, items: list.map((post) => ({ type: 'post', id: post.id, post })), nextCursor }
     }
@@ -145,7 +146,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
         const input = body as { contentBlocks: CommunityContentBlock[]; parentId?: string }
         if (post!.status === 'draft') throw new Error('草稿不能评论')
         if (input.parentId && !comments.some((c) => c.id === input.parentId && c.postId === id && !c.parentId && !c.deleted)) throw new Error('仅支持两级评论')
-        const comment: CommunityCommentDto = { id: crypto.randomUUID(), postId: id, author: authors[0], parentId: input.parentId || null, rootId: input.parentId || null, body: text(input.contentBlocks), contentBlocks: input.contentBlocks, deleted: false, likes: 0, liked: false, accepted: false, createdAt: new Date().toISOString() }
+        const comment: CommunityCommentDto = { id: randomId(), postId: id, author: authors[0], parentId: input.parentId || null, rootId: input.parentId || null, body: text(input.contentBlocks), contentBlocks: input.contentBlocks, deleted: false, likes: 0, liked: false, accepted: false, createdAt: new Date().toISOString() }
         comments.push(comment); post!.stats.comments++; value = comment
       } else {
         const rows = comments.filter((c) => c.postId === id), order = new Map(rows.map((row, index) => [row.id, index]))
@@ -163,7 +164,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     else if (method === 'POST' || method === 'PATCH') {
       const input = body as CommunityPostInput, now = new Date().toISOString()
       if (post) requireOwner(post.author.id)
-      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: id || crypto.randomUUID(), type: input.type, status: input.status, visibility: input.visibility, title: input.title || null, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
+      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: id || randomId(), type: input.type, status: input.status, visibility: input.visibility, title: input.title || null, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
       posts = [saved, ...posts.filter((p) => p.id !== saved.id)]; value = saved
     } else value = id ? post : visible().filter((p) => (!url.searchParams.get('keyword') || `${p.title} ${p.body}`.includes(url.searchParams.get('keyword')!)) && (!url.searchParams.get('bindingId') || p.bindings.some((b) => b.id === url.searchParams.get('bindingId'))))
   }

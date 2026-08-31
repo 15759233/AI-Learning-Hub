@@ -1,4 +1,4 @@
-import { request } from './client'
+import { request, writeRequest } from './client'
 import type { StudentUser } from './auth'
 
 export interface QuizQuestion {
@@ -18,9 +18,9 @@ export interface ChallengeRankingEntry {
 
 export const assessmentApi = {
   questions: (slug: string) => request<QuizQuestion[]>(`/challenges/${encodeURIComponent(slug)}/questions`),
-  submit: (slug: string, answers: Array<{ questionId: string; answer: unknown }>) => request<{ score: number; correct: number; total: number; passed: boolean }>(
+  submit: (slug: string, answers: Array<{ questionId: string; answer: unknown }>) => writeRequest<{ score: number; correct: number; total: number; passed: boolean }>(
     `/challenges/${encodeURIComponent(slug)}/submit`,
-    { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ answers }) },
+    'POST', { answers },
   ),
   ranking: (slug: string) => request<ChallengeRankingEntry[]>(
     `/challenges/${encodeURIComponent(slug)}/ranking`,
