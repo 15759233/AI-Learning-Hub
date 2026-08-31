@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/auth'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import CommunityBlocks from './CommunityBlocks.vue'
 import CommunityComposerTools from './CommunityComposerTools.vue'
+import CommunityDraftConflict from './CommunityDraftConflict.vue'
 import { postLabels } from './labels'
 const editor = useCommunityDraft(), store = useCommunityStore(), auth = useAuthStore()
 const paste = (event: ClipboardEvent) => { const files = Array.from(event.clipboardData?.files || []); if (files.length) { event.preventDefault(); void editor.uploadFiles(files) } }
@@ -18,6 +19,7 @@ const tools = ref({ binding: false, topics: false })
 </script>
 <template>
   <form class="dialog-form composer-form" @submit.prevent="save()" @keydown="keydown" @paste="paste" @dragover.prevent @drop="drop">
+    <CommunityDraftConflict />
     <header class="composer-mobile-top"><button type="button" class="text-link" @click="editor.close()">取消</button><select v-model="form.type" aria-label="发布内容类型"><option v-for="(label, type) in postLabels" :key="type" :value="type">{{ label }}</option></select><button class="button primary small" type="submit" :disabled="saving">{{ saving ? '保存中…' : '发布' }}</button></header>
     <div class="composer-row"><label>内容类型<select v-model="form.type"><option v-for="(label, type) in postLabels" :key="type" :value="type as CommunityPostType">{{ label }}</option></select></label><details><summary>可见范围：{{ form.visibility === 'school' ? '仅同校用户' : '登录社区用户' }}</summary><label>可见范围<select v-model="form.visibility"><option value="public">登录社区用户</option><option value="school">仅同校用户</option></select></label></details></div>
     <label v-if="advanced || ['question', 'project'].includes(form.type)">标题{{ ['question', 'project'].includes(form.type) ? '（必填）' : '（选填）' }}<input v-model="form.title" maxlength="160" :required="['question', 'project'].includes(form.type)" placeholder="让同学更容易理解你的问题或收获" /></label>

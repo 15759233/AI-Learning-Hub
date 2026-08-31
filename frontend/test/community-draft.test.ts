@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
-import { nextTick, reactive, ref } from 'vue'
+import { createPinia, getActivePinia, setActivePinia } from 'pinia'
+import { createSSRApp, h, nextTick, reactive, ref } from 'vue'
+import { renderToString, type SSRContext } from 'vue/server-renderer'
 import { createMemoryHistory, createRouter, isNavigationFailure, NavigationFailureType, useLink } from 'vue-router'
 import { useCommunityDraft } from '../src/community/composables/useCommunityDraft'
 import { useCommunityStore } from '../src/stores/community'
@@ -8,6 +9,7 @@ import { communityApi } from '../src/services/api/community'
 import type { CommunityPostDetailDto } from '@ai-learning-hub/contracts'
 import CommunityQuickComposer from '../src/community/CommunityQuickComposer.vue'
 import CommunityComposer from '../src/community/CommunityComposer.vue'
+import CommunityDraftConflict from '../src/community/CommunityDraftConflict.vue'
 import { setupComponent } from '../src/community/test-renderer'
 import { communityScrollRoot } from '../src/community/composables/useCommunityScrollRoot'
 import { ApiError } from '../src/services/api/client'
@@ -31,6 +33,66 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
+  it.each(['inline', 'quick-dialog', 'advanced-dialog'])('%s 冲突恢复控件位于实际编辑表单内，不被原生模态弹窗隔离', async (mode) => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createRouter({ history: createMemoryHistory(), routes: ['/community', '/community/drafts'].map((path) => ({ path, component: { render: () => null } })) })
+    await router.push('/community')
+    const store = useCommunityStore(), editor = useCommunityDraft()
+    store.openComposer({ status: 'draft', contentBlocks: [{ type: 'paragraph', text: '冲突输入副本' }], expectedRevision: 1 }, 'conflicted-draft')
+    store.composerMode = mode === 'advanced-dialog' ? 'advanced' : 'quick'
+    store.composerInline = mode === 'inline'
+    await settle(); editor.conflict = true
+    const app = createSSRApp({ render: () => h('main', [mode === 'inline' ? h(CommunityQuickComposer) : null, h(CommunityComposer)]) })
+    app.use(pinia); app.use(router)
+    const context: SSRContext = {}, html = await renderToString(app, context)
+    const dialogs = context.teleports?.body || ''
+    const activeContainer = mode === 'inline' ? html : dialogs.match(/<dialog\b[^>]*\bcommunity-composer\b[\s\S]*?<\/dialog>/)?.[0] || ''
+    const form = activeContainer.match(/<form\b[\s\S]*?<\/form>/)?.[0] || ''
+    expect(form).toContain('role="alert"')
+    expect(form).toContain('读取服务器版本'); expect(form).toContain('保留当前副本')
+    expect((html + dialogs).match(/读取服务器版本/g)).toHaveLength(1)
+    if (mode !== 'inline') expect(html).not.toContain('读取服务器版本')
+    editor.keepCopy()
+    expect(editor.body).toBe('冲突输入副本'); expect(editor.dirty).toBe(true)
+    expect(store.editingId).toBeUndefined(); expect(editor.draftId).toBeUndefined(); expect(editor.form.expectedRevision).toBeUndefined()
+    expect(editor.conflict).toBe(false)
+  })
+  it.each([400, 404])('已发布或删除的恢复草稿返回%s后保留错误和输入，由用户明确选择新副本', async (status) => {
+    account.dataMode = 'api'
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer({ status: 'draft', contentBlocks: [{ type: 'paragraph', text: '失效关联的私有输入' }], expectedRevision: 2 }, 'expired-draft')
+    await settle()
+    vi.mocked(communityApi.saveDraft).mockRejectedValueOnce(new ApiError('草稿不存在或无权操作', status))
+    expect(await editor.save(true)).toBe(false)
+    expect(editor.error).toBe('草稿不存在或无权操作'); expect(editor.draftUnavailable).toBe(true)
+    expect(editor.body).toBe('失效关联的私有输入'); expect(editor.draftId).toBe('expired-draft')
+    const feedback = await renderToString(createSSRApp(CommunityDraftConflict).use(getActivePinia()!))
+    expect(feedback).toContain('另存为新副本，不会覆盖原内容'); expect(feedback).toContain('保留当前副本')
+    expect(feedback).not.toContain('读取服务器版本')
+    const oldKey = vi.mocked(communityApi.saveDraft).mock.calls[0][2]
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(communityApi.saveDraft).toHaveBeenCalledTimes(1)
+    expect(await editor.save(true)).toBe(false); expect(communityApi.saveDraft).toHaveBeenCalledTimes(1)
+    editor.keepCopy()
+    expect(editor.draftUnavailable).toBe(false); expect(editor.draftId).toBeUndefined(); expect(store.editingId).toBeUndefined()
+    expect(editor.form.expectedRevision).toBeUndefined(); expect(editor.body).toBe('失效关联的私有输入')
+    expect(await editor.save(true)).toBe(true)
+    expect(communityApi.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ contentBlocks: [{ type: 'paragraph', text: '失效关联的私有输入' }] }), undefined, expect.any(String))
+    expect(vi.mocked(communityApi.saveDraft).mock.calls[1][2]).not.toBe(oldKey)
+    expect(communityApi.save).not.toHaveBeenCalled()
+  })
+  it('普通400校验错误不能把既有草稿判为失效或切换成新副本', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer({ status: 'draft', contentBlocks: [{ type: 'paragraph', text: '等待修正的有效草稿' }], expectedRevision: 2 }, 'valid-draft')
+    await settle()
+    vi.mocked(communityApi.saveDraft).mockRejectedValueOnce(new ApiError('关联内容不存在、未发布或无权查看', 400))
+    expect(await editor.save(true)).toBe(false)
+    expect(editor.draftUnavailable).toBe(false); expect(editor.conflict).toBe(false); expect(editor.draftId).toBe('valid-draft')
+    expect(editor.error).toBe('关联内容不存在、未发布或无权查看')
+    expect(await editor.save(true)).toBe(true)
+    expect(communityApi.saveDraft).toHaveBeenLastCalledWith(expect.anything(), 'valid-draft', expect.any(String))
+  })
   it.each([[false, false], [true, false], [false, true], [true, true]])('创建响应丢失后修改正文，draft=%s普通HTTP=%s先确认旧键再更新同一真实ID', async (asDraft, http) => {
     if (http) { const source = globalThis.crypto; vi.stubGlobal('crypto', { getRandomValues: source.getRandomValues.bind(source) }); expect(crypto.randomUUID).toBeUndefined() }
     const editor = useCommunityDraft(), store = useCommunityStore()
@@ -119,6 +181,8 @@ describe('共享发布器与草稿账号隔离', () => {
     await settle()
     vi.mocked(communityApi.save).mockRejectedValueOnce(new ApiError('版本冲突', 409))
     expect(await editor.save()).toBe(false); expect(editor.conflict).toBe(true); expect(editor.body).toBe('本机未覆盖内容')
+    const attempts = vi.mocked(communityApi.save).mock.calls.length
+    expect(await editor.save()).toBe(false); expect(editor.conflict).toBe(true); expect(communityApi.save).toHaveBeenCalledTimes(attempts)
     vi.mocked(communityApi.post).mockResolvedValue({ ...post, revision: 2, contentBlocks: [{ type: 'paragraph', text: '服务器版本' }], bindings: [], topics: [], visibility: 'public' })
     await editor.readServer(); expect(editor.body).toBe('服务器版本'); expect(editor.form.expectedRevision).toBe(2); expect(editor.conflict).toBe(false)
   })

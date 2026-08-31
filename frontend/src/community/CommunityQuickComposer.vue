@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useCommunityStore } from '../stores/community'
 import { useAuthStore } from '../stores/auth'
 import CommunityComposerTools from './CommunityComposerTools.vue'
+import CommunityDraftConflict from './CommunityDraftConflict.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import CommunityAvatar from '../components/base/CommunityAvatar.vue'
@@ -48,6 +49,7 @@ onBeforeUnmount(() => window.removeEventListener('community-composer-focus', foc
       <div class="quick-types"><button v-for="[type, label, icon] in types" :key="type" :class="`quick-type-${type}`" @click="open(type)"><AppIcon :name="icon" :size="21" />{{ label }}</button><CommunityPostMenu label="更多发布类型"><template #trigger><AppIcon name="more-circle" :size="21" />更多</template><button type="button" role="menuitem" @click="open('general')">普通交流</button><button type="button" role="menuitem" @click="open('frontier_discussion')">前沿讨论</button></CommunityPostMenu></div>
     </template>
     <form v-else class="quick-editor" @submit.prevent="editor.save()" @keydown="keydown" @paste="paste" @dragover.prevent @drop="drop">
+      <CommunityDraftConflict />
       <header class="quick-editor-heading"><CommunityAvatar :src="auth.user?.avatarUrl" :username="auth.user?.username" :name="auth.user?.displayName || '学习者'" /><select v-model="form.type" aria-label="发布内容类型"><option v-for="(label, type) in postLabels" :key="type" :value="type">{{ label }}</option></select><select v-model="form.visibility" aria-label="可见范围"><option value="public">登录社区用户</option><option value="school">仅同校用户</option></select><button class="icon-button" type="button" aria-label="收起快捷发布" @click="editor.close()"><AppIcon name="close" :size="18" /></button></header>
       <label v-if="['question', 'project'].includes(form.type)">标题（必填）<input v-model="form.title" required maxlength="160" placeholder="用一句话说明问题或项目" /></label>
       <textarea ref="textarea" v-model="body" aria-label="正文" maxlength="15000" autofocus required placeholder="分享你今天学到的 AI 知识……" />

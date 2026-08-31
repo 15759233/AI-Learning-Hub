@@ -12,6 +12,14 @@ import { setupComponent, flushRender } from '../src/community/test-renderer'
 const source = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8')
 
 describe('学习社区视觉契约', () => {
+  it('社区后台顶部多条件筛选按控件最小宽自然换行，不压缩日期或影响内部列表工具条', () => {
+    const css = readFileSync(new URL('../../admin-web/src/community.css', import.meta.url), 'utf8')
+    expect(css.match(/\.community-admin-filter\s*\{([^}]+)\}/)?.[1]).toContain('flex-wrap: wrap')
+    const fields = css.match(/\.community-admin-page > \.community-admin-filter > :is\(input, select\)\s*\{([^}]+)\}/)?.[1]
+    expect(fields).toContain('flex: 1 1 10rem')
+    expect(fields).toContain('min-width: min(100%, 10rem)')
+    expect(fields).toContain('max-width: 22.5rem')
+  })
   it('真实头像优先，显式资源键优先于稳定用户名映射', () => {
     const real = '/uploads/student-avatar.webp'
     expect(avatarCandidates(real, 'learner', 'official-teacher')).toEqual([real, communityAvatars['official-teacher']])

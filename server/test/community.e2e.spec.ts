@@ -11,6 +11,7 @@ import { ApiResponseInterceptor } from '../src/common/api-response.interceptor'
 import { LearningFeedPipeline } from '../src/modules/feed/feed.service'
 import { SignalsService } from '../src/modules/signals/signals.service'
 import { ContentReferenceService } from '../src/common/content-reference/content-reference.service'
+import { PrismaService } from '../src/prisma/prisma.service'
 import { communityModerationPayload } from '../../admin-web/src/services/community-payload'
 
 if (!process.env.DATABASE_URL?.includes('127.0.0.1:55439/community_')) throw new Error('社区 E2E 只允许隔离本地验收数据库')
@@ -315,6 +316,62 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     const refs = await app.get(ContentReferenceService).resolveMany([{ type: 'course', id: course.id }], aId)
     expect(refs.get(`course:${course.id}`)?.title).not.toBe('未发布草稿秘密标题')
     await db.course.update({ where: { id: course.id }, data: { title: originalTitle } })
+  })
+  it('列表由1条扩为20条时真实Prisma批量读取次数不增长，重复关联仍执行隐私过滤', async () => {
+    const marker = `${prefix}-batch-hydrate`, prisma = app.get(PrismaService)
+    const course = await db.course.findFirstOrThrow({ where: { status: 'published', deletedAt: null, publishedVersionId: { not: null } } })
+    const resource = await db.resource.findFirstOrThrow({ where: { status: 'published', visibility: 'public', deletedAt: null, publishedVersionId: { not: null } } })
+    const secret = `${marker}-private-title`
+    const privateResource = await db.resource.create({ data: { slug: `${marker}-private`, title: secret, summary: secret, category: '隔离测试', format: 'pdf', visibility: 'private', status: 'published', versions: { create: { versionNo: 1, snapshot: { title: secret, summary: secret } } } }, include: { versions: true } })
+    await db.resource.update({ where: { id: privateResource.id }, data: { publishedVersionId: privateResource.versions[0].id } })
+    const form = new FormData(), png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=', 'base64')
+    form.append('file', new Blob([png], { type: 'image/png' }), 'batch-pixel.png')
+    const upload = await request('/community/media', a, 'POST', form)
+    expect(upload.status).toBe(201)
+    const bindings = [{ targetType: 'course', targetId: course.id }, { targetType: 'resource', targetId: resource.id }, { targetType: 'resource', targetId: privateResource.id }, { targetType: 'resource', targetId: `${marker}-missing` }, { targetType: 'lab_run', targetId: 'community-run-1' }]
+    const create = (index: number) => fixture(aId, `${marker}-${index}`, {
+      contentBlocks: [{ type: 'paragraph', text: marker }, { type: 'image', fileId: upload.data.id, alt: '共享测试图片' }],
+      bindings: { create: bindings.map((ref, sortOrder) => ({ ...ref, sortOrder, titleSnapshot: secret })) },
+    })
+    const first = await create(0)
+    const invisible = await Promise.all([
+      fixture(aId, `${marker}-draft`, { status: 'draft', publishedAt: null }),
+      fixture(aId, `${marker}-school`, { visibility: 'school', schoolId }),
+      fixture(aId, `${marker}-hidden`, { status: 'hidden' }),
+    ])
+    // 只观察真实委托调用，不替换返回值；夹具写入走独立db连接，不混入计数。
+    const spies = [
+      vi.spyOn(prisma.communityPost, 'findMany'), vi.spyOn(prisma.user, 'findUnique'),
+      vi.spyOn(prisma.communityFeedback, 'findMany'), vi.spyOn(prisma.communityPostReaction, 'findMany'),
+      vi.spyOn(prisma.communityBookmark, 'findMany'), vi.spyOn(prisma.communityUserFollow, 'findMany'),
+      vi.spyOn(prisma.communityTopicFollow, 'findMany'), vi.spyOn(prisma.communityComment, 'findMany'),
+      vi.spyOn(prisma.course, 'findMany'), vi.spyOn(prisma.resource, 'findMany'),
+      vi.spyOn(prisma.labRun, 'findMany'), vi.spyOn(prisma.lab, 'findMany'),
+    ]
+    try {
+      const single = await request<CommunityPostDetailDto[]>(`/community/posts?keyword=${marker}`, c)
+      expect(single.status).toBe(200); expect(single.data.map((row) => row.id)).toEqual([first.id])
+      const singleCounts = spies.map((spy) => spy.mock.calls.length)
+      expect(singleCounts.every((count) => count > 0)).toBe(true)
+      const added = await Promise.all(Array.from({ length: 19 }, (_, index) => create(index + 1)))
+      spies.forEach((spy) => spy.mockClear())
+      const batch = await request<CommunityPostDetailDto[]>(`/community/posts?keyword=${marker}`, c)
+      expect(batch.status).toBe(200); expect(batch.data).toHaveLength(20)
+      expect(batch.data.map((row) => row.id).sort()).toEqual([first, ...added].map((row) => row.id).sort())
+      expect(spies.map((spy) => spy.mock.calls.length)).toEqual(singleCounts)
+      for (const row of batch.data) {
+        expect(row.author.id).toBe(aId); expect(row.mediaCount).toBe(1)
+        expect(row.contentBlocks).toContainEqual({ type: 'image', fileId: upload.data.id, alt: '共享测试图片' })
+        expect(row.bindings).toContainEqual(expect.objectContaining({ type: 'course', id: course.id, status: 'published' }))
+        expect(row.bindings).toContainEqual(expect.objectContaining({ type: 'resource', id: resource.id, status: 'published' }))
+        for (const id of [privateResource.id, `${marker}-missing`]) expect(row.bindings).toContainEqual({ type: 'resource', id, title: '关联内容已下架', route: '', status: 'unavailable' })
+        expect(row.bindings.filter((ref) => ref.type === 'lab')).toHaveLength(1)
+        expect(row.bindings.some((ref) => ref.type === 'lab_run')).toBe(false)
+      }
+      const serialized = JSON.stringify(batch.data)
+      expect(serialized).not.toContain(secret); expect(serialized).not.toContain('community-run-1')
+      for (const row of invisible) expect(serialized).not.toContain(row.id)
+    } finally { spies.forEach((spy) => spy.mockRestore()) }
   })
   it('关联点击到真实课时学习形成转化信号', async () => {
     const course = await db.course.findUniqueOrThrow({ where: { slug: 'llm-zero' } })

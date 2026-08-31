@@ -6,6 +6,7 @@
 .community-admin-list { min-width: 0; }
 .community-admin-filter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; }
 .community-admin-filter input { flex: 1; max-width: 360px; min-width: 0; padding: 10px 12px; }.community-admin-filter h2 { font-size: var(--admin-section-title); margin: 0; }
+.community-admin-page > .community-admin-filter > :is(input, select) { flex: 1 1 10rem; min-width: min(100%, 10rem); max-width: 22.5rem; }
 .community-admin-table { overflow-x: auto; }
 .community-admin-table table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 .community-admin-table th { padding: 12px 16px; text-align: left; background: #faf9f7; color: var(--muted); font-size: var(--admin-meta); font-weight: 500; }

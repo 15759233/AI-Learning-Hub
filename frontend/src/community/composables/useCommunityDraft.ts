@@ -18,7 +18,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   const body = ref(''), code = ref(''), language = ref('text'), quote = ref(''), images = ref<Array<{ fileId: string; alt: string }>>([])
   const topics = ref<CommunityTopicDto[]>([]), bindingType = ref<LearningContentType>('course'), bindingId = ref(''), bindingSearch = ref(''), bindingTitles = ref<Record<string, string>>({})
   const preview = ref(false), saving = ref(false), bindingLoading = ref(false), topicsLoading = ref(false), error = ref(''), savedAt = ref(''), closePrompt = ref(false), dirty = ref(false), draftId = ref<string>()
-  const conflict = ref(false)
+  const conflict = ref(false), draftUnavailable = ref(false)
   let requestKey = '', requestBody = ''
   let editorSession = 0
   type UnconfirmedWrite = { input: CommunityPostInput; asDraft: boolean; id?: string; key: string }
@@ -44,7 +44,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   }
   const hydrate = (value: CommunityPostInput) => {
     hydrating = true
-    form.value = JSON.parse(JSON.stringify(value)); preview.value = false; error.value = ''; savedAt.value = ''; dirty.value = false; conflict.value = false
+    form.value = JSON.parse(JSON.stringify(value)); preview.value = false; error.value = ''; savedAt.value = ''; dirty.value = false; conflict.value = false; draftUnavailable.value = false
     body.value = value.contentBlocks.filter((b) => b.type === 'paragraph').map((b) => b.text).join('\n\n')
     code.value = value.contentBlocks.filter((b) => b.type === 'code').map((b) => b.code).join('\n')
     quote.value = value.contentBlocks.filter((b) => b.type === 'quote').map((b) => b.text).join('\n')
@@ -99,7 +99,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
       if (owner !== auth.user?.id || epoch !== store.epoch) return false
       saving.value = true; error.value = ''
       try {
-        if (conflict.value) throw new Error('已有较新的服务端版本，请先读取服务器版本或保留当前副本')
+        if (conflict.value || draftUnavailable.value) throw new Error(draftUnavailable.value ? '原草稿不可用，请保留当前副本后另存，或放弃修改' : '已有较新的服务端版本，请先读取服务器版本或保留当前副本')
         if (!asDraft && !blocks.value.length) throw new Error('请填写正文')
         if (!asDraft && ['question', 'project'].includes(form.value.type) && !form.value.title?.trim()) throw new Error('问题和项目需要标题')
         if (!asDraft && !advanced.value && (form.value.bindings.length > 1 || form.value.topicIds.length > 3)) throw new Error('此草稿包含更多关联或话题，请切换高级编辑')
@@ -140,7 +140,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
           } else { clearLocal(); hydrate({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }) }
         }
         return !changed
-      } catch (cause) { if (epoch === store.epoch && owner === auth.user?.id) { error.value = cause instanceof Error ? cause.message : '保存失败'; conflict.value = cause instanceof ApiError && cause.status === 409; if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) unconfirmed = undefined; localSave() }; return false }
+      } catch (cause) { if (epoch === store.epoch && owner === auth.user?.id) { error.value = cause instanceof Error ? cause.message : '保存失败'; if (cause instanceof ApiError) { conflict.value = cause.status === 409; draftUnavailable.value = !!draftId.value && (cause.status === 404 || (cause.status === 400 && cause.message === '草稿不存在或无权操作')); if (cause.status >= 400 && cause.status < 500) unconfirmed = undefined }; localSave() }; return false }
       finally { if (epoch === store.epoch && owner === auth.user?.id) saving.value = false; if (pending === operation) pending = null }
     })
     pending = operation
@@ -153,12 +153,12 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     const owner = auth.user?.id, epoch = store.epoch
     const current = () => !!owner && owner === auth.user?.id && epoch === store.epoch
     timer = setTimeout(() => { if (!current()) return; try { localSave() } catch { error.value = '浏览器存储空间不足，请保存服务端草稿' } }, 2000)
-    remoteTimer = setTimeout(() => { if (current() && store.composerOpen && dirty.value && !conflict.value) void save(true) }, 10000)
+    remoteTimer = setTimeout(() => { if (current() && store.composerOpen && dirty.value && !conflict.value && !draftUnavailable.value) void save(true) }, 10000)
   }, { deep: true })
   watch([() => auth.user?.id, () => store.epoch], () => {
     clearTimeout(timer); clearTimeout(remoteTimer); hydrating = true
     body.value = ''; code.value = ''; quote.value = ''; images.value = []; topics.value = []; bindingTitles.value = {}; bindingLoading.value = false; topicsLoading.value = false; draftId.value = undefined; dirty.value = false; saving.value = false; error.value = ''; closePrompt.value = false; pending = null; requestKey = ''; requestBody = ''; conflict.value = false
-    savedAt.value = ''; unconfirmed = undefined
+    savedAt.value = ''; unconfirmed = undefined; draftUnavailable.value = false
     form.value = { type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }
     queueMicrotask(() => { hydrating = false })
   }, { flush: 'sync' })
@@ -175,9 +175,9 @@ export const useCommunityDraft = defineStore('community-draft', () => {
       if (!current()) return
       hydrate({ type: post.type, title: post.title || '', contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, status: post.status === 'draft' ? 'draft' : 'published', expectedRevision: post.revision })
       requestKey = ''; requestBody = ''; unconfirmed = undefined; localSave(); savedAt.value = '已读取服务器版本'; dirty.value = false
-    } catch (cause) { if (current()) error.value = cause instanceof Error ? cause.message : '服务端版本读取失败' }
+    } catch (cause) { if (current()) { error.value = cause instanceof Error ? cause.message : '服务端版本读取失败'; if (cause instanceof ApiError && cause.status === 404 && draftId.value) draftUnavailable.value = true } }
   }
-  const keepCopy = () => { store.editingId = undefined; draftId.value = undefined; form.value.expectedRevision = undefined; conflict.value = false; requestKey = ''; requestBody = ''; unconfirmed = undefined; error.value = ''; dirty.value = true; localSave() }
+  const keepCopy = () => { store.editingId = undefined; draftId.value = undefined; form.value.expectedRevision = undefined; conflict.value = false; draftUnavailable.value = false; requestKey = ''; requestBody = ''; unconfirmed = undefined; error.value = ''; dirty.value = true; localSave() }
   onScopeDispose(() => { clearTimeout(timer); clearTimeout(remoteTimer) })
-  return { form, body, code, language, quote, images, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
+  return { form, body, code, language, quote, images, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, draftUnavailable, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
 })

@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { communityNavigation, communityNavActive } from '../src/community/labels'
 const source = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8')
 describe('声明式导航契约', () => {
+  it('本人动态、话题和关注入口使用公开username路由，不把内部用户id作为用户名', () => {
+    const profile = source('views/ProfileView.vue')
+    const links = [...profile.matchAll(/:to="`(\/community\/user\/[^`]+)`"/g)].map((match) => match[1])
+    expect(links).toEqual(['/community/user/${auth.user?.username}', '/community/user/${auth.user?.username}?tab=topics', '/community/user/${auth.user?.username}?tab=following'])
+    expect(source('router.ts')).toContain("path: '/community/user/:username'")
+    expect(source('layouts/CommunityLayout.vue')).toContain('`/community/user/${auth.user?.username}`')
+  })
   it('社区桌面与移动Logo回社区，品牌门户保留独立入口', () => {
     const layout = source('layouts/CommunityLayout.vue')
     const logos = [...layout.matchAll(/<RouterLink class="brand[^"]*" to="([^"]+)"/g)]
