@@ -17,6 +17,11 @@ if (!base || !adminEmail || !adminPassword || !studentEmail || !studentPassword)
 
 interface Envelope<T> { code: number; message: string; data: T }
 const call = async <T>(path: string, init: RequestInit = {}, token?: string) => {
+  if (path === '/admin/settings' && init.method === 'PATCH' && typeof init.body === 'string') {
+    const input = JSON.parse(init.body)
+    const settings = await call<Array<{ key: string; revision: number }>>(path, {}, token)
+    init = { ...init, body: JSON.stringify({ ...input, expectedRevision: settings.find((row) => row.key === input.key)?.revision }) }
+  }
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...init.headers },
@@ -118,8 +123,8 @@ describe('真实 PostgreSQL 数据闭环', () => {
   it('学校院系和登录审计来自真实数据库', async () => {
     const schools = await call<Array<{ departments: unknown[] }>>('/admin/schools', {}, adminToken)
     expect(schools[0].departments.length).toBeGreaterThan(0)
-    const users = await call<Array<{ id: string; school: { id: string } | null }>>('/admin/users', {}, adminToken)
-    expect(users.some((item) => item.id === studentId && item.school)).toBe(true)
+    const users = await call<{ items: Array<{ id: string; school: { id: string } | null }> }>(`/admin/users?keyword=${encodeURIComponent(studentEmail)}`, {}, adminToken)
+    expect(users.items.some((item) => item.id === studentId && item.school)).toBe(true)
     const loginLogs = await call<Array<{ result: string }>>('/admin/login-logs', {}, adminToken)
     expect(loginLogs.some((item) => item.result === 'success')).toBe(true)
   })
@@ -467,10 +472,25 @@ describe('真实 PostgreSQL 数据闭环', () => {
     await call(`/admin/labs/${labId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/resources/${resourceId}/archive`, { method: 'POST' }, adminToken)
     await call(`/admin/articles/${articleId}/archive`, { method: 'POST' }, adminToken)
-    await call(`/admin/files/${fileId}`, { method: 'DELETE' }, adminToken)
     await call(`/admin/notifications/${notificationId}/archive`, { method: 'POST' }, adminToken)
     const response = await fetch(`${base}/courses/${slug}`)
     expect(response.status).toBe(404)
+    expect((await fetch(`${base}/resources/e2e-resource-${suffix}`)).status).toBe(404)
+    const prisma = new PrismaClient()
+    try {
+      const versions = await prisma.resourceVersion.findMany({ where: { resourceId }, orderBy: { versionNo: 'asc' } })
+      expect(versions.some((version) => (version.snapshot as Prisma.JsonObject).fileId === fileId)).toBe(true)
+      const file = await prisma.fileRecord.findUniqueOrThrow({ where: { id: fileId } })
+      const deletion = await fetch(`${base}/admin/files/${fileId}`, { method: 'DELETE', headers: { authorization: `Bearer ${adminToken}` } })
+      expect(deletion.status).toBe(400)
+      expect((await deletion.json() as Envelope<unknown>).message).toContain('历史版本引用')
+      expect(await prisma.fileRecord.findUniqueOrThrow({ where: { id: fileId } })).toEqual(file)
+      expect(await prisma.resourceVersion.findMany({ where: { resourceId }, orderBy: { versionNo: 'asc' } })).toEqual(versions)
+      const retained = await fetch(`${base}/files/${fileId}/download`, { headers: { authorization: `Bearer ${adminToken}` } })
+      expect(retained.status).toBe(200)
+      expect(await retained.text()).toBe('端到端资源内容')
+      // 历史引用文件随隔离测试库/上传卷统一清理，不绕过引用保护删除。
+    } finally { await prisma.$disconnect() }
   })
 
   it('Seed 在既有高版本首页发布历史上只追加一次稳定快照', async () => {
@@ -478,6 +498,7 @@ describe('真实 PostgreSQL 数据闭环', () => {
     const runSeed = () => execFileSync(resolve('node_modules/.bin/tsx'), ['prisma/seed.ts'], {
       env: {
         ...process.env,
+        LOAD_DEMO_DATA: 'true',
         SEED_ADMIN_EMAIL: adminEmail,
         SEED_ADMIN_PASSWORD: adminPassword,
         SEED_STUDENT_EMAIL: studentEmail,

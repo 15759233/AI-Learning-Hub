@@ -1,4 +1,4 @@
-import { request } from './client'
+import { request, writeRequest } from './client'
 import type { AuthSessionDto, AuthUser, RegisterInput, RegistrationConfigDto } from '@ai-learning-hub/contracts'
 export type StudentUser = AuthUser
 
@@ -15,8 +15,9 @@ export const authApi = {
   me: () => request<StudentUser>('/me'),
   registrationConfig: () => request<RegistrationConfigDto>('/auth/registration-config', {}, false),
   async register(input: RegisterInput) {
-    const result = await request<AuthSessionDto>('/auth/register', { method: 'POST', body: JSON.stringify(input) }, false)
+    const result = await writeRequest<AuthSessionDto & { notice?: string }>('/auth/register', 'POST', input, undefined, false)
     sessionStorage.setItem('student-access-token', result.accessToken)
+    if (result.notice) window.dispatchEvent(new CustomEvent('api-error', { detail: { message: result.notice } }))
     return result.user
   },
   forgotPassword: (email: string) => request<{ message: string }>('/auth/password/forgot', { method: 'POST', body: JSON.stringify({ email }) }, false),

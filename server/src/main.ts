@@ -10,10 +10,12 @@ import { AppModule } from './app.module'
 import { ApiExceptionFilter } from './common/api-exception.filter'
 import { ApiResponseInterceptor } from './common/api-response.interceptor'
 import { OperationLogInterceptor } from './common/operation-log.interceptor'
+import { PersistenceService } from './modules/persistence/persistence.service'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   const config = app.get(ConfigService)
+  await app.get(PersistenceService).preflight()
   const trustedProxies = String(config.get('TRUSTED_PROXY_CIDRS') || '').split(',').map((value) => value.trim()).filter(Boolean)
   if (trustedProxies.length) app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies)
   const origins = (config.get<string>('CORS_ORIGINS') || '').split(',').map((item) => item.trim()).filter(Boolean)

@@ -10,8 +10,8 @@
 《题盒》──────┘                         └─ 本地 / MinIO / S3
 ```
 
-- `frontend/`：学生端，提供学习、实训、测评与社区讨论，支持 `VITE_DATA_MODE=mock|api`。
-- `admin-web/`：管理后台，负责内容编辑、发布、社区运营及业务数据查询。
+- `frontend/`：学生端默认真实 API；演示使用独立 `dev:mock` / `build:mock`。
+- `admin-web/`：内容、社区运营、用户账号、成长数据与存储状态管理。
 - `server/`：NestJS 模块化单体、Swagger、RBAC、SSE 与存储适配。
 - `packages/contracts/`：跨端状态、分页及 DTO 契约。
 - `deploy/compose/`：Docker Compose 快速部署。
@@ -19,10 +19,12 @@
 ## 开发验证
 
 ```bash
-cd server && npm ci && npm run check
-cd admin-web && npm ci && npm run check
-cd frontend && npm ci && npm run check
+(cd server && npm ci && npm run check)
+(cd admin-web && npm ci && npm run check)
+(cd frontend && npm ci && VITE_DATA_MODE=api npm run check)
 ```
+
+正式启动依次执行迁移与 `bootstrap`，不加载演示数据。初始管理员由环境变量设置；首次开放注册前，需在后台配置并发布至少三个学习方向。社区写入使用事务、幂等键和修订号；用户、草稿、互动及文件元数据以 PostgreSQL 为准。
 
 数据库迁移、环境变量和部署命令见：
 

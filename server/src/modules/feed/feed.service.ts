@@ -27,7 +27,7 @@ export class LearningFeedPipeline {
   constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService, private readonly posts: CommunityPostService, private readonly context: CommunityContextService, private readonly signals: SignalsService, private readonly config: ConfigService, private readonly references: ContentReferenceService) {}
   async policy(): Promise<CommunityFeedPolicyDto> {
     const setting = await this.prisma.systemSetting.findUnique({ where: { key: 'community_feed_policy' } })
-    return setting ? setting.value as unknown as CommunityFeedPolicyDto : structuredClone(learningFeedPolicy)
+    return setting ? { ...setting.value as unknown as CommunityFeedPolicyDto, revision: setting.revision } : structuredClone(learningFeedPolicy)
   }
   private key() { return createHash('sha256').update(this.config.getOrThrow<string>('JWT_SECRET')).digest() }
   private encode(value: object) {

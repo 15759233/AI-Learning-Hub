@@ -19,7 +19,7 @@ import { FileAccessService } from './file-access.service'
 @UseGuards(AuthGuard, PermissionsGuard)
 @Permissions('resource.write')
 export class StorageController {
-  constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService) {}
+  constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly fileAccess: FileAccessService) {}
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
@@ -30,12 +30,14 @@ export class StorageController {
   }
 
   @Get(':id/url')
-  async url(@Param('id') id: string) {
+  async url(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    await this.fileAccess.assert(user.id, id)
     return { url: await this.storage.getSignedUrl(id), expiresIn: 300 }
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: string) {
+  async delete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    await this.fileAccess.assert(user.id, id)
     await this.storage.delete(id)
     return { deleted: true }
   }

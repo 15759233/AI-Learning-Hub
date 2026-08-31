@@ -20,6 +20,7 @@
 | POST | `/auth/register` | 邮箱规范化；同事务创建学生、社区资料、协议、注册事件和会话 |
 | POST | `/auth/password/forgot`、`/auth/password/reset` | 通用找回提示；30分钟、一次性哈希令牌；重置后撤销刷新会话 |
 | POST | `/auth/email/verify` | 验证注册邮箱；启用验证的账号验证后才能进入社区 |
+| POST | `/auth/email/resend` | 限流重发验证邮件；不返回令牌 |
 
 ## 公开内容
 
@@ -65,6 +66,10 @@
 
 运营入口 `/admin/community` 使用独立 `community.read/write/moderate/topic.manage/report.manage/official.publish/feed.manage` 权限。官方账号发布、内容编辑、审核、认证和策略调整均记录理由。策略只接受命名参数及安全数值范围，禁止任意代码或公式。
 
+注册、发帖、草稿、评论支持 `Idempotency-Key`（8～128字符，保留24小时）；同键异内容返回409。已有帖子、评论、资料及重要设置编辑必须携带读取时的 `expectedRevision`；首次引导另带 `expectedProfileRevision`。点赞、收藏和关注返回数据库最终状态与计数，不依赖浏览器自增。
+
+`/admin/community/posts|comments|topics|reports|users` 与 `/admin/users` 返回 `{ items, total, page, pageSize }`，`pageSize` 为1～100。帖子支持状态、类型、作者、学校、话题、范围、媒体、举报、日期与稳定排序；用户支持账号关键词、状态、角色、学校、来源、引导、邮箱验证及日期。详情附历史修订、处理记录和可读文件信息；私人草稿和令牌不返回。
+
 ## 管理端
 
 - 组织与用户：`/admin/schools`、`/admin/departments`、`/admin/users`、`/admin/users/:id/identities`
@@ -76,7 +81,8 @@
 - 文件：`POST /admin/files/upload`；类型、大小、路径和可见性由服务端校验
 - 设置：`GET/PATCH /admin/settings`，支持字符串、数字、布尔和字符串数组；通知发布、登录/操作/审计日志查询
 - 注册：`GET/PATCH /admin/registration/settings`（`settings.read/write`）；禁止通过通用设置绕过注册校验
-- 学生账号：`PATCH /admin/users/:id/status`、`POST /admin/users/:id/reset-onboarding`（`growth.write`），不允许借此修改管理员；禁用后现有会话立即失效
+- 账号：`GET /admin/users/:id`、`PATCH /admin/users/:id`、`PATCH /admin/users/:id/status`、`POST /admin/users/:id/reset-onboarding|reset-password|revoke-sessions`；使用 `user.read/write/session.revoke/export`，修改必须附原因，禁止对当前管理员执行关键操作
+- 持久化：`GET /admin/persistence`（`settings.read`）；`POST /admin/persistence/recount|expire-idempotency|unused-files`（`platform.manage`，附原因）。文件清理响应的 `nextCursor` 供下一批继续扫描
 - 题盒：`GET /admin/integrations/quiz-box/health`
 
 管理端接口要求 Bearer Token，并按领域校验 `read / write / publish` 权限；未认证返回 401，权限不足返回 403。OpenAPI 页面为 `/api/docs`，机器文档为 `/api/docs-json`。

@@ -462,4 +462,5 @@ export interface GrowthSnapshotDto {
 }
 export * from './community'
 export * from './auth'
+export * from './persistence'
 export * from './landing'

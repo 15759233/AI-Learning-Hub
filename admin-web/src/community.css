@@ -4,7 +4,7 @@
 .community-admin-tabs button.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 650; }
 .community-admin-split { display: grid; grid-template-columns: minmax(0, 1fr) 330px; min-height: 630px; }
 .community-admin-list { min-width: 0; }
-.community-admin-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; }
+.community-admin-filter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; }
 .community-admin-filter input { flex: 1; max-width: 360px; min-width: 0; padding: 10px 12px; }.community-admin-filter h2 { font-size: var(--admin-section-title); margin: 0; }
 .community-admin-table { overflow-x: auto; }
 .community-admin-table table { border-collapse: collapse; width: 100%; table-layout: fixed; }

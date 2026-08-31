@@ -21,6 +21,7 @@ const router = createRouter({
         { path: 'articles', component: () => import('./views/management/ArticleManagementView.vue'), meta: { title: 'AI 前沿管理', permission: 'article.read' } },
         { path: 'challenges', component: () => import('./views/management/ChallengeManagementView.vue'), meta: { title: '挑战测评管理', permission: 'challenge.read' } },
         { path: 'growth', component: () => import('./views/GrowthView.vue'), meta: { title: '用户成长管理', permission: 'growth.read' } },
+        { path: 'users', component: () => import('./views/UsersView.vue'), meta: { title: '用户与账号', permission: 'user.read' } },
         { path: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: '系统设置', permission: 'settings.read' } },
         { path: 'search', component: () => import('./views/GlobalSearchView.vue'), meta: { title: '全局搜索' } },
       ],

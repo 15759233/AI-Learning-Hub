@@ -23,6 +23,7 @@ export class AuthGuard implements CanActivate {
     const user = await this.prisma.user.findUnique({ where: { id: payload.id }, include: authUserInclude })
     if (!user) throw new UnauthorizedException('登录状态已失效')
     if (user.status !== 'active') throw new UnauthorizedException('账号已禁用，请联系管理员')
+    if ((payload.sessionVersion || 0) !== user.sessionVersion) throw new UnauthorizedException('会话已撤销，请重新登录')
     request.user = authUserDto(user)
     return true
   }

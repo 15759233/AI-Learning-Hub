@@ -26,10 +26,33 @@ services:
     build: *server-build
     restart: "no"
     env_file: .env
-    command: ["sh", "-c", "npx prisma migrate deploy && npm run prisma:seed"]
+    command: ["npx", "prisma", "migrate", "deploy"]
     depends_on:
       postgres:
         condition: service_healthy
+
+  bootstrap:
+    image: ai-learning-hub-server:local
+    build: *server-build
+    restart: "no"
+    env_file: .env
+    command: ["npm", "run", "bootstrap"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  seed-demo:
+    profiles: ["demo"]
+    image: ai-learning-hub-server:local
+    build: *server-build
+    restart: "no"
+    env_file: .env
+    environment:
+      LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}
+    command: ["npm", "run", "prisma:seed"]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
 
   server:
     image: ai-learning-hub-server:local
@@ -46,7 +69,7 @@ services:
     volumes:
       - uploads_data:/workspace/server/var/uploads
     depends_on:
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -61,6 +84,8 @@ services:
       context: ../..
       dockerfile: frontend/Dockerfile
       args:
+        VITE_DATA_MODE: api
+        VITE_API_BASE_URL: /api/v1
         VITE_ADMIN_PREVIEW_ORIGINS: ${ADMIN_PREVIEW_ORIGINS:-}
     restart: unless-stopped
     ports:

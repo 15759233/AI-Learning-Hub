@@ -5,6 +5,7 @@ import { CommunityVisibilityPolicyService } from './visibility.service'
 import { CommunityNotificationService } from './notification.service'
 import { SignalsService } from '../signals/signals.service'
 import type { ReportDto } from './community.dto'
+import { actionEvent, postRevision, rateLimit } from '../../common/persistence'
 
 @Injectable()
 export class CommunityInteractionService {
@@ -26,7 +27,11 @@ export class CommunityInteractionService {
         if (type !== 'bookmark') await this.notifications.send(post.authorId, userId, type, 'post', postId, tx)
       }
     })
-    return { active }
+    const [row, exists] = await Promise.all([
+      this.prisma.communityPost.findUniqueOrThrow({ where: { id: postId }, select: { likeCount: true, usefulCount: true, bookmarkCount: true, commentCount: true } }),
+      type === 'bookmark' ? this.prisma.communityBookmark.count({ where: { userId, postId } }) : this.prisma.communityPostReaction.count({ where: { userId, postId, reactionType: type } }),
+    ])
+    return { active: !!exists, stats: { likes: row.likeCount, useful: row.usefulCount, bookmarks: row.bookmarkCount, comments: row.commentCount } }
   }
   async commentLike(userId: string, commentId: string, active: boolean) {
     const comment = await this.prisma.communityComment.findFirst({ where: { id: commentId, deletedAt: null, status: 'published', author: { status: 'active' } } })
@@ -40,7 +45,8 @@ export class CommunityInteractionService {
         if (active) await this.notifications.send(comment.authorId, userId, 'like', 'post', comment.postId, tx)
       }
     })
-    return { active }
+    const row = await this.prisma.communityComment.findUniqueOrThrow({ where: { id: commentId }, select: { likeCount: true, reactions: { where: { userId } } } })
+    return { active: row.reactions.length > 0, likes: row.likeCount }
   }
   async follow(userId: string, targetId: string, topic: boolean, active: boolean) {
     await this.visibility.viewer(userId)
@@ -63,7 +69,9 @@ export class CommunityInteractionService {
       }
       if (active) await this.signals.record(userId, topic ? 'community_topic_follow' : 'community_user_follow', topic ? 'topic' : 'user', targetId, topic ? { topicIds: [targetId] } : { authorId: targetId }, tx)
     })
-    return { active }
+    const count = topic ? await this.prisma.communityTopicFollow.count({ where: { userId, topicId: targetId } }) : await this.prisma.communityUserFollow.count({ where: { followerId: userId, followeeId: targetId } })
+    const followerCount = topic ? await this.prisma.communityTopicFollow.count({ where: { topicId: targetId } }) : await this.prisma.communityUserFollow.count({ where: { followeeId: targetId } })
+    return { active: !!count, followerCount }
   }
   async feedback(userId: string, targetId: string, type: 'hide' | 'not_interested' | 'mute_author' | 'block') {
     await this.visibility.viewer(userId)
@@ -81,9 +89,17 @@ export class CommunityInteractionService {
     if (row && (await this.visibility.authorExclusions(userId)).authors.includes(row.authorId)) throw new NotFoundException('评论不可见')
     const post = await this.visibility.assertPost(userId, row?.postId || targetId)
     await this.prisma.$transaction(async (tx) => {
-      await tx.communityReport.upsert({ where: { reporterId_targetKey: { reporterId: userId, targetKey: `${comment ? 'comment' : 'post'}:${targetId}` } }, create: { reporterId: userId, targetKey: `${comment ? 'comment' : 'post'}:${targetId}`, ...(comment ? { commentId: targetId } : { postId: targetId }), reason: input.reason, description: input.description }, update: {} })
+      await rateLimit(tx, userId, 'report', 10)
+      const added = await tx.communityReport.createMany({ data: [{ reporterId: userId, targetKey: `${comment ? 'comment' : 'post'}:${targetId}`, ...(comment ? { commentId: targetId } : { postId: targetId }), reason: input.reason, description: input.description }], skipDuplicates: true })
+      if (!added.count) return
+      await tx.$queryRaw`SELECT id FROM community_posts WHERE id = ${post.id} FOR UPDATE`
       const count = await tx.communityReport.count({ where: { postId: post.id, status: { in: ['pending', 'reviewing'] } } })
-      if (count >= 5) await tx.communityPost.updateMany({ where: { id: post.id, status: 'published' }, data: { status: 'limited' } })
+      if (count >= 5 && await tx.communityPost.count({ where: { id: post.id, status: 'published' } })) {
+        await postRevision(tx, post.id, userId, 'moderation', '举报达到审核阈值')
+        await tx.communityPost.update({ where: { id: post.id }, data: { status: 'limited', revision: { increment: 1 } } })
+        await postRevision(tx, post.id, userId, 'moderation', '举报达到审核阈值')
+        await actionEvent(tx, userId, 'moderation_applied', 'post', post.id, { action: 'auto_limit' }, 'system')
+      }
       await this.signals.record(userId, 'community_report', comment ? 'comment' : 'post', targetId, {}, tx)
     })
     return { reported: true }

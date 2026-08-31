@@ -14,9 +14,10 @@ import { CommunityContextService } from './context.service'
 import { LearningFeedPipeline } from '../feed/feed.service'
 import { CommunitySearchService } from './search.service'
 import { ContentSupportModule } from '../../common/content/content-support.module'
+import { CommunityAdminService } from './admin.service'
 @Module({
   imports: [AuthModule, StorageModule, SignalsModule, ContentReferenceModule, CommunityVisibilityModule, ContentSupportModule],
   controllers: [CommunityController, CommunityAdminController],
-  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline, CommunitySearchService],
+  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline, CommunitySearchService, CommunityAdminService],
 })
 export class CommunityModule {}

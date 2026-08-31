@@ -5,6 +5,10 @@ import { PrismaService } from '../../prisma/prisma.service'
 @Injectable()
 export class CommunityVisibilityPolicyService {
   constructor(private readonly prisma: PrismaService) {}
+  adminWhere(): Prisma.CommunityPostWhereInput { return { status: { not: 'draft' }, publishedAt: { not: null } } }
+  async auditAdminRead(actorId: string, targetType: string, targetId: string) {
+    await this.prisma.auditLog.create({ data: { actorId, action: 'restricted_content_read', targetType, targetId } })
+  }
   async viewer(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { communityProfile: true, school: true, userRoles: { include: { role: true } } } })
     if (!user || user.status !== 'active') throw new ForbiddenException('账号当前不可使用社区')

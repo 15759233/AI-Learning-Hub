@@ -54,7 +54,7 @@ onBeforeUnmount(() => window.removeEventListener('community-composer-focus', foc
       <CommunityComposerTools v-if="tool" :panel="tool" />
       <p v-if="error" class="community-error" role="alert">{{ error }}</p>
       <footer class="quick-editor-actions"><button type="button" class="text-link" :aria-expanded="tool === 'images'" @click="tool = tool === 'images' ? null : 'images'"><AppIcon name="image" :size="18" />图片{{ images.length ? ` ${images.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'binding'" @click="tool = tool === 'binding' ? null : 'binding'">关联{{ form.bindings.length ? ` ${form.bindings.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'topics'" @click="tool = tool === 'topics' ? null : 'topics'">话题{{ form.topicIds.length ? ` ${form.topicIds.length}` : '' }}</button><button type="button" class="text-link" @click="advanced">高级编辑</button><button class="button primary small" type="submit" :disabled="saving">{{ saving ? '保存中…' : '发布' }}</button></footer>
-      <div class="quick-save-state"><small role="status">{{ savedAt ? '已保存' : 'Ctrl / ⌘ + Enter 发布' }}</small><RouterLink to="/community/drafts">草稿箱</RouterLink></div>
+      <div class="quick-save-state"><small role="status">{{ savedAt || 'Ctrl / ⌘ + Enter 发布' }}</small><RouterLink to="/community/drafts">草稿箱</RouterLink></div>
     </form>
   </section>
 </template>

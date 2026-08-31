@@ -19,7 +19,7 @@ beforeEach(async () => {
   vi.resetAllMocks(); resetCommunityMock(); routing.route = reactive({})
   vi.mocked(communityApi.list).mockResolvedValue([])
   vi.mocked(communityApi.following).mockResolvedValue([])
-  vi.mocked(communityApi.follow).mockResolvedValue({})
+  vi.mocked(communityApi.follow).mockImplementation(async (_id, _topic, active) => ({ active }))
   vi.mocked(communityApi.signals).mockResolvedValue({})
   vi.mocked(communityApi.topics).mockResolvedValue(await mockCommunity('/topics', 'GET'))
 })

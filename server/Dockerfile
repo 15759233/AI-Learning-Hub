@@ -22,6 +22,7 @@ COPY --chown=node:node --from=build /workspace/server/package.json /workspace/se
 COPY --chown=node:node --from=build /workspace/server/scripts/check-runtime-imports.cjs ./scripts/check-runtime-imports.cjs
 COPY --chown=node:node --from=build /workspace/server/prisma ./prisma
 COPY --chown=node:node --from=build /workspace/server/src/modules/homepage/upgrade-landing.ts ./src/modules/homepage/upgrade-landing.ts
+COPY --chown=node:node --from=build /workspace/server/src/modules/persistence/bootstrap.ts ./src/modules/persistence/bootstrap.ts
 COPY --chown=node:node --from=build /workspace/server/dist ./dist
 USER node
 EXPOSE 3000

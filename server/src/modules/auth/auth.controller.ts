@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import { Body, ConflictException, Controller, Get, Headers, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -9,6 +9,8 @@ import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateProfi
 import { RegistrationService } from './registration.service'
 import type { AuthUser } from './auth.types'
 import { durationMs } from './auth-ttl'
+import { actionEvent } from '../../common/persistence'
+import { authUserDto, authUserInclude } from './auth.mapper'
 
 @Controller('auth')
 export class AuthController {
@@ -16,14 +18,15 @@ export class AuthController {
 
   @Get('registration-config') registrationConfig() { return this.registration.configuration() }
   @Post('register')
-  async register(@Body() input: RegisterDto, @Ip() ip: string, @Res({ passthrough: true }) response: Response) {
-    const result = await this.registration.register(input, ip)
+  async register(@Body() input: RegisterDto, @Ip() ip: string, @Res({ passthrough: true }) response: Response, @Headers('idempotency-key') key?: string) {
+    const result = await this.registration.register(input, ip, key)
     this.setRefreshCookie(response, result.refreshToken)
-    return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn }
+    return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn, notice: result.notice }
   }
   @Post('password/forgot') forgot(@Body() input: ForgotPasswordDto, @Ip() ip: string) { return this.registration.forgot(input.email, ip) }
   @Post('password/reset') reset(@Body() input: ResetPasswordDto, @Ip() ip: string) { return this.registration.reset(input.token, input.password, ip) }
   @Post('email/verify') verify(@Body() input: VerificationDto, @Ip() ip: string) { return this.registration.verifyEmail(input.token, ip) }
+  @Post('email/resend') resend(@Body() input: ForgotPasswordDto, @Ip() ip: string) { return this.registration.resendVerification(input.email, ip) }
 
   private cookieSecure() {
     const configured = this.config.get<string>('COOKIE_SECURE')
@@ -95,7 +98,12 @@ export class MeController {
 
   @Patch('me')
   async update(@CurrentUser() user: AuthUser, @Body() input: UpdateProfileDto) {
-    return this.prisma.user.update({ where: { id: user.id }, data: { displayName: input.displayName }, select: { id: true, email: true, displayName: true, status: true } })
+    return this.prisma.$transaction(async (tx) => {
+      if (!(await tx.user.updateMany({ where: { id: user.id, revision: input.expectedRevision }, data: { displayName: input.displayName, revision: { increment: 1 } } })).count) throw new ConflictException('资料已变化，请重新读取')
+      const row = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: authUserInclude })
+      await actionEvent(tx, user.id, 'profile_updated', 'user', user.id)
+      return authUserDto(row)
+    })
   }
 
   @Get('me/identities')

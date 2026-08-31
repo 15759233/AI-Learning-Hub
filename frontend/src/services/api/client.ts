@@ -1,4 +1,5 @@
-export const dataMode = import.meta.env.VITE_DATA_MODE === 'api' ? 'api' : 'mock'
+import { resolveDataMode } from './data-mode'
+export const dataMode = resolveDataMode(import.meta.env.VITE_DATA_MODE, import.meta.env.PROD, import.meta.env.MODE)
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 interface Envelope<T> {
@@ -55,6 +56,18 @@ export async function request<T>(path: string, init: RequestInit = {}, retry = t
   const body = await response.json().catch(() => null) as Envelope<T> | null
   if (!response.ok || !body || body.code !== 0) throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status)
   return body.data
+}
+const pendingWrites = new Map<string, string>()
+/** 丢失响应后以相同键重试；仅内存保存，成功后释放。草稿可传入本地恢复快照中的稳定键。 */
+export async function writeRequest<T>(path: string, method: string, body: unknown, key?: string, retry = true) {
+  const serialized = JSON.stringify(body), operation = `${method}:${path}:${serialized}`
+  if (!pendingWrites.has(operation)) {
+    if (pendingWrites.size >= 64) pendingWrites.delete(pendingWrites.keys().next().value!)
+    pendingWrites.set(operation, key || crypto.randomUUID())
+  }
+  const result = await request<T>(path, { method, body: serialized, headers: { 'idempotency-key': pendingWrites.get(operation)! } }, retry)
+  pendingWrites.delete(operation)
+  return result
 }
 export async function downloadFile(id: string) {
   const load = () => fetch(`${baseUrl}/files/${encodeURIComponent(id)}/download`, { credentials: 'include', headers: { authorization: `Bearer ${sessionStorage.getItem('student-access-token') || ''}` } })

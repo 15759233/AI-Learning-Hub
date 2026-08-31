@@ -2,6 +2,7 @@ import { Type } from 'class-transformer'
 import { IsArray, IsDefined, IsIn, IsInt, IsOptional, IsString, Length, Matches, Min, ValidateNested } from 'class-validator'
 
 export class UpdateSettingDto {
+  @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsString()
   @IsIn(['platform_name', 'platform_subtitle', 'upload_max_mb', 'allowed_file_types', 'session_minutes', 'notification_enabled', 'allowed_login_domains'])
   key!: string

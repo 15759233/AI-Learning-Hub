@@ -86,7 +86,7 @@ export const useCommunityStore = defineStore('community', {
       const snapshots = this.postCopies(post).filter((row) => row.id === post.id).map((row) => ({ row, state: row.viewerState[stateKey], count: row.stats[countKey] }))
       this.operations[key] = true
       for (const { row, state, count } of snapshots) { row.viewerState[stateKey] = active; row.stats[countKey] = Math.max(0, count + (active === state ? 0 : active ? 1 : -1)) }
-      try { await communityApi.reaction(post.id, kind, active) }
+      try { const result = await communityApi.reaction(post.id, kind, active); if (epoch === this.epoch && result) for (const { row } of snapshots) { row.viewerState[stateKey] = result.active; if (result.stats) row.stats = { ...result.stats } } }
       catch (cause) { if (epoch === this.epoch) for (const { row, state, count } of snapshots) { row.viewerState[stateKey] = state; row.stats[countKey] = count }; throw cause }
       finally { if (epoch === this.epoch) delete this.operations[key] }
     },
@@ -102,7 +102,7 @@ export const useCommunityStore = defineStore('community', {
       if (!topic) this.authorFollowing[id] = active
       for (const { row } of authors) row.viewerState.followingAuthor = active
       for (const { row, value, count } of targets) { row.following = active; if (count !== undefined) row.followerCount = Math.max(0, count + (value === active ? 0 : active ? 1 : -1)) }
-      try { await communityApi.follow(id, topic, active); if (epoch === this.epoch) this.invalidateFollowing() }
+      try { const result = await communityApi.follow(id, topic, active); if (epoch === this.epoch) { if (result) { if (!topic) this.authorFollowing[id] = result.active; for (const { row } of authors) row.viewerState.followingAuthor = result.active; for (const { row } of targets) { row.following = result.active; if (result.followerCount !== undefined) row.followerCount = result.followerCount } }; this.invalidateFollowing() } }
       catch (cause) {
         if (epoch === this.epoch) {
           if (!topic) { if (previousAuthor === undefined) delete this.authorFollowing[id]; else this.authorFollowing[id] = previousAuthor }
@@ -115,7 +115,7 @@ export const useCommunityStore = defineStore('community', {
     removePost(id: string) {
       for (const [key, feed] of Object.entries(this.feeds)) this.feeds[key] = { ...feed, loaded: false, evicted: false, cursor: null, resumeCursor: undefined, items: feed.items.filter((item) => item.id !== id), publishedPosts: (feed.publishedPosts || []).filter((item) => item.id !== id) }
     },
-    published(post: CommunityPostDetailDto) {
+    published(post: CommunityPostDetailDto, keepComposer = false) {
       const query = new URLSearchParams(this.lastFeedLocation.split('?')[1]), mode = query.get('mode') || 'for_you', type = query.get('type') || 'all'
       const key = `${mode}:${type}`, entry = this.feeds[key]
       const matches = post.status === 'published' && (type === 'all' || type === post.type) && (mode !== 'following' || post.viewerState.followingAuthor || post.topics.some((topic) => topic.following))
@@ -130,7 +130,7 @@ export const useCommunityStore = defineStore('community', {
         entry.items = [item, ...entry.items].slice(0, MAX_FEED_ITEMS)
       }
       this.publishNotice = { id: post.id, text: `${this.editingId ? '更新' : '发布'}成功${entry ? matches ? '，已插入当前列表顶部' : '，当前筛选未展示此内容' : '，可查看动态'}` }
-      this.composerOpen = false
+      if (!keepComposer) this.composerOpen = false
       return post.id
     },
   },

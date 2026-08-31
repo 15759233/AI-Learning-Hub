@@ -20,8 +20,10 @@ import { hash } from 'bcryptjs'
 import { isDeepStrictEqual } from 'node:util'
 import { seedCommunity } from './seed-community'
 import { upgradeLanding } from '../src/modules/homepage/upgrade-landing'
+import { bootstrapDatabase } from '../src/modules/persistence/bootstrap'
 
 const prisma = new PrismaClient()
+if (process.env.LOAD_DEMO_DATA !== 'true') throw new Error('演示数据仅允许在 LOAD_DEMO_DATA=true 时显式初始化')
 
 const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@example.invalid'
 const studentEmail = process.env.SEED_STUDENT_EMAIL || 'student@example.invalid'
@@ -41,6 +43,7 @@ const articles = demoArticles
 const resources = demoResources
 
 async function seed() {
+  await bootstrapDatabase(prisma)
   // 已发布平台仅增补社区固定样例；不重写运营内容、发布快照或现有账号凭据。
   const existingPublication = await prisma.homepagePublication.findFirst({ orderBy: { version: 'desc' } })
   if (existingPublication) {

@@ -18,6 +18,7 @@ export class BindingDto implements CommunityBindingInput {
   @IsString() @Length(1, 100) id!: string
 }
 export class PostDto implements CommunityPostInput {
+  @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(communityPostTypes) type!: CommunityPostType
   @IsOptional() @IsString() @MaxLength(160) title?: string
   @IsArray() @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => BlockDto) contentBlocks!: CommunityContentBlock[]
@@ -29,6 +30,7 @@ export class PostDto implements CommunityPostInput {
   @IsOptional() @IsString() @Length(1, 100) sourceId?: string
 }
 export class CommentDto implements CommunityCommentInput {
+  @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => BlockDto) contentBlocks!: CommunityContentBlock[]
   @IsOptional() @IsString() @MaxLength(100) parentId?: string
 }
@@ -51,6 +53,7 @@ export class FeedUpdatesDto extends CommunityQueryDto {
   @IsDateString() since!: string
 }
 export class ProfileDto {
+  @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsString() @MaxLength(500) bio!: string
   @IsString() @MaxLength(120) headline!: string
   @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) expertiseTopics!: string[]
@@ -63,7 +66,10 @@ export class UsernameDto implements UsernameInput {
   @Matches(/^[a-z][a-z0-9_]{3,29}$/) username!: string
 }
 export class OnboardingDto extends InterestsDto implements OnboardingInput {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsInt() @Min(1) expectedProfileRevision!: number
   @IsOptional() @IsString() @MaxLength(100) schoolId?: string
+  @IsOptional() @IsString() @MaxLength(100) departmentId?: string
   @IsString() @MaxLength(100) major!: string
   @IsString() @MaxLength(40) grade!: string
   @IsString() @MaxLength(120) headline!: string
@@ -91,11 +97,13 @@ export class ModerationDto {
   @ValidateIf((input: ModerationDto) => input.action === 'label' || input.label !== undefined) @IsString() @Length(1, 60) @Matches(/\S/) label?: string
 }
 export class OfficialDto {
+  @IsInt() @Min(1) expectedRevision!: number
   @IsIn(['none', 'teacher', 'official', 'mentor']) verifiedType!: string
   @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) expertiseTopics!: string[]
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
 }
 export class PolicyDto {
+  @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(['qualityWeight', 'learningWeight', 'explorationWeight', 'limitedPenalty']) parameter!: string
   @IsInt() @Min(0) @Max(40) value!: number
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string

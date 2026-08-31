@@ -16,7 +16,7 @@ const act = async (action: () => Promise<unknown>) => { pending.value = true; tr
 const edit = (comment: CommunityCommentDto) => { editId.value = comment.id; body.value = comment.contentBlocks.filter((block) => block.type === 'paragraph').map((block) => block.text).join('\n'); replyTo.value = null }
 const submit = () => act(async () => {
   const retainedBlocks = comments.value.find((comment) => comment.id === editId.value)?.contentBlocks.filter((block) => block.type !== 'paragraph') || []
-  await communityApi.comment(post.value!.id, { contentBlocks: [{ type: 'paragraph', text: body.value }, ...retainedBlocks], ...(replyTo.value ? { parentId: replyTo.value.id } : {}) }, editId.value || undefined)
+  await communityApi.comment(post.value!.id, { expectedRevision: comments.value.find((c) => c.id === editId.value)?.revision, contentBlocks: [{ type: 'paragraph', text: body.value }, ...retainedBlocks], ...(replyTo.value ? { parentId: replyTo.value.id } : {}) }, editId.value || undefined)
   body.value = ''; editId.value = ''; replyTo.value = null
 })
 watch(() => route.params.postId, load, { immediate: true })

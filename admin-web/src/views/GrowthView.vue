@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdminDialog from '../components/AdminDialog.vue'
 import AdminKpiCard from '../components/AdminKpiCard.vue'
 import AdminPageHeader from '../components/AdminPageHeader.vue'
 import AdminStatusTag from '../components/AdminStatusTag.vue'
+import AdminPagination from '../components/AdminPagination.vue'
 import { api } from '../services/api'
 import { usePermissionAction } from '../composables/usePermissionAction'
 
-import type { AdminUserDto as UserRow } from '@ai-learning-hub/contracts'
+import type { AdminUserDto as UserRow, PageResult } from '@ai-learning-hub/contracts'
+import { userQueryString } from '../services/users'
+import { useRoute } from 'vue-router'
+const route = useRoute()
 interface GrowthModule { id: string; title: string; description?: string; enabled: boolean; displayLimit?: number; sortOrder?: number }
 interface GrowthRule { id: string; code: string; name: string; description: string; enabled: boolean; _count?: { users: number } }
 interface Growth {
@@ -29,7 +33,7 @@ const modules = ref<GrowthModule[]>([])
 const selected = ref<UserRow | null>(null)
 const growth = ref<Growth | null>(null)
 const keyword = ref('')
-const schoolFilter = ref(''), statusFilter = ref(''), accountError = ref('')
+const schoolFilter = ref(''), statusFilter = ref(''), accountError = ref(''), userPage = ref(1), userTotal = ref(0)
 const canWrite = usePermissionAction('growth.write')
 const rulesOpen = ref(false)
 const createOpen = ref(false)
@@ -51,19 +55,15 @@ const moduleMeta: Record<string, [string, string, string]> = {
   growth_stats: ['成长统计', '积分、连续学习', '▥'],
 }
 const moduleView = (item: GrowthModule) => moduleMeta[item.id] || [item.title, '个人中心展示模块', 'resource']
-const filtered = computed(() => users.value.filter((item) => `${item.username}${item.displayName}${item.email}${item.school?.name || ''}`.toLowerCase().includes(keyword.value.toLowerCase()) && (!schoolFilter.value || item.school?.id === schoolFilter.value) && (!statusFilter.value || item.status === statusFilter.value)))
+const filtered = computed(() => users.value)
 const schoolOptions = computed(() => [...new Map(users.value.filter((u) => u.school).map((u) => [u.school!.id, u.school!])).values()])
-const changeAccount = async (reset = false) => {
-  if (!selected.value || !confirm(reset ? '重置此学生的首次使用引导？' : `确认${selected.value.status === 'active' ? '禁用' : '启用'}此学生账号？`)) return
-  accountError.value = ''
-  try {
-    await api(`/admin/users/${selected.value.id}/${reset ? 'reset-onboarding' : 'status'}`, { method: reset ? 'POST' : 'PATCH', ...(reset ? {} : { body: JSON.stringify({ status: selected.value.status === 'active' ? 'disabled' : 'active' }) }) })
-    users.value = await api<UserRow[]>('/admin/users')
-    selected.value = users.value.find((user) => user.id === selected.value?.id) || null
-    if (selected.value) await loadGrowth(selected.value)
-    ElMessage.success(reset ? '首次引导已重置' : '账号状态已更新，禁用账号会话已撤销')
-  } catch (cause) { accountError.value = cause instanceof Error ? cause.message : '账号操作失败' }
+let userLoadEpoch = 0
+const loadUsers = async (page = 1) => {
+  const epoch = ++userLoadEpoch
+  try { const result = await api<PageResult<UserRow>>(`/admin/users/growth-list?${userQueryString({ page, pageSize: 20, keyword: keyword.value, status: statusFilter.value, schoolId: schoolFilter.value })}`); if (epoch === userLoadEpoch) { users.value = result.items; userPage.value = result.page; userTotal.value = result.total } }
+  catch (cause) { if (epoch === userLoadEpoch) accountError.value = cause instanceof Error ? cause.message : '读取失败' }
 }
+watch([keyword, schoolFilter, statusFilter], () => { void loadUsers() })
 const loadGrowth = async (user: UserRow) => { selected.value = user; growth.value = await api(`/admin/users/${user.id}/growth`) }
 const toggleModule = async (item: GrowthModule, enabled: boolean) => {
   await api(`/admin/growth/modules/${item.id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) })
@@ -99,33 +99,27 @@ const createRule = async () => {
   createOpen.value = false
   ElMessage.success('成长规则已创建')
 }
-const exportUsers = () => {
-  const rows = [['用户ID', '姓名', '邮箱', '学校', '状态'], ...users.value.map((user) => [user.id, user.displayName, user.email, user.school?.name || '', user.status])]
-  const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n')
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }))
-  link.download = 'learning-growth-users.csv'
-  link.click()
-  URL.revokeObjectURL(link.href)
-}
 onMounted(async () => {
-  ;[users.value, modules.value, achievements.value, certificates.value, recommendationRules.value] = await Promise.all([
-    api<UserRow[]>('/admin/users'),
+  await loadUsers()
+  ;[modules.value, achievements.value, certificates.value, recommendationRules.value] = await Promise.all([
     api<GrowthModule[]>('/admin/growth/modules'),
     api<GrowthRule[]>('/admin/achievements'),
     api<GrowthRule[]>('/admin/certificates'),
     api<Record<string, unknown>>('/admin/recommendation-rules'),
   ])
-  if (users.value[0]) await loadGrowth(users.value[0])
+  if (typeof route.query.userId === 'string') {
+    growth.value = await api<Growth>(`/admin/users/${encodeURIComponent(route.query.userId)}/growth`)
+    selected.value = growth.value.user
+  } else if (users.value[0]) await loadGrowth(users.value[0])
 })
 </script>
 
 <template>
   <AdminPageHeader title="用户成长管理" description="管理用户个人中心与成长体系展示内容及规则">
-    <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="openRules">成长体系设置</button><button class="admin-secondary" type="button" @click="exportUsers">数据导出</button><button class="admin-primary" type="button" :disabled="!canWrite" @click="createOpen = true">新建徽章/证书</button></template>
+    <template #actions><button class="admin-secondary" type="button" :disabled="!canWrite" @click="openRules">成长体系设置</button><RouterLink class="admin-secondary" to="/users">用户与账号</RouterLink><button class="admin-primary" type="button" :disabled="!canWrite" @click="createOpen = true">新建徽章/证书</button></template>
   </AdminPageHeader>
   <div class="kpi-grid">
-    <AdminKpiCard icon="users" label="学习者总数" :value="users.length" color="#ff4d1f" />
+    <AdminKpiCard icon="users" label="学习者总数" :value="userTotal" color="#ff4d1f" />
     <AdminKpiCard icon="course" label="学习记录" :value="growth?.progress.length || 0" color="#22b66c" />
     <AdminKpiCard icon="lab" label="实训记录" :value="growth?.runs.length || 0" color="#7c4dff" />
     <AdminKpiCard icon="challenge" label="测评记录" :value="growth?.attempts.length || 0" color="#3478f6" />
@@ -146,10 +140,10 @@ onMounted(async () => {
         <AdminStatusTag :status="user.status" />
         <b>查看</b>
       </button>
+      <p v-if="accountError" role="alert">{{ accountError }}</p><AdminPagination :page="userPage" :page-size="20" :total="userTotal" @change="loadUsers" />
     </div>
     <aside v-if="growth" class="learner-detail">
       <div class="learner-profile"><span>{{ growth.user.displayName.slice(0, 1) }}</span><div><h2>{{ growth.user.displayName }} <small>等级 —</small></h2><p>{{ growth.user.email }} · ID {{ growth.user.id.slice(-6) }}</p><AdminStatusTag :status="growth.user.status" /></div></div>
-      <section v-if="selected"><h3>账号管理</h3><p>用户名：{{ selected.username }} · 来源：{{ selected.registrationSource }}</p><p>{{ selected.school?.name || '学校未填写' }} · {{ selected.major || '专业未填写' }} · {{ selected.grade || '年级未填写' }}</p><p>最近登录：{{ selected.lastLoginAt ? new Date(selected.lastLoginAt).toLocaleString('zh-CN') : '尚未登录' }}；社区内容 {{ selected.communityPostCount }} 条</p><div v-if="selected.userType === 'student'" class="panel-heading"><button class="admin-secondary" :disabled="!canWrite" @click="changeAccount()">{{ selected.status === 'active' ? '禁用账号' : '启用账号' }}</button><button class="admin-secondary" :disabled="!canWrite" @click="changeAccount(true)">重置首次引导</button></div><p v-if="accountError" role="alert">{{ accountError }}</p></section>
       <h3>学习数据快照</h3>
       <div class="growth-snapshot"><span><i>时</i><b>—</b>学习时长</span><span><i>课</i><b>{{ growth.progress.length }}</b>课时进度</span><span><i>练</i><b>{{ growth.runs.filter((item) => item.status === 'submitted').length }}</b>实训提交</span><span><i>章</i><b>{{ growth.achievements.length }}</b>获得徽章</span><span><i>证</i><b>{{ growth.certificates.length }}</b>证书获得</span></div>
       <h3>获得的徽章 <small>全部（{{ growth.achievements.length }}）</small></h3>

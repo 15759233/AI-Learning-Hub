@@ -23,6 +23,7 @@ export interface CommunityAuthorDto {
   school: string | null; major: string | null; verifiedType: CommunityVerifiedType
 }
 export interface CommunityProfileDto extends CommunityAuthorDto {
+  revision?: number
   bio: string; headline: string; expertiseTopics: string[]; allowAchievementDrafts?: boolean
   postCount: number; followerCount: number; followingCount: number; following: boolean
   topics: CommunityTopicDto[]
@@ -36,6 +37,9 @@ export interface CommunityViewerStateDto {
   liked: boolean; markedUseful: boolean; bookmarked: boolean; followingAuthor: boolean
 }
 export interface CommunityPostSummaryDto {
+  revision?: number
+  mediaCount?: number
+  reportCount?: number
   id: string; type: CommunityPostType; status: CommunityPostStatus; visibility: CommunityVisibility
   title: string | null; bodyPreview: string; contentBlocks: CommunityContentBlock[]
   author: CommunityAuthorDto; bindings: CommunityBindingDto[]; topics: CommunityTopicDto[]
@@ -46,16 +50,18 @@ export interface CommunityPostSummaryDto {
 }
 export interface CommunityPostDetailDto extends CommunityPostSummaryDto { body: string }
 export interface CommunityPostInput {
+  expectedRevision?: number
   type: CommunityPostType; title?: string; contentBlocks: CommunityContentBlock[]
   bindings: CommunityBindingInput[]; topicIds: string[]; visibility: CommunityVisibility
   status: 'draft' | 'published'; sourceType?: 'note' | 'lab_run' | 'challenge' | 'article'; sourceId?: string
 }
 export interface CommunityCommentDto {
+  revision?: number
   id: string; postId: string; author: CommunityAuthorDto; parentId: string | null; rootId: string | null
   body: string; contentBlocks: CommunityContentBlock[]; deleted: boolean; likes: number
   liked: boolean; accepted: boolean; createdAt: string
 }
-export interface CommunityCommentInput { contentBlocks: CommunityContentBlock[]; parentId?: string }
+export interface CommunityCommentInput { contentBlocks: CommunityContentBlock[]; parentId?: string; expectedRevision?: number }
 export interface CommunityLearningSummary { id: string; title: string; route: string; type?: LearningContentType; progress?: number; summary?: string }
 export interface CommunityContextDto {
   todayPlan: CommunityLearningSummary | null; continueCourse: CommunityLearningSummary | null
@@ -81,6 +87,7 @@ export interface CommunitySignalInput {
   requestId?: string; sessionId?: string; position?: number
 }
 export interface CommunityFeedPolicyDto {
+  revision?: number
   version: string; candidateLimits: Record<string, number>; weights: Record<string, number>; penalties: Record<string, number>
   diversity: { maxSameAuthorInWindow: number; authorWindowSize: number; maxSameTypeConsecutive: number; maxOfficialInWindow: number }
   insertions: { continueLearningRange: [number, number]; challengeRange: [number, number]; topicSuggestionRange: [number, number] }
@@ -92,6 +99,10 @@ export interface CommunityAdminReportDto {
 export interface CommunityAdminInspectionDto {
   post: CommunityPostDetailDto; comments: CommunityCommentDto[]; reports: CommunityAdminReportDto[]
   recommendation: { policyVersion: string; candidateSources: string[]; total: number; dimensions: Record<string, number>; filter: string; reasons: string[] } | null
+  revisions?: import('../persistence').CommunityPostRevisionDto[]
+  actions?: import('../persistence').UserActionEventDto[]
+  moderation?: Array<{ id: string; action: string; reason: string; createdAt: string }>
+  files?: Array<{ id: string; originalName: string; mimeType: string; size: number; exists: boolean }>
 }
 export interface CommunityAdminSummaryDto { todayPosts: number; unanswered: number; pendingReports: number; activeUsers: number }
 export interface CommunityModerationInput {
@@ -105,4 +116,4 @@ export interface CommunitySearchResultDto {
   courses: CourseSummaryDto[]; labs: LabSummaryDto[]; resources: ResourceSummaryDto[]; articles: ArticleSummaryDto[]
   nextCursor: string | null
 }
-export interface CommunityDraftDto { id: string; input: CommunityPostInput; updatedAt: string }
+export interface CommunityDraftDto { id: string; input: CommunityPostInput; updatedAt: string; revision?: number }

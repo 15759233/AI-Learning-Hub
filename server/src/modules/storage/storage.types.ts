@@ -23,6 +23,7 @@ export abstract class StorageService {
   abstract getSignedUrl(fileId: string): Promise<string>
   abstract delete(fileId: string): Promise<void>
   abstract exists(fileId: string): Promise<boolean>
+  abstract writable(): Promise<boolean>
 }
 
 export const STORAGE_SERVICE = Symbol('STORAGE_SERVICE')

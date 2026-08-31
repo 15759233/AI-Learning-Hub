@@ -19,6 +19,8 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate deploy",
+    "bootstrap": "node dist/modules/persistence/bootstrap.js",
+    "persistence:audit": "tsx prisma/audit-persistence.ts",
     "prisma:seed": "tsx prisma/seed.ts",
     "preprisma:seed": "npm run build:contracts",
     "homepage:upgrade": "tsx prisma/upgrade-landing.ts",

@@ -20,7 +20,7 @@ vi.mock('../components/base/AppDialog.vue', async () => {
   const { defineComponent, h } = await import('vue')
   return { default: defineComponent({ props: ['modelValue'], setup(props, { slots }) { return () => props.modelValue ? h('div', slots.default?.()) : null } }) }
 })
-beforeEach(() => { vi.resetAllMocks(); resetCommunityMock(); vi.mocked(communityApi.feedback).mockResolvedValue({}); vi.mocked(communityApi.remove).mockResolvedValue({}); vi.mocked(communityApi.reaction).mockResolvedValue({}) })
+beforeEach(() => { vi.resetAllMocks(); resetCommunityMock(); vi.mocked(communityApi.feedback).mockResolvedValue({}); vi.mocked(communityApi.remove).mockResolvedValue({}); vi.mocked(communityApi.reaction).mockImplementation(async (_id, _kind, active) => ({ active })) })
 describe('帖子移除事件不刷新不可见详情', () => {
   it('隐藏类操作只发hidden，点赞乐观更新且不拉取详情或重载列表', async () => {
     const post = await mockCommunity<CommunityPostDetailDto>('/posts/community-note-1', 'GET')

@@ -1,0 +1,103 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import type { AdminUserDetailDto, AdminUserQueryDto, AdminUserSummaryDto, PageResult } from '@ai-learning-hub/contracts'
+import { ElMessage } from 'element-plus'
+import { usersApi } from '../services/users'
+import { useSessionStore } from '../stores/session'
+import AdminPageHeader from '../components/AdminPageHeader.vue'
+import AdminPagination from '../components/AdminPagination.vue'
+import AdminDialog from '../components/AdminDialog.vue'
+import AdminUserAvatar from '../components/AdminUserAvatar.vue'
+import { api } from '../services/api'
+const session = useSessionStore(), can = (permission: string) => session.user?.permissions.includes(permission)
+const query = reactive<AdminUserQueryDto>({ page: 1, pageSize: 20, keyword: '', sortBy: 'createdAt', sortOrder: 'desc' })
+const result = ref<PageResult<AdminUserSummaryDto>>({ items: [], page: 1, pageSize: 20, total: 0 })
+const options = ref<Awaited<ReturnType<typeof usersApi.options>>>({ schools: [], roles: [] })
+const selected = ref<AdminUserDetailDto | null>(null), tab = ref('基础资料'), busy = ref(false), error = ref('')
+const growth = ref<{ points: number; progress: unknown[]; runs: unknown[]; attempts: unknown[]; plans: unknown[]; favorites: unknown[]; achievements: unknown[]; certificates: unknown[] } | null>(null)
+const operation = ref(''), reason = ref(''), operationOpen = ref(false), editing = ref(false)
+const actionTarget = ref<{ id: string; displayName: string; revision: number } | null>(null)
+const form = reactive({ displayName: '', schoolId: '', departmentId: '', major: '', grade: '', studentNo: '', teacherNo: '' })
+const labels: Record<string, string> = { active: '启用 / 解锁账号', disabled: '禁用账号', locked: '锁定账号', 'revoke-sessions': '强制退出全部会话', 'reset-onboarding': '重置首次引导', 'reset-password': '发送密码重置邮件' }
+let listEpoch = 0, detailEpoch = 0
+const load = async (page = 1) => {
+  const epoch = ++listEpoch; busy.value = true; error.value = ''; query.page = page
+  try { const rows = await usersApi.list(query); if (epoch === listEpoch) result.value = rows }
+  catch (cause) { if (epoch === listEpoch) error.value = cause instanceof Error ? cause.message : '用户读取失败' }
+  finally { if (epoch === listEpoch) busy.value = false }
+}
+const inspect = async (id: string) => {
+  const epoch = ++detailEpoch; error.value = ''; growth.value = null; selected.value = null
+  try {
+    const value = await usersApi.detail(id)
+    if (epoch !== detailEpoch) return
+    selected.value = value
+    if (can('growth.read')) { const data = await api<NonNullable<typeof growth.value>>(`/admin/users/${id}/growth`); if (epoch === detailEpoch) growth.value = data }
+  } catch (cause) { if (epoch === detailEpoch) error.value = cause instanceof Error ? cause.message : '详情读取失败' }
+}
+const openAction = (action: string) => {
+  if (!selected.value) return
+  const user = selected.value.user
+  actionTarget.value = { id: user.id, displayName: user.displayName, revision: user.revision }
+  Object.assign(form, { displayName: user.displayName, schoolId: user.school?.id || '', departmentId: user.department?.id || '', major: user.major || '', grade: user.grade || '', studentNo: user.studentNo || '', teacherNo: user.teacherNo || '' })
+  operation.value = action; reason.value = ''; operationOpen.value = true; editing.value = action === 'edit'
+}
+const apply = async () => {
+  if (!actionTarget.value) return
+  busy.value = true; error.value = ''
+  try {
+    const { id, revision } = actionTarget.value
+    if (editing.value) await usersApi.update(id, { ...form, reason: reason.value, expectedRevision: revision })
+    else await usersApi.action(id, operation.value, reason.value, revision)
+    operationOpen.value = false; await Promise.all([load(result.value.page), inspect(id)]); ElMessage.success('操作已保存并记录审计')
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败' }
+  finally { busy.value = false }
+}
+const exportUsers = async () => {
+  busy.value = true
+  try {
+    const rows: AdminUserSummaryDto[] = []
+    const filters = { ...query }
+    for (let page = 1;; page++) { const data = await usersApi.export({ ...filters, page, pageSize: 100 }); rows.push(...data.items); if (page * data.pageSize >= data.total) break }
+    const escape = (value: string) => `"${(/^[=+@-]/.test(value) ? `'${value}` : value).replaceAll('"', '""')}"`
+    const csv = [['用户名', '显示名称', '邮箱', '类型', '学校', '状态'], ...rows.map((u) => [u.username, u.displayName, u.email, u.userType, u.school?.name || '', u.status])].map((row) => row.map(escape).join(',')).join('\n')
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' })), link = document.createElement('a')
+    link.href = url; link.download = 'users.csv'; link.click(); URL.revokeObjectURL(url)
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '导出失败' }
+  finally { busy.value = false }
+}
+const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString('zh-CN') : '—'
+onMounted(async () => { await load(); try { options.value = await usersApi.options() } catch (cause) { error.value = cause instanceof Error ? cause.message : '选项读取失败' } })
+</script>
+<template>
+  <AdminPageHeader title="用户与账号" description="统一管理真实账号、注册资料、会话与社区活动。"><template #actions><button v-if="can('user.export')" class="admin-secondary" :disabled="busy" @click="exportUsers">导出筛选结果</button><button class="admin-secondary" :disabled="busy" @click="load(result.page)">刷新</button></template></AdminPageHeader>
+  <p v-if="error" role="alert" class="error-banner">{{ error }}</p>
+  <form class="panel users-filters" @submit.prevent="load()">
+    <label>搜索<input v-model="query.keyword" placeholder="用户名 / 姓名 / 邮箱 / 学号 / 教师编号" /></label>
+    <label>状态<select v-model="query.status"><option :value="undefined">全部</option><option value="active">正常</option><option value="disabled">禁用</option><option value="locked">锁定</option></select></label>
+    <label>类型<select v-model="query.userType"><option :value="undefined">全部</option><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select></label>
+    <label>角色<select v-model="query.role"><option :value="undefined">全部</option><option v-for="role in options.roles" :key="role.code" :value="role.code">{{ role.name }}</option></select></label>
+    <label>学校<select v-model="query.schoolId"><option :value="undefined">全部</option><option v-for="school in options.schools" :key="school.id" :value="school.id">{{ school.name }}</option></select></label>
+    <label>来源<input v-model="query.registrationSource" placeholder="email / bootstrap" /></label>
+    <label>首次引导<select v-model="query.onboardingCompleted"><option :value="undefined">全部</option><option :value="true">已完成</option><option :value="false">未完成</option></select></label>
+    <label>邮箱验证<select v-model="query.emailVerified"><option :value="undefined">全部</option><option :value="true">已验证</option><option :value="false">未验证</option></select></label>
+    <label>注册起始<input v-model="query.createdFrom" type="date" /></label><label>注册截止<input v-model="query.createdTo" type="date" /></label>
+    <label>最近登录起始<input v-model="query.lastLoginFrom" type="date" /></label><label>最近登录截止<input v-model="query.lastLoginTo" type="date" /></label>
+    <label>排序<select v-model="query.sortBy"><option value="createdAt">注册时间</option><option value="lastLoginAt">最近登录</option><option value="displayName">显示名称</option></select></label><label>顺序<select v-model="query.sortOrder"><option value="desc">降序</option><option value="asc">升序</option></select></label>
+    <button class="admin-primary" :disabled="busy">查询</button>
+  </form>
+  <section class="panel users-table"><table><thead><tr><th>用户</th><th>类型 / 角色</th><th>学校 / 专业 / 年级</th><th>来源 / 注册时间</th><th>最近登录</th><th>引导 / 验证</th><th>状态 / 动态</th><th>操作</th></tr></thead><tbody><tr v-for="user in result.items" :key="user.id" :class="{ selected: selected?.user.id === user.id }"><td><AdminUserAvatar :name="user.displayName" :src="user.avatar" /><strong>{{ user.displayName }}</strong><small>@{{ user.username }}</small><small>{{ user.email }}</small></td><td>{{ user.userType }}<small>{{ user.roles.join('、') }}</small></td><td>{{ user.school?.name || '未填写' }}<small>{{ user.major || '—' }} · {{ user.grade || '—' }}</small></td><td>{{ user.registrationSource }}<small>{{ time(user.createdAt) }}</small></td><td>{{ time(user.lastLoginAt) }}</td><td>{{ user.onboardingCompleted ? '已引导' : '未引导' }}<small>{{ user.emailVerified ? '邮箱已验证' : '邮箱未验证' }}</small></td><td>{{ {active:'正常',disabled:'禁用',locked:'锁定'}[user.status] || user.status }}<small>{{ user.communityPostCount }} 条</small></td><td><button class="admin-text" @click="inspect(user.id)">详情</button></td></tr></tbody></table><p v-if="!result.items.length" class="admin-empty">{{ busy ? '正在读取…' : '没有匹配用户' }}</p><AdminPagination :page="result.page" :page-size="result.pageSize" :total="result.total" @change="load" /></section>
+  <section v-if="selected" class="panel users-detail">
+    <header><h2>{{ selected.user.displayName }}</h2><nav class="community-admin-tabs"><button v-for="label in ['基础资料','账号与安全','社区资料','学习数据','操作记录']" :key="label" :class="{active:tab===label}" @click="tab=label">{{ label }}</button></nav></header>
+    <dl v-if="tab==='基础资料'"><dt>用户名 / 邮箱</dt><dd>{{ selected.user.username }} · {{ selected.user.email }}</dd><dt>学校 / 院系</dt><dd>{{ selected.user.school?.name || '—' }} / {{ selected.user.department?.name || '—' }}</dd><dt>专业 / 年级</dt><dd>{{ selected.user.major || '—' }} / {{ selected.user.grade || '—' }}</dd><dt>学号 / 教师编号</dt><dd>{{ selected.user.studentNo || '—' }} / {{ selected.user.teacherNo || '—' }}</dd><dt>类型 / 来源</dt><dd>{{ selected.user.userType }} / {{ selected.user.registrationSource }}</dd><dt>创建 / 更新</dt><dd>{{ time(selected.user.createdAt) }} / {{ time(selected.user.updatedAt) }}</dd></dl>
+    <dl v-else-if="tab==='账号与安全'"><dt>账号 / 角色</dt><dd>{{ selected.user.status }} · {{ selected.user.roles.join('、') }}</dd><dt>邮箱验证</dt><dd>{{ time(selected.security.emailVerifiedAt) }}</dd><dt>协议 / 同意时间</dt><dd>{{ selected.security.agreementVersion || '—' }} · {{ time(selected.security.agreementAcceptedAt) }}</dd><dt>最近登录 / 结果</dt><dd>{{ time(selected.user.lastLoginAt) }} · {{ selected.security.lastLoginResult || '—' }}</dd><dt>有效会话</dt><dd>{{ selected.security.activeSessions }}</dd><dt>密码</dt><dd>{{ selected.security.passwordSet ? '已设置（不可查看）' : '未设置' }}</dd><dt>身份绑定</dt><dd>{{ selected.security.identities.map(i=>i.provider).join('、') || '无' }}</dd></dl>
+    <dl v-else-if="tab==='社区资料'"><dt>介绍</dt><dd>{{ selected.community.headline }}<p>{{ selected.community.bio }}</p></dd><dt>认证 / 擅长方向</dt><dd>{{ selected.community.verifiedType }} / {{ selected.community.expertiseTopics.join('、') || '—' }}</dd><dt>社区活动</dt><dd>{{ selected.community.postCount }} 动态 · {{ selected.community.commentCount }} 评论 · {{ selected.community.followingCount }} 关注 · {{ selected.community.followerCount }} 粉丝 · {{ selected.community.reportCount }} 举报</dd></dl>
+    <div v-else-if="tab==='学习数据'"><p v-if="!can('growth.read')">没有学习数据查看权限</p><template v-else-if="growth"><p>积分 {{ growth.points }} · 课程进度 {{ growth.progress.length }} · 实训 {{ growth.runs.length }} · 测评 {{ growth.attempts.length }}</p><p>学习计划 {{ growth.plans.length }} · 收藏 {{ growth.favorites.length }} · 徽章 {{ growth.achievements.length }} · 证书 {{ growth.certificates.length }}</p><RouterLink :to="{path: '/growth', query: {userId: selected.user.id}}">进入用户成长</RouterLink></template></div>
+    <div v-else><h3>用户行为</h3><p v-for="event in selected.activities" :key="event.id">{{ time(event.occurredAt) }} · {{ event.eventType }} · {{ event.entityType }}</p><h3>账号审计</h3><p v-for="event in selected.audits" :key="event.id">{{ time(event.createdAt) }} · {{ event.action }} · {{ event.reason }}</p></div>
+    <footer v-if="selected.user.id!==session.user?.id"><template v-if="can('user.write')"><button class="admin-secondary" @click="openAction('edit')">编辑安全资料</button><button v-for="action in ['active','disabled','locked','reset-onboarding','reset-password']" :key="action" class="admin-secondary" @click="openAction(action)">{{ labels[action] }}</button></template><button v-if="can('user.session.revoke')" class="admin-secondary" @click="openAction('revoke-sessions')">强制退出全部会话</button></footer>
+  </section>
+  <AdminDialog v-model="operationOpen" :title="`${editing ? '修改用户资料' : labels[operation]} · ${actionTarget?.displayName || ''}`"><form class="admin-form" @submit.prevent="apply"><template v-if="editing"><label>显示名称<input v-model="form.displayName" required maxlength="40" /></label><label>学校<select v-model="form.schoolId" @change="form.departmentId=''"><option value="">未填写</option><option v-for="school in options.schools" :key="school.id" :value="school.id">{{ school.name }}</option></select></label><label>院系<select v-model="form.departmentId"><option value="">未填写</option><option v-for="dept in options.schools.find(s=>s.id===form.schoolId)?.departments || []" :key="dept.id" :value="dept.id">{{ dept.name }}</option></select></label><label>专业<input v-model="form.major" maxlength="100" /></label><label>年级<input v-model="form.grade" maxlength="40" /></label><label>学号<input v-model="form.studentNo" maxlength="100" /></label><label>教师编号<input v-model="form.teacherNo" maxlength="100" /></label></template><label>操作原因<textarea v-model="reason" minlength="4" maxlength="500" required /></label><p v-if="error" role="alert">{{ error }}</p><button class="admin-primary" :disabled="busy">确认并记录审计</button></form></AdminDialog>
+</template>
+<style scoped>
+.users-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:20px; margin-bottom:20px }.users-filters label { display:grid; gap:5px; font-size:12px }.users-filters input,.users-filters select { width:100%; min-width:0 }.users-table { overflow:auto }.users-table table { width:100%; min-width:850px; border-collapse:collapse }.users-table th,.users-table td { text-align:left; padding:14px; border-bottom:1px solid #ece5de; font-size:13px }.users-table small { display:block; margin-top:4px; color:#686460; overflow-wrap:anywhere }.selected { background:#fff6f1 }.users-detail { margin-top:20px; padding:24px }.users-detail dl { display:grid; grid-template-columns:160px 1fr; gap:14px }.users-detail dd { margin:0; overflow-wrap:anywhere }.users-detail footer { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px }@media(max-width:1000px){.users-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>

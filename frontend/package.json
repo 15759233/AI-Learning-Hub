@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build:mock": "npm run typecheck && vite build --mode mock",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",

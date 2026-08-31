@@ -5,6 +5,7 @@ import AdminPageHeader from '../components/AdminPageHeader.vue'
 import { api } from '../services/api'
 import type { RegistrationConfigDto, RegistrationSettingsDto } from '@ai-learning-hub/contracts'
 import { usePermissionAction } from '../composables/usePermissionAction'
+import PersistenceStatus from '../components/PersistenceStatus.vue'
 
 interface Setting { key: string; value: unknown; sensitive: boolean }
 interface School { id: string; name: string; departments: Array<{ id: string; name: string }>; _count: { users: number } }
@@ -24,7 +25,7 @@ const saveRegistration = async () => {
   if (!registration.value) return
   registrationError.value = ''
   const { mode, emailVerification, agreementVersion, passwordMinLength, schoolRequired } = registration.value
-  try { registration.value = await api<RegistrationConfigDto>('/admin/registration/settings', { method: 'PATCH', body: JSON.stringify({ mode, emailVerification, agreementVersion, passwordMinLength, schoolRequired } satisfies RegistrationSettingsDto) }); ElMessage.success('注册设置已保存并生效') }
+  try { registration.value = await api<RegistrationConfigDto>('/admin/registration/settings', { method: 'PATCH', body: JSON.stringify({ mode, emailVerification, agreementVersion, passwordMinLength, schoolRequired, expectedRevision: registration.value.revision } satisfies RegistrationSettingsDto) }); ElMessage.success('注册设置已保存并生效') }
   catch (cause) { registrationError.value = cause instanceof Error ? cause.message : '注册设置保存失败' }
 }
 const notification = reactive({ title: '', content: '' })
@@ -82,6 +83,7 @@ const createNotification = async () => {
 </script>
 
 <template>
+  <PersistenceStatus />
   <AdminPageHeader title="系统设置" description="维护平台公开配置；敏感密钥只通过部署环境注入">
     <template #actions><button class="admin-primary" type="button" @click="save">保存设置</button></template>
   </AdminPageHeader>

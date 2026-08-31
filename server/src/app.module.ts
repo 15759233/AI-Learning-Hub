@@ -20,6 +20,8 @@ import { HomepageModule } from './modules/homepage/homepage.module'
 import { QuestionModule } from './modules/questions/question.module'
 import { GrowthModule } from './modules/growth/growth.module'
 import { CommunityModule } from './modules/community/community.module'
+import { UsersModule } from './modules/users/users.module'
+import { PersistenceModule } from './modules/persistence/persistence.module'
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { CommunityModule } from './modules/community/community.module'
     StorageModule,
     QuizBoxModule,
     CommunityModule,
+    UsersModule,
+    PersistenceModule,
   ],
   controllers: [AppController],
   providers: [OperationLogInterceptor],

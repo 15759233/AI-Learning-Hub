@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Inject, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
@@ -25,7 +25,7 @@ import type { CommunityDraftDto, CommunityPostInput } from '@ai-learning-hub/con
 export class CommunityController {
   constructor(private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly interactions: CommunityInteractionService, private readonly notifications: CommunityNotificationService, private readonly context: CommunityContextService, private readonly feed: LearningFeedPipeline, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService, private readonly prisma: PrismaService, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly files: FileAccessService, private readonly searchService: CommunitySearchService) {}
   @Get('search') search(@CurrentUser() user: AuthUser, @Query() input: SearchDto) { return this.searchService.search(user.id, input) }
-  @Get('onboarding/schools') schools() { return this.prisma.school.findMany({ where: { status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) }
+  @Get('onboarding/schools') schools() { return this.prisma.school.findMany({ where: { status: 'active' }, select: { id: true, name: true, departments: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } }) }
   @Post('onboarding') onboarding(@CurrentUser() user: AuthUser, @Body() input: OnboardingDto) { return this.context.onboarding(user.id, input) }
   @Patch('profile/username') username(@CurrentUser() user: AuthUser, @Body() input: UsernameDto) { return this.context.changeUsername(user.id, input.username) }
   @Get('users/by-username/:username') byUsername(@CurrentUser() user: AuthUser, @Param('username') username: string) { return this.context.byUsername(user.id, username) }
@@ -33,13 +33,13 @@ export class CommunityController {
   async drafts(@CurrentUser() user: AuthUser): Promise<CommunityDraftDto[]> {
     await this.visibility.viewer(user.id)
     const rows = await this.prisma.communityPost.findMany({ where: { authorId: user.id, status: 'draft', deletedAt: null }, include: { bindings: true, topics: true }, orderBy: { updatedAt: 'desc' }, take: 100 })
-    return rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt.toISOString(), input: { type: row.postType, title: row.title || '', contentBlocks: row.contentBlocks as CommunityPostInput['contentBlocks'], bindings: row.bindings.map((ref) => ({ type: ref.targetType as CommunityPostInput['bindings'][number]['type'], id: ref.targetId })), topicIds: row.topics.map((ref) => ref.topicId), visibility: row.visibility, status: 'draft', ...(row.sourceType ? { sourceType: row.sourceType as CommunityPostInput['sourceType'], sourceId: row.sourceId! } : {}) } }))
+    return rows.map((row) => ({ id: row.id, revision: row.revision, updatedAt: row.updatedAt.toISOString(), input: { expectedRevision: row.revision, type: row.postType, title: row.title || '', contentBlocks: row.contentBlocks as CommunityPostInput['contentBlocks'], bindings: row.bindings.map((ref) => ({ type: ref.targetType as CommunityPostInput['bindings'][number]['type'], id: ref.targetId })), topicIds: row.topics.map((ref) => ref.topicId), visibility: row.visibility, status: 'draft', ...(row.sourceType ? { sourceType: row.sourceType as CommunityPostInput['sourceType'], sourceId: row.sourceId! } : {}) } }))
   }
-  @Post('drafts') createDraft(@CurrentUser() user: AuthUser, @Body() input: PostDto) { return this.posts.save(user.id, { ...input, status: 'draft' }) }
+  @Post('drafts') createDraft(@CurrentUser() user: AuthUser, @Body() input: PostDto, @Headers('idempotency-key') key?: string) { return this.posts.save(user.id, { ...input, status: 'draft' }, undefined, undefined, key) }
   private async ownDraft(userId: string, id: string) {
     if (!await this.prisma.communityPost.count({ where: { id, authorId: userId, status: 'draft', deletedAt: null } })) throw new BadRequestException('草稿不存在或无权操作')
   }
-  @Patch('drafts/:id') async updateDraft(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto) { await this.ownDraft(user.id, id); return this.posts.save(user.id, { ...input, status: 'draft' }, id) }
+  @Patch('drafts/:id') async updateDraft(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto, @Headers('idempotency-key') key?: string) { await this.ownDraft(user.id, id); return this.posts.save(user.id, { ...input, status: 'draft' }, id, undefined, key) }
   @Delete('drafts/:id') async deleteDraft(@CurrentUser() user: AuthUser, @Param('id') id: string) { await this.ownDraft(user.id, id); return this.posts.remove(user.id, id) }
   @Get('feed') getFeed(@CurrentUser() user: AuthUser, @Query() query: CommunityQueryDto) { return this.feed.feed(user.id, query) }
   @Get('feed/updates') async updates(@CurrentUser() user: AuthUser, @Query() input: FeedUpdatesDto) {
@@ -81,16 +81,16 @@ export class CommunityController {
     return { recorded: true }
   }
   @Get('posts') list(@CurrentUser() user: AuthUser, @Query() query: CommunityQueryDto) { return this.posts.list(user.id, query) }
-  @Post('posts') create(@CurrentUser() user: AuthUser, @Body() input: PostDto) { return this.posts.save(user.id, input) }
+  @Post('posts') create(@CurrentUser() user: AuthUser, @Body() input: PostDto, @Headers('idempotency-key') key?: string) { return this.posts.save(user.id, input, undefined, undefined, key) }
   @Get('posts/:id') detail(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.posts.detail(user.id, id) }
-  @Patch('posts/:id') edit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto) { return this.posts.save(user.id, input, id) }
+  @Patch('posts/:id') edit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto, @Headers('idempotency-key') key?: string) { return this.posts.save(user.id, input, id, undefined, key) }
   @Delete('posts/:id') remove(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.posts.remove(user.id, id) }
   @Get('posts/:id/comments') commentList(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.comments.list(user.id, id) }
-  @Post('posts/:id/comments') commentCreate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto) { return this.comments.save(user.id, id, input) }
-  @Patch('comments/:id') async commentEdit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto) {
+  @Post('posts/:id/comments') commentCreate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto, @Headers('idempotency-key') key?: string) { return this.comments.save(user.id, id, input, undefined, key) }
+  @Patch('comments/:id') async commentEdit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto, @Headers('idempotency-key') key?: string) {
     const comment = await this.prisma.communityComment.findUnique({ where: { id } })
     if (!comment) throw new BadRequestException('评论不存在')
-    return this.comments.save(user.id, comment.postId, input, id)
+    return this.comments.save(user.id, comment.postId, input, id, key)
   }
   @Delete('comments/:id') commentRemove(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.comments.remove(user.id, id) }
   @Post('questions/:postId/accept/:commentId') accept(@CurrentUser() user: AuthUser, @Param('postId') id: string, @Param('commentId') commentId: string) { return this.comments.accept(user.id, id, commentId) }

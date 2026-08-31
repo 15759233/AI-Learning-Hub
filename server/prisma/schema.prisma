@@ -67,6 +67,8 @@ model User {
   grade                     String?
   userType                  String                      @default("student") @map("user_type")
   status                    UserStatus                  @default(active)
+  revision                  Int                         @default(1)
+  sessionVersion            Int                         @default(0) @map("session_version")
   profile                   Json                        @default("{}") @map("profile_json")
   lastLoginAt               DateTime?                   @map("last_login_at")
   emailVerifiedAt           DateTime?                   @map("email_verified_at")
@@ -123,6 +125,10 @@ model User {
   communitySignalSnapshot   UserFeedSignalSnapshot?
   communityFeedSessions     CommunityFeedSession[]
 
+  @@index([status, createdAt])
+  @@index([schoolId, status])
+  @@index([registrationSource, createdAt])
+  @@index([lastLoginAt])
   @@map("users")
 }
 
@@ -1324,6 +1330,11 @@ model GrowthModuleSetting {
 
 model ActivityEvent {
   id         String   @id @default(cuid())
+  eventKey   String?  @unique @map("event_key")
+  actionType String?  @map("action_type")
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  source     String   @default("student-web")
   userId     String?  @map("user_id")
   eventType  String   @map("event_type")
   targetType String?  @map("target_type")
@@ -1339,6 +1350,9 @@ model ActivityEvent {
 
   @@index([eventType, createdAt])
   @@index([userId, occurredAt])
+  @@index([userId, actionType, occurredAt])
+  @@index([targetType, targetId, occurredAt])
+  @@index([entityType, entityId, occurredAt])
   @@map("activity_events")
 }
 
@@ -1434,6 +1448,7 @@ model SystemSetting {
   key       String   @unique
   value     Json
   sensitive Boolean  @default(false)
+  revision  Int      @default(1)
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
@@ -1518,6 +1533,7 @@ enum CommunityReactionType {
 
 model CommunityProfile {
   userId                 String   @id @map("user_id")
+  revision               Int      @default(1)
   bio                    String   @default("")
   headline               String   @default("")
   verifiedType           String   @default("none") @map("verified_type")
@@ -1535,6 +1551,7 @@ model CommunityProfile {
 
 model CommunityPost {
   id              String                  @id @default(cuid())
+  revision        Int                     @default(1)
   authorId        String                  @map("author_id")
   postType        CommunityPostType       @map("post_type")
   status          CommunityPostStatus     @default(draft)
@@ -1566,12 +1583,19 @@ model CommunityPost {
   reactions       CommunityPostReaction[]
   bookmarks       CommunityBookmark[]
   reports         CommunityReport[]
+  revisions       CommunityPostRevision[]
 
   @@index([status, publishedAt, id])
   @@index([authorId, status, publishedAt])
   @@index([schoolId, status, publishedAt])
   @@index([postType, status, publishedAt])
   @@index([contentHash, status])
+  @@index([status, visibility, publishedAt, id])
+  @@index([authorId, status, publishedAt, id])
+  @@index([postType, status, publishedAt, id])
+  @@index([schoolId, status, publishedAt, id])
+  @@index([contentHash, authorId, status])
+  @@index([deletedAt])
   @@map("community_posts")
 }
 
@@ -1603,6 +1627,7 @@ model CommunityQuestionState {
 
 model CommunityComment {
   id            String                     @id @default(cuid())
+  revision      Int                        @default(1)
   postId        String                     @map("post_id")
   authorId      String                     @map("author_id")
   parentId      String?                    @map("parent_id")
@@ -1623,6 +1648,7 @@ model CommunityComment {
   reports       CommunityReport[]
 
   @@index([postId, createdAt])
+  @@index([postId, status, createdAt, id])
   @@index([authorId, createdAt])
   @@map("community_comments")
 }
@@ -1747,6 +1773,7 @@ model CommunityReport {
 
   @@unique([reporterId, targetKey])
   @@index([status, createdAt])
+  @@index([reporterId, createdAt])
   @@map("community_reports")
 }
 
@@ -1800,7 +1827,47 @@ model UserNotification {
   recipient        User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId, readAt, createdAt])
+  @@index([entityType, entityId])
   @@map("user_notifications")
+}
+
+model CommunityPostRevision {
+  id                    String        @id @default(cuid())
+  postId                String        @map("post_id")
+  revisionNo            Int           @map("revision_no")
+  editorId              String        @map("editor_id")
+  editorType            String        @map("editor_type")
+  titleSnapshot         String?       @map("title_snapshot")
+  contentBlocksSnapshot Json          @map("content_blocks_snapshot")
+  bindingsSnapshot      Json          @map("bindings_snapshot")
+  topicIdsSnapshot      String[]      @map("topic_ids_snapshot")
+  visibilitySnapshot    String        @map("visibility_snapshot")
+  statusSnapshot        String        @map("status_snapshot")
+  reason                String        @default("")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  post                  CommunityPost @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@unique([postId, revisionNo])
+  @@map("community_post_revisions")
+}
+
+model RequestIdempotency {
+  id               String   @id @default(cuid())
+  principalKey     String   @map("principal_key")
+  scope            String
+  idempotencyKey   String   @map("idempotency_key")
+  requestHash      String   @map("request_hash")
+  resourceId       String   @map("resource_id")
+  responseStatus   Int      @default(200) @map("response_status")
+  responseSnapshot Json     @default("{}") @map("response_snapshot")
+  status           String   @default("completed")
+  expiresAt        DateTime @map("expires_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([principalKey, scope, idempotencyKey])
+  @@index([expiresAt])
+  @@map("request_idempotency")
 }
 
 model UserFeedSignalSnapshot {

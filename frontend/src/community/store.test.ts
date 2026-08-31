@@ -72,7 +72,7 @@ describe('社区账号状态隔离', () => {
   it('取消用户或话题关注仅使关注缓存失效，不触发自动刷新或重置其他模式', async () => {
     const store = useCommunityStore(), post = await postFixture()
     vi.mocked(communityApi.feed).mockResolvedValue(page([post]))
-    vi.mocked(communityApi.follow).mockResolvedValue({})
+    vi.mocked(communityApi.follow).mockImplementation(async (_id, _topic, active) => ({ active }))
     await store.loadFeed('for_you', 'all'); await store.loadFeed('latest', 'all'); await store.loadFeed('following', 'all')
     const recommended = store.feeds['for_you:all'], latest = store.feeds['latest:all']
     for (const [id, topic] of [[post.author.id, false], [post.topics[0].id, true]] as const) {
@@ -148,7 +148,7 @@ describe('有界信息流与乐观互动', () => {
     post.viewerState.liked = false; post.viewerState.bookmarked = false; copy.viewerState = { ...post.viewerState }
     vi.mocked(communityApi.feed).mockResolvedValue(page([copy])); await store.loadFeed('latest', 'all')
     let rejectLike!: (error: Error) => void
-    vi.mocked(communityApi.reaction).mockImplementation((_id, kind) => kind === 'like' ? new Promise((_, reject) => { rejectLike = reject }) : Promise.resolve({}))
+    vi.mocked(communityApi.reaction).mockImplementation((_id, kind, active) => kind === 'like' ? new Promise((_, reject) => { rejectLike = reject }) : Promise.resolve({ active }))
     const count = post.stats.likes, request = store.react(post, 'like')
     expect(post.viewerState.liked).toBe(true); expect(copy.stats.likes).toBe(count + 1)
     expect(store.operations[`${post.id}:like`]).toBe(true)
@@ -173,7 +173,7 @@ describe('有界信息流与乐观互动', () => {
     expect(topic.followerCount).toBe(1)
     const rejection = expect(request).rejects.toThrow('失败'); reject(new Error('失败')); await rejection
     expect(post.topics[0].following).toBe(false); expect(topic.followerCount).toBe(0)
-    vi.mocked(communityApi.follow).mockResolvedValue({})
+    vi.mocked(communityApi.follow).mockImplementation(async (_id, _topic, active) => ({ active }))
     await store.follow(post.author.id, false, true, undefined, post)
     expect(store.authorFollowing[post.author.id]).toBe(true); expect(post.viewerState.followingAuthor).toBe(true)
     expect(communityApi.feed).toHaveBeenCalledTimes(1)

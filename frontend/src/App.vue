@@ -81,6 +81,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <div v-if="dataMode === 'mock'" class="demo-mode-badge" role="status">演示模式 · 数据不会同步到服务器</div>
   <CommunitySkeleton v-if="route.meta.requiresAuth && ['idle', 'restoring'].includes(auth.authState)" />
   <section v-else-if="route.meta.requiresAuth && (!auth.user || auth.authState === 'error')" class="community-empty"><h1>{{ auth.authState === 'error' ? '连接暂时中断' : '请登录后继续' }}</h1><p>{{ auth.restoreError }}</p><button class="button primary" @click="reconnect">重新连接</button></section>
   <component :is="layout" v-else>
@@ -95,3 +96,6 @@ onBeforeUnmount(() => {
   <CommunityComposer v-if="auth.user" />
   <div v-if="bridgeMessage" class="toast" role="status">{{ bridgeMessage }}</div>
 </template>
+<style scoped>
+.demo-mode-badge { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 10000; background: #fff4df; color: #73521d; border: 1px solid #e7d0a7; border-radius: 8px; padding: 5px 12px; font-size: 12px; pointer-events: none; white-space: nowrap; }
+</style>

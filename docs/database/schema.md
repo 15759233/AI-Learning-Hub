@@ -20,6 +20,7 @@ PostgreSQL 是 API 模式的唯一正式数据源，Prisma 模型位于 `server/
 | 系统与集成 | `notifications`、`notification_reads`、`system_settings`、`audit_logs`、`operation_logs`、`external_mappings`、`sync_jobs`、`idempotency_keys` |
 | 社区内容与关系 | `community_profiles`、`community_posts`、`community_post_bindings`、`community_question_states`、`community_comments`、`community_post_reactions`、`community_comment_reactions`、`community_bookmarks`、`community_user_follows`、`community_topics`、`community_post_topics`、`community_topic_follows` |
 | 社区治理与推荐 | `community_feedback`、`community_reports`、`community_moderation_actions`、`community_feed_impressions`、`community_feed_sessions`、`user_notifications`、`user_feed_signal_snapshots` |
+| 写入一致性 | `community_post_revisions`、`request_idempotency`；用户、社区资料、帖子、评论与设置维护修订号，用户维护会话版本 |
 
 ## 约束
 
@@ -34,16 +35,19 @@ PostgreSQL 是 API 模式的唯一正式数据源，Prisma 模型位于 `server/
 - 社区帖子和评论软删除；父评论删除保留回复结构，采纳答案删除后问题恢复未解决。多态内容绑定由统一解析服务验证已发布状态和所有权。
 - 注册相关账号、角色、资料、活动与会话原子写入；验证／重置令牌只保存 SHA-256 哈希、30分钟有效且一次使用。草稿复用 `community_posts.status=draft`，只允许作者管理。
 
-## 迁移与 Seed
+## 迁移与初始化
 
 ```bash
 cd server
 DATABASE_URL='postgresql://...' npx prisma migrate deploy
-SEED_ADMIN_PASSWORD='...' SEED_STUDENT_PASSWORD='...' npm run prisma:seed
+npm run build
+npm run bootstrap
 ```
 
-Seed 与前端 Mock 共用 `packages/demo-fixtures`，保留稳定 slug。首次初始化写入原有领域、社区样例及五区落地页；已发布平台幂等增补社区样例和落地页，不覆盖运营数据、账号凭据或历史快照。历史空首页发布只追加最近有效快照。管理员与学生密码必须通过运行环境提供；示例文件不包含真实值。
+`bootstrap` 只补必要元数据和首个管理员，不修改已有账号、内容、配置或授权。演示 Seed 与前端 Mock 共用 `packages/demo-fixtures`，仅在显式 `LOAD_DEMO_DATA=true` 时允许执行，不属于日常发布流程。
 
 现有库先执行 `prisma migrate deploy`，再运行 `npm run homepage:upgrade`，无需重跑完整 Seed。事务锁内新增五个模块并追加一个发布版本，保留旧模块、人工草稿与历史快照；再次执行零写。检测到部分升级时停止自动操作。`homepage_items` 仅新增可空摘要和封面覆盖列，无数据重建。
 
-新增模型时创建新迁移，禁止修改已发布迁移。生产环境先备份，再由一次性迁移任务执行 `prisma migrate deploy`；Seed 仅用于首次初始化或明确的内容基线更新。
+新增模型创建新迁移，禁止修改已发布迁移。邮箱与用户名使用大小写不敏感唯一索引；升级前 `npm run persistence:audit` 检查冲突，存在冲突时人工处理，不自动合并或删账号。生产先备份，再执行一次性迁移与 bootstrap。
+
+ActivityEvent 保留旧推荐事件名，`action_type/entity_type/entity_id` 提供规范行为语义；同一事实只写一行。文件清理与内容引用写入共用事务锁，检查全部业务与历史快照引用；维护按稳定游标每批最多扫描50个文件。

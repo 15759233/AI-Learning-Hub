@@ -1,14 +1,15 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
-import { hash } from 'bcryptjs'
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { compare, hash } from 'bcryptjs'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createTransport } from 'nodemailer'
 import type { RegistrationConfigDto, RegistrationSettingsDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthService } from './auth.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import type { RegisterDto } from './auth.dto'
+import { actionEvent, idempotency, lockUser } from '../../common/persistence'
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 const defaults: RegistrationSettingsDto = { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false }
@@ -22,6 +23,7 @@ export class RegistrationService {
     const stored = await tx.systemSetting.findUnique({ where: { key: 'registration' } })
     const value = (stored?.value || {}) as Partial<RegistrationSettingsDto>
     return {
+      revision: stored?.revision || 1,
       mode: ['open', 'invite', 'closed'].includes(value.mode || '') ? value.mode! : defaults.mode,
       emailVerification: value.emailVerification === true,
       agreementVersion: typeof value.agreementVersion === 'string' && value.agreementVersion.length >= 1 && value.agreementVersion.length <= 60 ? value.agreementVersion : defaults.agreementVersion,
@@ -35,7 +37,14 @@ export class RegistrationService {
   async updateSettings(input: RegistrationSettingsDto) {
     if (input.emailVerification && !this.mailAvailable()) throw new ServiceUnavailableException('尚未配置邮件通道，不能启用邮箱验证')
     if (input.mode === 'invite' && !this.inviteHashes().length) throw new ServiceUnavailableException('请先配置邀请码哈希')
-    await this.prisma.systemSetting.upsert({ where: { key: 'registration' }, update: { value: { ...input } }, create: { key: 'registration', value: { ...input } } })
+    const { expectedRevision, revision: _revision, ...value } = input
+    void _revision
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:registration'))`
+      const old = await tx.systemSetting.findUnique({ where: { key: 'registration' } })
+      if (old && expectedRevision !== old.revision) throw new ConflictException('注册配置已变化，请重新读取')
+      await tx.systemSetting.upsert({ where: { key: 'registration' }, update: { value: { ...value }, revision: { increment: 1 } }, create: { key: 'registration', value: { ...value } } })
+    })
     return this.configuration()
   }
   private async throttle(action: string, email: string, ip: string) {
@@ -67,13 +76,21 @@ export class RegistrationService {
     } catch { throw new ServiceUnavailableException('邮件通道暂不可用，请稍后再试') }
     finally { transport.close() }
   }
-  async register(input: RegisterDto, ip: string) {
+  async register(input: RegisterDto, ip: string, key?: string) {
     if (Buffer.byteLength(input.password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
     const email = input.email.trim().toLowerCase()
     await this.throttle('register', email, ip)
     const passwordHash = await hash(input.password, 12)
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      let mail: { token: string; email: string } | undefined
+      const result = await this.prisma.$transaction(async (tx) => {
+        const request = await idempotency(tx, email, 'register', key, { ...input, password: createHmac('sha256', this.config.getOrThrow<string>('JWT_SECRET')).update(input.password).digest('hex') })
+        if (request.resourceId) {
+          await lockUser(tx, request.resourceId)
+          const user = await tx.user.findUniqueOrThrow({ where: { id: request.resourceId, status: 'active' }, include: authUserInclude })
+          if (!user.passwordHash || !await compare(input.password, user.passwordHash)) throw new ConflictException('账号凭证已变化，请重新登录')
+          return { user: authUserDto(user), ...await this.auth.createSession(authUserDto(user), tx) }
+        }
         const settings = await this.settings(tx)
         if (settings.mode === 'closed') throw new BadRequestException('注册已关闭，请联系管理员')
         if (input.password.length < settings.passwordMinLength) throw new BadRequestException(`密码至少${settings.passwordMinLength}位`)
@@ -90,17 +107,24 @@ export class RegistrationService {
             registrationSource: settings.mode === 'invite' ? 'email_invite' : 'email',
             profile: { emailVerificationRequired: settings.emailVerification },
             userRoles: { create: { roleId: role.id } }, communityProfile: { create: {} },
-            activities: { create: { eventType: 'student_register', targetType: 'user', payload: { source: settings.mode } } },
           }, include: authUserInclude,
         })
+        await actionEvent(tx, user.id, 'student_register', 'user', user.id, { source: settings.mode })
         const dto = authUserDto(user), session = await this.auth.createSession(dto, tx)
         if (settings.emailVerification) {
           const token = randomBytes(48).toString('base64url')
           await tx.emailVerificationToken.create({ data: { userId: user.id, tokenHash: digest(token), expiresAt: new Date(Date.now() + 30 * 60_000) } })
-          await this.send(email, token, true)
+          mail = { email, token }
         }
+        await request.complete(user.id)
         return { user: dto, ...session }
       }, { timeout: 20000 })
+      let notice: string | undefined
+      if (mail) {
+        try { await this.send(mail.email, mail.token, true) }
+        catch { notice = '账号已创建，但验证邮件发送失败。请联系管理员恢复邮件通道后重新发送验证邮件。'; this.logger.warn('注册验证邮件发送失败，账号已保留') }
+      }
+      return { ...result, notice }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('邮箱或用户名已被使用，请重试')
       throw error
@@ -110,7 +134,7 @@ export class RegistrationService {
     email = email.trim().toLowerCase()
     await this.throttle('forgot', email, ip)
     if (!this.mailAvailable()) throw new ServiceUnavailableException('邮件服务尚未配置，请联系管理员')
-    const user = await this.prisma.user.findUnique({ where: { email } })
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
     if (user?.status === 'active') {
       const token = randomBytes(48).toString('base64url')
       await this.prisma.$transaction(async (tx) => {
@@ -122,6 +146,20 @@ export class RegistrationService {
     }
     return { message: '如果该邮箱对应有效账号，你将收到密码重置邮件。请同时检查垃圾邮件。' }
   }
+  async resendVerification(email: string, ip: string) {
+    await this.throttle('verify-resend', email.trim().toLowerCase(), ip)
+    if (!this.mailAvailable()) throw new ServiceUnavailableException('邮件服务尚未配置，请联系管理员')
+    const user = await this.prisma.user.findFirst({ where: { email: { equals: email.trim(), mode: 'insensitive' }, status: 'active', emailVerifiedAt: null } })
+    if (user) {
+      const token = randomBytes(48).toString('base64url')
+      await this.prisma.$transaction(async (tx) => {
+        await tx.emailVerificationToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } })
+        await tx.emailVerificationToken.create({ data: { userId: user.id, tokenHash: digest(token), expiresAt: new Date(Date.now() + 30 * 60_000) } })
+      })
+      void this.send(user.email, token, true).catch(() => { this.logger.warn('验证邮件重发失败；请检查邮件通道') })
+    }
+    return { message: '如果该账号需要验证，你将收到新的验证邮件。' }
+  }
   async reset(token: string, password: string, ip: string) {
     if (Buffer.byteLength(password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
     await this.throttle('reset', digest(token), ip)
@@ -130,9 +168,11 @@ export class RegistrationService {
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.passwordResetToken.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
       if (!row || row.usedAt || row.expiresAt <= new Date() || row.user.status !== 'active') throw new BadRequestException('重置链接已失效')
+      await lockUser(tx, row.userId)
+      if (!await tx.user.count({ where: { id: row.userId, status: 'active' } })) throw new BadRequestException('账号已失效')
       const claimed = await tx.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } })
       if (!claimed.count) throw new BadRequestException('重置链接已使用')
-      await tx.user.update({ where: { id: row.userId }, data: { passwordHash } })
+      await tx.user.update({ where: { id: row.userId }, data: { passwordHash, sessionVersion: { increment: 1 } } })
       await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } })
       return { reset: true }
     })

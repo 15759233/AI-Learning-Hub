@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import { json } from '../community/community.mapper'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { actionTypes } from '../../common/persistence'
 
 export const signalWeights: Record<string, number> = {
   community_feed_impression: 0.05, community_dwell: 0.1, community_post_click: 0.3, community_post_expand: 0.4,
@@ -17,7 +18,8 @@ type Affinity = Record<string, number>
 export class SignalsService {
   constructor(private readonly prisma: PrismaService) {}
   async record(userId: string, eventType: string, targetType: string, targetId: string, payload: Record<string, unknown> = {}, tx: Prisma.TransactionClient = this.prisma, context: { requestId?: string; sessionId?: string; position?: number } = {}) {
-    await tx.activityEvent.create({ data: { userId, eventType, targetType, targetId, surface: 'community', ...context, payload: json(payload) } })
+    const commentId = typeof payload.commentId === 'string' ? payload.commentId : undefined
+    await tx.activityEvent.create({ data: { userId, eventType, actionType: actionTypes[eventType] || eventType, eventKey: randomUUID(), entityType: commentId ? 'comment' : targetType, entityId: commentId || targetId, targetType, targetId, surface: 'community', ...context, payload: json(payload) } })
   }
   async learningConversion(tx: Prisma.TransactionClient, userId: string, type: 'course' | 'lab', id: string) {
     const source = await tx.activityEvent.findFirst({ where: { userId, eventType: `community_to_${type}`, occurredAt: { gte: new Date(Date.now() - 86400000) }, payload: { path: ['bindingKeys'], array_contains: [`${type}:${id}`] } }, orderBy: { occurredAt: 'desc' } })

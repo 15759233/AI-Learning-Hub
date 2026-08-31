@@ -14,6 +14,7 @@ export class SettingsService {
       value: item.sensitive ? null : item.value,
       sensitive: item.sensitive,
       updatedAt: item.updatedAt,
+      revision: item.revision,
     }))
   }
 
@@ -28,17 +29,22 @@ export class SettingsService {
     if (input.key === 'notification_enabled' && typeof input.value !== 'boolean') throw new BadRequestException('notification_enabled 必须是布尔值')
   }
 
-  update(input: UpdateSettingDto) {
+  async update(input: UpdateSettingDto) {
     this.validate(input)
-    return this.prisma.systemSetting.upsert({
-      where: { key: input.key },
-      update: { value: input.value as Prisma.InputJsonValue },
-      create: { key: input.key, value: input.value as Prisma.InputJsonValue, sensitive: false },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))`
+      const current = await tx.systemSetting.findUnique({ where: { key: input.key } })
+      if (current && current.revision !== input.expectedRevision) throw new ConflictException('设置版本已变化，请刷新后重试')
+      const updated = await tx.systemSetting.upsert({ where: { key: input.key }, create: { key: input.key, value: input.value as Prisma.InputJsonValue }, update: { value: input.value as Prisma.InputJsonValue, revision: { increment: 1 } } })
+      const version = await tx.systemSetting.findUnique({ where: { key: 'settings_version' } })
+      await tx.systemSetting.upsert({ where: { key: 'settings_version' }, create: { key: 'settings_version', value: 1 }, update: { value: Number(version?.value || 0) + 1, revision: { increment: 1 } } })
+      return updated
     })
   }
 
   batch(input: BatchSettingsDto) {
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))`
       const current = await tx.systemSetting.findUnique({ where: { key: 'settings_version' } })
       const currentVersion = Number(current?.value || 0)
       if (input.version !== currentVersion + 1) throw new ConflictException('设置版本已变化，请刷新后重试')
@@ -46,7 +52,7 @@ export class SettingsService {
         this.validate(item)
         await tx.systemSetting.upsert({
           where: { key: item.key },
-          update: { value: item.value as Prisma.InputJsonValue },
+          update: { value: item.value as Prisma.InputJsonValue, revision: { increment: 1 } },
           create: { key: item.key, value: item.value as Prisma.InputJsonValue, sensitive: false },
         })
       }

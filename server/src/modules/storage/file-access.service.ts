@@ -11,7 +11,12 @@ export class FileAccessService {
     if (!file) throw new NotFoundException('文件不存在')
     if (file.uploadedBy === userId) return file
     const reviewer = await this.prisma.userRole.count({ where: { userId, role: { permissions: { some: { permission: { code: 'community.read' } } } } } })
-    if (reviewer && (await this.prisma.communityPost.count({ where: { status: { not: 'draft' }, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }) || await this.prisma.communityComment.count({ where: { post: { status: { not: 'draft' } }, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) return file
+    if (reviewer && (await this.prisma.communityPost.count({ where: { ...this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }) || await this.prisma.communityComment.count({ where: { post: this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) {
+      await this.visibility.auditAdminRead(userId, 'file', id)
+      return file
+    }
+    const resourceEditor = await this.prisma.userRole.count({ where: { userId, role: { permissions: { some: { permission: { code: 'resource.write' } } } } } })
+    if (resourceEditor && await this.prisma.resource.count({ where: { fileId: id } })) return file
     const [resource, post, comment] = await Promise.all([
       this.prisma.resource.count({ where: { fileId: id, status: 'published', deletedAt: null, visibility: 'public' } }),
       this.prisma.communityPost.count({ where: { AND: [await this.visibility.where(userId), { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] } }),

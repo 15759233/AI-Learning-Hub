@@ -23,7 +23,7 @@
   → 管理端读取同一用户与行为记录
 ```
 
-学生端 `mock` 模式只用于前端演示；`api` 模式请求失败会显示错误，不回退 Mock。课程、实训、资讯、题目及首页采用草稿/已发布双指针或发布快照，发布前修改不会污染学生端；首页发布时过滤已删除、下架或未发布的推荐目标。
+学生端默认 `api`；普通生产构建必须显式设置 `VITE_DATA_MODE=api`，Mock 仅由独立演示命令进入并显示标识。API 失败不回退 Mock。课程、实训、资讯、题目及首页采用草稿/已发布双指针或发布快照，发布前修改不会污染学生端。
 
 ## 登录后学习社区
 
@@ -38,6 +38,10 @@
 推荐管线依次执行八类有界召回、批量特征补齐、集中规则打分、可见性过滤及多样性混排。策略集中在 `server/src/modules/feed/feed-policy.ts`；加密游标绑定用户、模式、类型和策略快照。一小时会话内排序固定，后续页仍重新检查可见性；排序故障退回执行相同门禁的时间流。普通 DTO 不返回内部打分、举报人或其他人的私人实训记录。
 
 ActivityEvent 是行为事实源，UserFeedSignalSnapshot 按创建时间增量聚合最近 90 天事件；历史补录、窗口过期或版本变化时完整重建。学习行动、有效互动和强负反馈均参与推荐。社区通知与平台公告保持不同数据源，在通知页合并展示。
+
+注册、发帖、草稿和评论使用数据库事务及 RequestIdempotency；同键重放返回原记录，不重记事件。帖子保存不可变 CommunityPostRevision，编辑携带 `expectedRevision`，旧版本返回 409。浏览器只保留未同步恢复副本；未确认响应先重放原键，再把后续编辑写入同一记录。
+
+UsersModule 管理账号资料、状态、会话与审计；成长模块继续负责学习数据。认证变更与会话签发按用户行锁串行，停用、锁定、密码重置和强制退出使旧 Access/Refresh 会话失效。可见性与批量内容映射集中复用；运营不能读取从未发布的草稿，包括已软删除稿件。
 
 ## 关键边界
 
@@ -59,7 +63,8 @@ ActivityEvent 是行为事实源，UserFeedSignalSnapshot 按创建时间增量�
 cd server
 npm ci
 npx prisma migrate deploy
-npm run prisma:seed
+npm run build
+npm run bootstrap
 npm run start:dev
 ```
 
@@ -71,5 +76,7 @@ cd admin-web && npm ci && VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1 npm run
 ```
 
 默认开发入口为学生端 `:5173`、管理端 `:5174`、API `:3000`。端口有变化时同步调整 `CORS_ORIGINS`，API 模式不得回退 Mock。
+
+空库不会自动创建学习内容；后台发布至少三个学习方向后再开放首次引导。演示数据必须显式 `LOAD_DEMO_DATA=true npm run prisma:seed`。
 
 正式环境拓扑、备份、扩缩容及发布策略见 [服务部署方案](deployment/service-deployment.md)。

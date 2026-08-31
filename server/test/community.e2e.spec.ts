@@ -21,6 +21,14 @@ let app: INestApplication, base: string, admin: string, a: string, b: string, c:
 let aId: string, bId: string, cId: string, noSchoolId: string, schoolId: string, topicA: string, topicB: string, question: string, root: string, secondRoot: string, reply: string
 const input = (suffix: string, extra: Partial<CommunityPostInput> = {}): CommunityPostInput => ({ type: 'question', title: `学习问题 ${suffix}`, contentBlocks: [{ type: 'paragraph', text: `我正在验证学习方法与隐私边界 ${prefix} ${suffix}` }], bindings: [], topicIds: [], visibility: 'public', status: 'published', ...extra })
 async function request<T = any>(path: string, token?: string, method = 'GET', body?: unknown) {
+  // 旧业务断言保留；模拟读取后编辑。显式冲突与缺版本测试另用原始 HTTP。
+  if (method === 'PATCH' && body && typeof body === 'object' && !(body instanceof FormData)) {
+    const id = path.match(/^\/(?:admin\/)?community\/posts\/([^/]+)$/)?.[1]
+    if (id) body = { ...body, expectedRevision: (await db.communityPost.findUnique({ where: { id } }))?.revision || 1 }
+    if (path === '/community/profile' && token) body = { ...(body as object), expectedRevision: (await db.communityProfile.findUnique({ where: { userId: JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).id } }))?.revision || 1 }
+    const official = path.match(/^\/admin\/community\/official\/([^/]+)$/)?.[1]
+    if (official) body = { ...(body as object), expectedRevision: (await db.communityProfile.findUnique({ where: { userId: official } }))?.revision || 1 }
+  }
   const response = await fetch(`${base}${path}`, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body instanceof FormData ? {} : { 'content-type': 'application/json' }) }, ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }) })
   const payload = await response.json().catch(() => null)
   return { status: response.status, data: payload?.data as T, message: payload?.message }

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common'
 import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import type { CommunityContentBlock, CommunityPostDetailDto, CommunityTopicDto, CommunityPostSummaryDto, CommunityBindingInput } from '@ai-learning-hub/contracts'
@@ -8,6 +8,7 @@ import { SignalsService } from '../signals/signals.service'
 import { CommunityVisibilityPolicyService } from './visibility.service'
 import { authorDto, authorInclude, json } from './community.mapper'
 import type { CommunityQueryDto, PostDto } from './community.dto'
+import { actionEvent, idempotency, lockFileReferences, postRevision } from '../../common/persistence'
 
 export const postInclude = {
   author: { include: authorInclude }, bindings: { orderBy: { sortOrder: 'asc' as const } },
@@ -47,10 +48,11 @@ export class CommunityPostService {
     if ((!draft && plainText.length < 1) || plainText.length > 20000) throw new BadRequestException('正文需要 1～20000 字')
     return { clean, plainText }
   }
-  async save(userId: string, input: PostDto, id?: string, audit?: { actorId: string; action: string; reason: string }) {
+  async save(userId: string, input: PostDto, id?: string, audit?: { actorId: string; action: string; reason: string }, key?: string) {
     const viewer = await this.visibility.viewer(userId)
     const current = id ? await this.prisma.communityPost.findUnique({ where: { id } }) : null
     if (id && (!current || current.authorId !== userId || current.deletedAt)) throw new ForbiddenException('只有作者可以编辑自己的内容')
+    if (current && input.expectedRevision === undefined) throw new BadRequestException('编辑动态必须提供 expectedRevision')
     if (current && !['draft', 'published'].includes(current.status)) throw new ForbiddenException('审核中的内容暂不可编辑')
     if (input.visibility === 'school' && !viewer.schoolId) throw new BadRequestException('未认证学校，不能发布同校内容')
     if (input.status === 'published' && ['question', 'project'].includes(input.type) && !input.title?.trim()) throw new BadRequestException('问答和项目需要标题')
@@ -69,15 +71,23 @@ export class CommunityPostService {
     const topics = await this.prisma.communityTopic.findMany({ where: { id: { in: input.topicIds }, status: 'active' } })
     if (topics.length !== input.topicIds.length) throw new BadRequestException('话题已关闭或不存在')
     const contentHash = createHash('sha256').update(plainText.replace(/\s+/g, '').toLowerCase()).digest('hex')
-    if (input.status === 'published' && await this.prisma.communityPost.count({ where: { authorId: userId, contentHash, id: { not: id }, status: { in: ['published', 'limited'] } } })) throw new BadRequestException('相同内容已发布，请编辑原动态')
     const post = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`
+      await lockFileReferences(tx)
+      const request = await idempotency(tx, audit?.actorId || userId, `post:${id || 'new'}`, key, input)
+      if (request.resourceId) return tx.communityPost.findUniqueOrThrow({ where: { id: request.resourceId } })
+      const fileIds = clean.flatMap((block) => block.type === 'image' ? [block.fileId] : [])
+      if (fileIds.length && await tx.fileRecord.count({ where: { id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-write:${userId}`},0))`
       const latest = id ? await tx.communityPost.findUnique({ where: { id } }) : null
+      if (id && (!latest || latest.deletedAt || latest.authorId !== userId || !['draft', 'published'].includes(latest.status))) throw new ConflictException('动态状态已变化，请重新读取')
+      if (latest && latest.revision !== input.expectedRevision) throw new ConflictException('已有较新的服务端版本，请保留当前输入并重新读取')
+      if (input.status === 'published' && await tx.communityPost.count({ where: { authorId: userId, contentHash, id: { not: id }, status: { in: ['published', 'limited'] } } })) throw new ConflictException('相同内容已发布，请编辑原动态')
       const publishing = input.status === 'published' && latest?.status !== 'published'
       if (publishing && await tx.activityEvent.count({ where: { userId, eventType: 'community_post_publish', createdAt: { gt: new Date(Date.now() - 60000) } } }) >= 5) throw new HttpException('发布过于频繁，请稍后再试', 429)
       const oldTopicIds = current ? (await tx.communityPostTopic.findMany({ where: { postId: current.id } })).map((row) => row.topicId) : []
       const data = { authorId: userId, postType: input.type, status: input.status, visibility: input.visibility, schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: input.status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
-      const saved = id ? await tx.communityPost.update({ where: { id }, data }) : await tx.communityPost.create({ data })
+      if (latest) await postRevision(tx, latest.id, userId, 'user', '编辑前版本')
+      const saved = id ? await tx.communityPost.update({ where: { id, revision: latest!.revision }, data: { ...data, revision: { increment: 1 } } }) : await tx.communityPost.create({ data })
       await tx.communityPostBinding.deleteMany({ where: { postId: saved.id } })
       await tx.communityPostTopic.deleteMany({ where: { postId: saved.id } })
       await tx.communityPostBinding.createMany({ data: input.bindings.map((ref, sortOrder) => ({ postId: saved.id, targetType: ref.type, targetId: references.get(`${ref.type}:${ref.id}`)!.id, titleSnapshot: references.get(`${ref.type}:${ref.id}`)!.title, sortOrder })), skipDuplicates: true })
@@ -89,7 +99,10 @@ export class CommunityPostService {
       const topicIds = [...new Set([...topics.map((row) => row.id), ...oldTopicIds])]
       for (const topicId of topicIds) await tx.communityTopic.update({ where: { id: topicId }, data: { postCount: await tx.communityPostTopic.count({ where: { topicId, post: { status: 'published', deletedAt: null } } }) } })
       if (publishing) await this.signals.record(userId, 'community_post_publish', 'post', saved.id, { postType: input.type, topicIds: input.topicIds, bindingKeys: input.bindings.map((ref) => `${ref.type}:${references.get(`${ref.type}:${ref.id}`)!.id}`) }, tx)
+      else await actionEvent(tx, audit?.actorId || userId, input.status === 'draft' ? 'post_draft_saved' : 'post_edited', 'post', saved.id, {}, audit ? 'admin-web' : 'student-web')
+      await postRevision(tx, saved.id, audit?.actorId || userId, audit ? 'admin' : 'user', audit?.reason || '')
       if (audit) await tx.communityModerationAction.create({ data: { ...audit, targetType: 'post', targetId: saved.id } })
+      await request.complete(saved.id)
       return saved
     })
     return this.detail(userId, post.id)
@@ -99,7 +112,11 @@ export class CommunityPostService {
     const post = await this.prisma.communityPost.findUnique({ where: { id } })
     if (!post || post.authorId !== userId) throw new ForbiddenException('只有作者可以删除自己的动态')
     await this.prisma.$transaction(async (tx) => {
-      await tx.communityPost.updateMany({ where: { id, authorId: userId, deletedAt: null }, data: { deletedAt: new Date(), status: 'removed' } })
+      await lockFileReferences(tx)
+      await tx.$queryRaw`SELECT id FROM community_posts WHERE id = ${id} FOR UPDATE`
+      await postRevision(tx, id, userId)
+      const changed = await tx.communityPost.updateMany({ where: { id, authorId: userId, deletedAt: null }, data: { deletedAt: new Date(), status: 'removed', revision: { increment: 1 } } })
+      if (changed.count) { await postRevision(tx, id, userId); await actionEvent(tx, userId, 'post_deleted', 'post', id) }
       await tx.communityProfile.updateMany({ where: { userId }, data: { postCount: await tx.communityPost.count({ where: { authorId: userId, status: 'published', deletedAt: null } }) } })
       for (const { topicId } of await tx.communityPostTopic.findMany({ where: { postId: id } })) await tx.communityTopic.update({ where: { id: topicId }, data: { postCount: await tx.communityPostTopic.count({ where: { topicId, post: { status: 'published', deletedAt: null } } }) } })
     })
@@ -121,7 +138,8 @@ export class CommunityPostService {
     const publicLabs = await this.refs.resolveMany(runs.map((run) => ({ type: 'lab', id: run.labId })), userId)
     const runRefs = new Map(runs.map((run) => [run.id, publicLabs.get(`lab:${run.labId}`)]))
     return rows.map((row) => ({
-      id: row.id, type: row.postType, status: row.status, visibility: row.visibility, title: row.title,
+      id: row.id, revision: row.revision, type: row.postType, status: row.status, visibility: row.visibility, title: row.title,
+      mediaCount: (row.contentBlocks as CommunityContentBlock[]).filter((block) => block.type === 'image').length,
       body: row.body, bodyPreview: row.plainText.slice(0, 320), contentBlocks: row.contentBlocks as CommunityContentBlock[],
       author: authorDto(row.author),
       bindings: [...new Map(row.bindings.map((ref) => {

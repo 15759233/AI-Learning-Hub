@@ -1,10 +1,10 @@
 import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentInput, CommunityContextDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
-import { dataMode, request } from './client'
+import { dataMode, request, writeRequest } from './client'
 import { mockCommunity } from './community.mock'
 import type { AuthUser, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
 const demoImages = new Map<string, File>()
-const call = <T>(path: string, method = 'GET', body?: unknown): Promise<T> => dataMode === 'api'
-  ? request<T>(`/community${path}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) })
+const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
+  ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
   : mockCommunity<T>(path, method, body)
 export const communityApi = {
   feed: (mode: CommunityFeedMode, type: CommunityPostType | 'all', cursor?: string) => call<CommunityFeedDto>(`/feed?${new URLSearchParams({ mode, type, ...(cursor ? { cursor } : {}) })}`),
@@ -12,26 +12,26 @@ export const communityApi = {
   context: () => call<CommunityContextDto>('/context'),
   bindingContext: (binding: CommunityBindingInput) => call<CommunityBindingContextDto>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`),
   post: (id: string) => call<CommunityPostDetailDto>(`/posts/${id}`),
-  save: (input: CommunityPostInput, id?: string) => call<CommunityPostDetailDto>(id ? `/posts/${id}` : '/posts', id ? 'PATCH' : 'POST', input),
+  save: (input: CommunityPostInput, id?: string, key?: string) => call<CommunityPostDetailDto>(id ? `/posts/${id}` : '/posts', id ? 'PATCH' : 'POST', input, key),
   remove: (id: string) => call(`/posts/${id}`, 'DELETE'),
   list: (kind: 'posts' | 'bookmarks' | 'user' | 'answers' | 'topic', id = '', query = '') => call<CommunityPostDetailDto[]>(kind === 'user' || kind === 'answers' ? `/users/${encodeURIComponent(id)}/${kind === 'answers' ? 'answers' : 'posts'}` : kind === 'topic' ? `/topics/${encodeURIComponent(id)}/posts` : `/${kind}${query ? `?${query}` : ''}`),
   comments: (id: string) => call<CommunityCommentDto[]>(`/posts/${id}/comments`),
   comment: (postId: string, input: CommunityCommentInput, id?: string) => call<CommunityCommentDto>(id ? `/comments/${id}` : `/posts/${postId}/comments`, id ? 'PATCH' : 'POST', input),
   removeComment: (id: string) => call(`/comments/${id}`, 'DELETE'),
   accept: (postId: string, id: string) => call(`/questions/${postId}/accept/${id}`, 'POST'),
-  reaction: (id: string, kind: 'like' | 'useful' | 'bookmark', active: boolean) => call(`/posts/${id}/${kind === 'bookmark' ? 'bookmark' : `reactions/${kind}`}`, active ? 'PUT' : 'DELETE'),
+  reaction: (id: string, kind: 'like' | 'useful' | 'bookmark', active: boolean) => call<{ active: boolean; stats?: CommunityPostDetailDto['stats'] }>(`/posts/${id}/${kind === 'bookmark' ? 'bookmark' : `reactions/${kind}`}`, active ? 'PUT' : 'DELETE'),
   commentLike: (id: string, active: boolean) => call(`/comments/${id}/like`, active ? 'PUT' : 'DELETE'),
-  follow: (id: string, topic: boolean, active: boolean) => call(`/${topic ? 'topics' : 'users'}/${id}/follow`, active ? 'PUT' : 'DELETE'),
+  follow: (id: string, topic: boolean, active: boolean) => call<{ active: boolean; followerCount?: number }>(`/${topic ? 'topics' : 'users'}/${id}/follow`, active ? 'PUT' : 'DELETE'),
   profile: (username: string) => call<CommunityProfileDto>(`/users/by-username/${encodeURIComponent(username)}`),
   username: (username: string) => call<AuthUser>('/profile/username', 'PATCH', { username }),
   onboarding: (input: OnboardingInput) => call<AuthUser>('/onboarding', 'POST', input),
-  schools: () => call<Array<{ id: string; name: string }>>('/onboarding/schools'),
+  schools: () => call<Array<{ id: string; name: string; departments?: Array<{ id: string; name: string }> }>>('/onboarding/schools'),
   search: (q: string, type: CommunitySearchType, cursor?: string) => call<CommunitySearchResultDto>(`/search?${new URLSearchParams({ q, type, ...(cursor ? { cursor } : {}) })}`),
   drafts: () => call<CommunityDraftDto[]>('/drafts'),
-  saveDraft: (input: CommunityPostInput, id?: string) => call<CommunityPostDetailDto>(id ? `/drafts/${id}` : '/drafts', id ? 'PATCH' : 'POST', { ...input, status: 'draft' }),
+  saveDraft: (input: CommunityPostInput, id?: string, key?: string) => call<CommunityPostDetailDto>(id ? `/drafts/${id}` : '/drafts', id ? 'PATCH' : 'POST', { ...input, status: 'draft' }, key),
   deleteDraft: (id: string) => call(`/drafts/${id}`, 'DELETE'),
   following: (id: string) => call<CommunityAuthorDto[]>(`/users/${encodeURIComponent(id)}/following`),
-  updateProfile: (input: Pick<CommunityProfileDto, 'bio' | 'headline' | 'expertiseTopics' | 'allowAchievementDrafts'>) => call<CommunityProfileDto>('/profile', 'PATCH', input),
+  updateProfile: (input: Pick<CommunityProfileDto, 'bio' | 'headline' | 'expertiseTopics' | 'allowAchievementDrafts'> & { expectedRevision?: number }) => call<CommunityProfileDto>('/profile', 'PATCH', input),
   topics: () => call<CommunityTopicDto[]>('/topics'),
   interests: (themeIds: string[]) => call<CommunityContextDto>('/interests', 'POST', { themeIds }),
   feedback: (id: string, kind: 'hide' | 'not-interested' | 'mute' | 'block') => call(`/${kind === 'mute' || kind === 'block' ? 'users' : 'posts'}/${id}/${kind}`, 'POST'),

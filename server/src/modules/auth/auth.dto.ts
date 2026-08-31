@@ -31,6 +31,7 @@ export class VerificationDto {
   @IsString() @Matches(/^[A-Za-z0-9_-]{40,128}$/) token!: string
 }
 export class RegistrationSettingsInput implements RegistrationSettingsDto {
+  @IsInt() @Min(1) expectedRevision!: number
   @IsIn(['open', 'invite', 'closed']) mode!: RegistrationSettingsDto['mode']
   @IsBoolean() emailVerification!: boolean
   @IsString() @Length(1, 60) agreementVersion!: string
@@ -39,6 +40,7 @@ export class RegistrationSettingsInput implements RegistrationSettingsDto {
 }
 
 export class UpdateProfileDto {
+  @IsInt() @Min(1) expectedRevision!: number
   @IsString()
   @Length(1, 40)
   displayName!: string

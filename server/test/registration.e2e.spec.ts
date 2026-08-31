@@ -20,6 +20,21 @@ const sha = (value: string) => createHash('sha256').update(value).digest('hex')
 let app: INestApplication, smtp: Server, base: string, admin: string, actor: AuthSessionDto
 const body = (name: string) => ({ displayName: '新学习者', email: `${prefix}-${name}@example.invalid`, password, agreementVersion: settings.agreementVersion })
 async function request<T = any>(path: string, token?: string, method = 'GET', input?: unknown, headers = {}) {
+  // 既有业务用例按新编辑契约携带当前版本；并发/缺失版本用例在 persistence.e2e 中直接发原始请求。
+  if (input && typeof input === 'object') {
+    let revision: number | undefined
+    const postId = path.match(/^\/community\/(?:posts|drafts)\/([^/]+)$/)?.[1]
+    if (method === 'PATCH' && postId) revision = (await db.communityPost.findUnique({ where: { id: postId } }))?.revision
+    if (method === 'PATCH' && path === '/admin/registration/settings') revision = (await db.systemSetting.findUnique({ where: { key: 'registration' } }))?.revision
+    if (path === '/community/onboarding' && token) {
+      const userId = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).id
+      revision = (await db.user.findUnique({ where: { id: userId } }))?.revision
+      input = { ...input, expectedProfileRevision: (await db.communityProfile.findUnique({ where: { userId } }))?.revision || 1 }
+    }
+    const userId = path.match(/^\/admin\/users\/([^/]+)\/status$/)?.[1]
+    if (userId) { revision = (await db.user.findUnique({ where: { id: userId } }))?.revision; input = { ...(input as object), reason: '隔离回归验证账号禁用' } }
+    if (revision) input = { ...(input as object), expectedRevision: revision }
+  }
   const response = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers }, ...(input ? { body: JSON.stringify(input) } : {}) })
   const payload = await response.json()
   return { status: response.status, data: payload.data as T, message: payload.message as string, cookie: response.headers.getSetCookie() }
@@ -122,7 +137,7 @@ describe('COMM-002 注册、导航配套与社区补全真实回归', () => {
     expect((await request('/admin/settings/batch', admin, 'PATCH', { version: version + 1, items: [{ key: 'registration', value: { injected: 'not-public' } }] })).status).toBe(400)
     await db.systemSetting.update({ where: { key: 'registration' }, data: { value: { ...settings, injected: 'not-public', SMTP_PASSWORD: 'not-a-secret-test-marker' } } })
     const response = await request('/auth/registration-config')
-    expect(Object.keys(response.data).sort()).toEqual([...Object.keys(settings), 'mailAvailable', 'inviteAvailable'].sort())
+    expect(Object.keys(response.data).sort()).toEqual([...Object.keys(settings), 'mailAvailable', 'inviteAvailable', 'revision'].sort())
     expect(JSON.stringify(response)).not.toContain('not-public')
   })
   it('真实发布并发限流为5次，草稿不计数且不能通过草稿发布绕过', async () => {
@@ -233,7 +248,7 @@ describe('COMM-002 注册、导航配套与社区补全真实回归', () => {
   it('账号查询有来源等字段，禁用撤销旧会话且管理员受保护', async () => {
     const account = (await register('disable')).data
     const users = await request(`/admin/users?keyword=${account.user.username}`, admin)
-    expect(users.data[0]).toMatchObject({ registrationSource: 'email', username: account.user.username, communityPostCount: 0 })
+    expect(users.data.items[0]).toMatchObject({ registrationSource: 'email', username: account.user.username, communityPostCount: 0 })
     expect((await request(`/admin/users/${account.user.id}/status`, admin, 'PATCH', { status: 'disabled' })).status).toBe(200)
     expect((await request('/me', account.accessToken)).status).toBe(401)
     const disabledLogin = await request('/auth/login', undefined, 'POST', { email: account.user.email, password })

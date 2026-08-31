@@ -9,20 +9,22 @@ import type { OnboardingDto, ProfileDto } from './community.dto'
 import { RegistrationService } from '../auth/registration.service'
 import { authUserDto, authUserInclude } from '../auth/auth.mapper'
 import { Prisma } from '@prisma/client'
+import { actionEvent } from '../../common/persistence'
 
 @Injectable()
 export class CommunityContextService {
   constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService, private readonly references: ContentReferenceService, private readonly interactions: CommunityInteractionService, private readonly registration: RegistrationService) {}
   async byUsername(userId: string, username: string) {
-    const user = await this.prisma.user.findUnique({ where: { username }, select: { id: true } })
+    const user = await this.prisma.user.findFirst({ where: { username: { equals: username, mode: 'insensitive' } }, select: { id: true } })
     if (!user) throw new NotFoundException('用户不存在')
     return this.profile(userId, user.id)
   }
   async changeUsername(userId: string, username: string) {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username, usernameChangedAt: new Date() } })
+        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username, usernameChangedAt: new Date(), revision: { increment: 1 } } })
         if (!changed.count) throw new BadRequestException('公开用户名只能修改一次')
+        await actionEvent(tx, userId, 'profile_updated', 'user', userId)
         return authUserDto(await tx.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
       })
     } catch (error) {
@@ -35,11 +37,15 @@ export class CommunityContextService {
     if (!user.emailVerifiedAt && (user.profile as Record<string, unknown>).emailVerificationRequired) throw new BadRequestException('请先打开邮件完成邮箱验证')
     if (settings.schoolRequired && !input.schoolId) throw new BadRequestException('请选择学校')
     if (input.schoolId && !await this.prisma.school.count({ where: { id: input.schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
-    await this.interests(userId, input.themeIds)
-    await this.prisma.$transaction([
-      this.prisma.user.update({ where: { id: userId }, data: { schoolId: input.schoolId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date() } }),
-      this.prisma.communityProfile.upsert({ where: { userId }, create: { userId, headline: input.headline }, update: { headline: input.headline } }),
-    ])
+    if (input.departmentId && !await this.prisma.department.count({ where: { id: input.departmentId, schoolId: input.schoolId } })) throw new BadRequestException('院系不属于所选学校')
+    await this.prisma.$transaction(async (tx) => {
+      if (!input.expectedRevision || !input.expectedProfileRevision) throw new BadRequestException('请携带账号与社区资料版本')
+      if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedRevision }, data: { schoolId: input.schoolId || null, departmentId: input.departmentId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date(), revision: { increment: 1 } } })).count) throw new ConflictException('资料已更新，请重新读取')
+      await this.saveInterests(tx, userId, input.themeIds)
+      await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
+      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { headline: input.headline, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已变化，请重新读取')
+      await actionEvent(tx, userId, 'onboarding_completed', 'user', userId)
+    })
     return authUserDto(await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
   }
   async bindingContext(userId: string, input: CommunityBindingInput): Promise<CommunityBindingContextDto> {
@@ -64,11 +70,17 @@ export class CommunityContextService {
       this.prisma.communityUserFollow.count({ where: { followerId: userId, followeeId: user.id } }),
       this.prisma.communityPost.count({ where: { AND: [await this.visibility.where(userId), { authorId: user.id }] } }),
     ])
-    return { ...authorDto(user), bio: user.communityProfile?.bio || '', headline: user.communityProfile?.headline || '', expertiseTopics: user.communityProfile?.expertiseTopics || [], ...(user.id === userId ? { allowAchievementDrafts: user.communityProfile?.allowAchievementDrafts || false } : {}), postCount, followerCount: user.communityProfile?.followerCount || 0, followingCount: user.communityProfile?.followingCount || 0, following: !!following, topics: topics.filter((topic) => topic.following) }
+    return { ...authorDto(user), revision: user.communityProfile?.revision || 1, bio: user.communityProfile?.bio || '', headline: user.communityProfile?.headline || '', expertiseTopics: user.communityProfile?.expertiseTopics || [], ...(user.id === userId ? { allowAchievementDrafts: user.communityProfile?.allowAchievementDrafts || false } : {}), postCount, followerCount: user.communityProfile?.followerCount || 0, followingCount: user.communityProfile?.followingCount || 0, following: !!following, topics: topics.filter((topic) => topic.following) }
   }
   async updateProfile(userId: string, input: ProfileDto) {
     await this.visibility.viewer(userId)
-    await this.prisma.communityProfile.upsert({ where: { userId }, create: { userId, ...input }, update: input })
+    if (input.expectedRevision === undefined) throw new BadRequestException('编辑资料必须提供 expectedRevision')
+    const { expectedRevision, ...data } = input
+    await this.prisma.$transaction(async (tx) => {
+      const current = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
+      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: expectedRevision ?? current.revision }, data: { ...data, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已更新，请重新读取')
+      await actionEvent(tx, userId, 'profile_updated', 'user', userId)
+    })
     return this.profile(userId, userId)
   }
   async following(userId: string, username: string) {
@@ -78,15 +90,24 @@ export class CommunityContextService {
     return (await this.prisma.user.findMany({ where: { id: { in: follows.map((row) => row.followeeId), notIn: excluded.authors }, status: 'active' }, include: authorInclude })).map(authorDto)
   }
   async interests(userId: string, themeIds: string[]) {
+    await this.prisma.$transaction((tx) => this.saveInterests(tx, userId, themeIds))
+    return this.context(userId)
+  }
+  private async saveInterests(tx: Prisma.TransactionClient, userId: string, themeIds: string[]) {
     if (themeIds.length !== 3) throw new BadRequestException('请选择 3 个学习方向')
-    const themes = await this.prisma.theme.findMany({ where: { OR: [{ id: { in: themeIds } }, { slug: { in: themeIds } }], status: 'published', deletedAt: null } })
+    const themes = await tx.theme.findMany({ where: { OR: [{ id: { in: themeIds } }, { slug: { in: themeIds } }], status: 'published', deletedAt: null } })
     if (themes.length !== 3) throw new BadRequestException('学习方向不存在')
-    const topics = await this.prisma.communityTopic.findMany({ where: { themeId: { in: themes.map((theme) => theme.id) }, status: 'active' }, orderBy: { sortOrder: 'asc' } })
+    const topics = await tx.communityTopic.findMany({ where: { themeId: { in: themes.map((theme) => theme.id) }, status: 'active' }, orderBy: { sortOrder: 'asc' } })
     for (const theme of themes) {
       const topic = topics.find((topic) => topic.themeId === theme.id)
-      if (topic) await this.interactions.follow(userId, topic.id, true, true)
+      if (topic) {
+        const changed = await tx.communityTopicFollow.createMany({ data: [{ userId, topicId: topic.id }], skipDuplicates: true })
+        if (changed.count) {
+          await tx.communityTopic.update({ where: { id: topic.id }, data: { followerCount: { increment: 1 } } })
+          await actionEvent(tx, userId, 'community_topic_follow', 'topic', topic.id, { topicIds: [topic.id] })
+        }
+      }
     }
-    return this.context(userId)
   }
   async context(userId: string): Promise<CommunityContextDto> {
     const viewer = await this.visibility.viewer(userId)

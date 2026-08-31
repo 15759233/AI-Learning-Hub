@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma, PublishStatus } from '@prisma/client'
 import { ContentSupportService } from '../../common/content/content-support.service'
 import { PrismaService } from '../../prisma/prisma.service'
 import type { PageQueryDto } from '../../common/content/page-query.dto'
 import type { CreateResourceDto, UpdateResourceDto } from './resource.dto'
+import { lockFileReferences } from '../../common/persistence'
 
 const dataFields = ['downloadPermission', 'difficulty', 'tags', 'cover', 'themeId', 'courseId', 'labId']
 
@@ -97,6 +98,8 @@ export class ResourceService {
   async create(input: CreateResourceDto, actorId: string) {
     const data = this.support.pick(input, dataFields)
     const item = await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
       const resource = await tx.resource.create({
         data: {
           slug: input.slug,
@@ -125,6 +128,8 @@ export class ResourceService {
     if (!current) throw new NotFoundException('资源不存在')
     const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
     const item = await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
       const resource = await tx.resource.update({
         where: { id },
         data: {
@@ -173,6 +178,7 @@ export class ResourceService {
     if (!version) throw new NotFoundException('资源版本不存在')
     const snapshot = this.snapshot(version.snapshot)
     await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       const versionNo = await tx.resourceVersion.count({ where: { resourceId: id } }) + 1
       const draft = await tx.resourceVersion.create({
         data: { resourceId: id, versionNo, snapshot: version.snapshot as Prisma.InputJsonValue },
