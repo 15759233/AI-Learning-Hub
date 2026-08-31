@@ -33,12 +33,13 @@ export class AuthService {
     })
     const passwordValid = !!user?.passwordHash && await compare(password, user.passwordHash)
     if (!user || !passwordValid || user.status !== 'active') {
-      await this.prisma.$executeRaw`INSERT INTO login_throttles(identity_key,failures,expires_at)
-        VALUES(${identityKey},1,NOW()+INTERVAL '15 minutes')
+      await this.prisma.$executeRaw`INSERT INTO login_throttles(identity_key,failures,expires_at,updated_at)
+        VALUES(${identityKey},1,NOW()+INTERVAL '15 minutes',NOW())
         ON CONFLICT(identity_key) DO UPDATE SET
         failures=CASE WHEN login_throttles.expires_at<NOW() THEN 1 ELSE login_throttles.failures+1 END,
         blocked_until=CASE WHEN login_throttles.expires_at>=NOW() AND login_throttles.failures>=4 THEN NOW()+INTERVAL '1 minute' ELSE NULL END,
-        expires_at=CASE WHEN login_throttles.expires_at<NOW() THEN NOW()+INTERVAL '15 minutes' ELSE login_throttles.expires_at END`
+        expires_at=CASE WHEN login_throttles.expires_at<NOW() THEN NOW()+INTERVAL '15 minutes' ELSE login_throttles.expires_at END,
+        updated_at=NOW()`
       await this.prisma.loginLog.create({ data: { userId: user?.id, email, ipHash: hashToken(ip), result: 'failed' } })
       throw new UnauthorizedException(passwordValid && user?.status !== 'active' ? '账号已禁用，请联系管理员' : '账号或密码错误')
     }

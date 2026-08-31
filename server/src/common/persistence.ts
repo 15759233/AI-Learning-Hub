@@ -9,7 +9,7 @@ export async function lockUser(tx: Prisma.TransactionClient, id: string) {
 }
 export async function lockFileReferences(tx: Prisma.TransactionClient) {
   // ponytail: JSON 引用用全局短事务锁；写入量增大后再细化到逐文件锁。
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('file-references', 0))`
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('file-references', 0))::text`
 }
 /** JSON 内容块没有外键；与写入共用事务锁，保守检查所有业务字段及历史快照。 */
 export async function fileReferenced(tx: Prisma.TransactionClient, id: string) {
@@ -31,7 +31,7 @@ export async function idempotency(tx: Prisma.TransactionClient, principal: strin
   if (!key) return { resourceId: null, complete: async (_id: string) => {} }
   if (!/^[A-Za-z0-9:._-]{8,128}$/.test(key)) throw new BadRequestException('Idempotency-Key 必须为8～128位安全字符')
   const principalKey = digest(principal), requestHash = digest(canonical(input))
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${principalKey}:${scope}:${key}`}, 0))`
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${principalKey}:${scope}:${key}`}, 0))::text`
   const where = { principalKey_scope_idempotencyKey: { principalKey, scope, idempotencyKey: key } }
   const existing = await tx.requestIdempotency.findUnique({ where })
   if (existing && existing.expiresAt > new Date() && existing.requestHash !== requestHash) throw new ConflictException('同一幂等键不能用于不同内容')

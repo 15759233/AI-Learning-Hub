@@ -79,7 +79,10 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
   it('非作者不能改删，普通 DTO 不包含内部或身份信息', async () => {
     expect((await request(`/community/posts/${question}`, b, 'PATCH', input('盗改'))).status).toBe(403)
     expect((await request(`/community/posts/${question}`, b, 'DELETE')).status).toBe(403)
-    const result = (await request(`/community/posts/${question}`, b)).data
+    const response = await request(`/community/posts/${question}`, b)
+    expect(response.status).toBe(200)
+    const result = response.data
+    expect(result.id).toBe(question)
     for (const key of ['passwordHash', 'email', 'phone', 'studentNo', 'score', 'dimensions', 'reporterId', 'sourceId']) expect(JSON.stringify(result)).not.toContain(`"${key}":`)
   })
   it('同校隔离同时覆盖详情、列表、搜索、书签和信息流', async () => {
@@ -180,8 +183,10 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     expect(JSON.stringify((await request(`/community/posts/${post.id}`, b)).data)).not.toContain(aId)
     const report = await db.communityReport.findFirstOrThrow({ where: { postId: post.id } })
     expect((await request(`/admin/community/reports/${report.id}/handle`, b, 'POST', { action: 'hide', reason: '越权处理测试' })).status).toBe(403)
-    const adminRows = (await request<any[]>('/admin/community/reports', admin)).data
-    expect(adminRows.find((r) => r.id === report.id)).not.toHaveProperty('reporterId')
+    const adminRows = (await request<{ items: any[] }>(`/admin/community/reports?keyword=${encodeURIComponent(report.reason)}`, admin)).data
+    const adminReport = adminRows.items.find((r) => r.id === report.id)
+    expect(adminReport).toBeDefined()
+    expect(adminReport).not.toHaveProperty('reporterId')
     const moderationPath = `/admin/community/post/${post.id}/moderate`
     for (const action of ['limit', 'restore', 'label', 'hide', 'remove', 'restore'] as const) {
       const payload = communityModerationPayload({ action, reason: '使用真实后台表单请求验证处理闭环', label: action === 'label' ? '  来源已核实  ' : '' })

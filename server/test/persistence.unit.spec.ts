@@ -2,10 +2,11 @@ import 'reflect-metadata'
 import { describe, expect, it, vi } from 'vitest'
 import { BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { actionEvent, idempotency } from '../src/common/persistence'
+import { actionEvent, idempotency, lockFileReferences } from '../src/common/persistence'
 import { StorageBase } from '../src/modules/storage/storage.base'
 import { PersistenceService } from '../src/modules/persistence/persistence.service'
 import type { PrismaService } from '../src/prisma/prisma.service'
+import { AuthService } from '../src/modules/auth/auth.service'
 
 describe('持久化原子职责', () => {
   it('规范化幂等请求键顺序、拒绝同键异内容、过期记录可更新', async () => {
@@ -18,6 +19,23 @@ describe('持久化原子职责', () => {
     stored.expiresAt = new Date(0)
     expect((await idempotency(tx, 'user-a', 'post:new', 'retry-key-1', { a: 2 })).resourceId).toBeNull()
     await expect(idempotency(tx, 'user-a', 'post:new', 'bad', {})).rejects.toThrow()
+    expect(tx.$queryRaw.mock.calls.every(([sql]: [TemplateStringsArray]) => sql.join('?').endsWith('::text'))).toBe(true)
+  })
+  it('JSON文件引用锁使用可解码投影，仍调用事务级咨询锁', async () => {
+    const tx: any = { $queryRaw: vi.fn() }
+    await lockFileReferences(tx)
+    expect(tx.$queryRaw).toHaveBeenCalledOnce()
+    expect(tx.$queryRaw.mock.calls[0][0].join('?')).toBe("SELECT pg_advisory_xact_lock(hashtextextended('file-references', 0))::text")
+  })
+  it('登录拒绝路径原生计数显式维护数据库必填时间，不依赖Prisma字段默认行为', async () => {
+    const db: any = { $queryRaw: vi.fn().mockResolvedValue([{ attempts: 1 }]), $executeRaw: vi.fn(), loginThrottle: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findFirst: vi.fn().mockResolvedValue(null) }, loginLog: { create: vi.fn() } }
+    const auth = new AuthService(db, {} as never, new ConfigService(), {} as never)
+    await expect(auth.login('missing@example.invalid', 'Wrong123', 'isolated-login', 'isolated')).rejects.toThrow('账号或密码错误')
+    const sql = db.$executeRaw.mock.calls[0][0].join('?')
+    expect(sql).toContain('INSERT INTO login_throttles(identity_key,failures,expires_at,updated_at)')
+    expect(sql).toMatch(/VALUES\([\s\S]*NOW\(\)\)/)
+    expect(sql).toContain('updated_at=NOW()')
+    expect(db.loginLog.create).toHaveBeenCalledOnce()
   })
   it('一个行为只写一条既有事件，保留规范事件与实体身份', async () => {
     const tx: any = { activityEvent: { create: vi.fn() } }

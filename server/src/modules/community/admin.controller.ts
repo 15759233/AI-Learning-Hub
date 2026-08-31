@@ -182,7 +182,7 @@ export class CommunityAdminController {
     }
     policy.version = `learning-v1-${Date.now()}`
     await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:community_feed_policy'))`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:community_feed_policy'))::text`
       const old = await tx.systemSetting.findUnique({ where: { key: 'community_feed_policy' } })
       if (old && input.expectedRevision !== old.revision) throw new ConflictException('推荐设置已变化，请刷新')
       const { revision: _revision, ...snapshot } = policy

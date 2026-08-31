@@ -32,7 +32,7 @@ export class SettingsService {
   async update(input: UpdateSettingDto) {
     this.validate(input)
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))::text`
       const current = await tx.systemSetting.findUnique({ where: { key: input.key } })
       if (current && current.revision !== input.expectedRevision) throw new ConflictException('设置版本已变化，请刷新后重试')
       const updated = await tx.systemSetting.upsert({ where: { key: input.key }, create: { key: input.key, value: input.value as Prisma.InputJsonValue }, update: { value: input.value as Prisma.InputJsonValue, revision: { increment: 1 } } })
@@ -44,7 +44,7 @@ export class SettingsService {
 
   batch(input: BatchSettingsDto) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('settings-version',0))::text`
       const current = await tx.systemSetting.findUnique({ where: { key: 'settings_version' } })
       const currentVersion = Number(current?.value || 0)
       if (input.version !== currentVersion + 1) throw new ConflictException('设置版本已变化，请刷新后重试')

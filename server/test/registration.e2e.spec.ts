@@ -172,6 +172,7 @@ describe('COMM-002 注册、导航配套与社区补全真实回归', () => {
     expect((await request('/auth/password/reset', undefined, 'POST', { token, password: `${password}2` })).status).toBe(201)
     expect((await request('/auth/password/reset', undefined, 'POST', { token, password })).status).toBe(400)
     expect(await db.refreshToken.count({ where: { userId: actor.user.id, revokedAt: null } })).toBe(0)
+    expect((await request('/me', actor.accessToken)).status).toBe(401)
   })
   it('过期和并发重置令牌拒绝复用', async () => {
     const token = randomBytes(48).toString('base64url')
@@ -180,6 +181,10 @@ describe('COMM-002 注册、导航配套与社区补全真实回归', () => {
     await db.passwordResetToken.update({ where: { tokenHash: sha(token) }, data: { expiresAt: new Date(Date.now() + 60000) } })
     const results = await Promise.all([1, 2].map(() => request('/auth/password/reset', undefined, 'POST', { token, password })))
     expect(results.map((r) => r.status).sort()).toEqual([201, 400])
+    expect((await request('/me', actor.accessToken)).status).toBe(401)
+    const renewed = await request<AuthSessionDto>('/auth/login', undefined, 'POST', { email: actor.user.email, password })
+    expect(renewed.status).toBe(201)
+    actor = renewed.data
   })
   it('邮箱验证开关真实发送且验证前阻止社区互动', async () => {
     await request('/admin/registration/settings', admin, 'PATCH', { ...settings, emailVerification: true })

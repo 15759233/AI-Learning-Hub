@@ -14,6 +14,7 @@ import { bootstrapDatabase } from '../src/modules/persistence/bootstrap'
 import { STORAGE_SERVICE, StorageService } from '../src/modules/storage/storage.types'
 import { AuthService } from '../src/modules/auth/auth.service'
 import { UsersService } from '../src/modules/users/users.service'
+import { idempotency, lockFileReferences } from '../src/common/persistence'
 import type { AuthSessionDto, CommunityPostDetailDto } from '@ai-learning-hub/contracts'
 
 if (!process.env.DATABASE_URL?.includes('127.0.0.1:55439/community_')) throw new Error('持久化 E2E 只允许隔离社区数据库')
@@ -46,6 +47,28 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); await db.$disconnect() })
 
 describe('PERSIST-001 真实 PostgreSQL 持久化与账号产品化', () => {
+  it('原生咨询锁返回值可被Prisma解码，跨事务争锁超时且提交后释放', async () => {
+    await db.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const request = await idempotency(tx, prefix, 'sql-compatibility', randomUUID(), { verified: true })
+      await request.complete('sql-compatibility')
+      await expect(db.$transaction(async (otherTx) => {
+        await otherTx.$executeRaw`SET LOCAL lock_timeout = '80ms'`
+        await lockFileReferences(otherTx)
+      })).rejects.toMatchObject({ code: 'P2010', meta: { code: '55P03' } })
+    })
+    await expect(db.$transaction((tx) => lockFileReferences(tx))).resolves.toBeUndefined()
+  })
+  it('登录失败原生计数维护updated_at与五次短暂锁定，不返回数据库500', async () => {
+    const auth = app.get(AuthService), clientKey = randomUUID(), identityKey = createHash('sha256').update(clientKey).digest('hex')
+    const started = new Date()
+    for (let n = 0; n < 5; n++) await expect(auth.login(`${prefix}-absent@example.invalid`, password, clientKey, 'isolated')).rejects.toMatchObject({ status: 401 })
+    const stored = await db.loginThrottle.findUniqueOrThrow({ where: { identityKey } })
+    expect(stored.failures).toBe(5)
+    expect(stored.updatedAt.getTime()).toBeGreaterThanOrEqual(started.getTime())
+    expect(stored.blockedUntil!.getTime()).toBeGreaterThan(Date.now())
+    await expect(auth.login(`${prefix}-absent@example.invalid`, password, clientKey, 'isolated')).rejects.toMatchObject({ status: 429 })
+  })
   it('注册幂等同键只创建一份业务事实，敏感输入不落无密钥摘要', async () => {
     const input = registration('retry'), key = randomUUID()
     const results = await Promise.all([request<AuthSessionDto>('/auth/register', undefined, 'POST', input, key), request<AuthSessionDto>('/auth/register', undefined, 'POST', input, key)])
@@ -124,13 +147,15 @@ describe('PERSIST-001 真实 PostgreSQL 持久化与账号产品化', () => {
   it('多写中途事件失败回滚帖子、历史、幂等记录和计数', async () => {
     const prisma = app.get(PrismaService), original = prisma.$transaction.bind(prisma), key = randomUUID()
     const before = await db.communityPost.count({ where: { authorId: actor.user.id } })
+    let injected = false
     vi.spyOn(prisma, '$transaction').mockImplementationOnce(((callback: any, options: any) => original(async (tx: any) => {
       const create = tx.activityEvent.create
-      tx.activityEvent.create = () => { throw new Error('injected persistence event failure') }
+      tx.activityEvent.create = () => { injected = true; throw new Error('injected persistence event failure') }
       try { return await callback(tx) } finally { tx.activityEvent.create = create }
     }, options)) as any)
     expect((await request('/community/posts', actor.accessToken, 'POST', postInput('必须全部回滚'), key)).status).toBe(500)
     vi.restoreAllMocks()
+    expect(injected).toBe(true)
     expect(await db.communityPost.count({ where: { authorId: actor.user.id } })).toBe(before)
     expect(await db.requestIdempotency.count({ where: { idempotencyKey: key } })).toBe(0)
   })

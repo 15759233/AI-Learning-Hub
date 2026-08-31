@@ -40,7 +40,7 @@ export class RegistrationService {
     const { expectedRevision, revision: _revision, ...value } = input
     void _revision
     await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:registration'))`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:registration'))::text`
       const old = await tx.systemSetting.findUnique({ where: { key: 'registration' } })
       if (old && expectedRevision !== old.revision) throw new ConflictException('注册配置已变化，请重新读取')
       await tx.systemSetting.upsert({ where: { key: 'registration' }, update: { value: { ...value }, revision: { increment: 1 } }, create: { key: 'registration', value: { ...value } } })

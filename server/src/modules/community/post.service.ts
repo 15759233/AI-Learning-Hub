@@ -77,7 +77,7 @@ export class CommunityPostService {
       if (request.resourceId) return tx.communityPost.findUniqueOrThrow({ where: { id: request.resourceId } })
       const fileIds = clean.flatMap((block) => block.type === 'image' ? [block.fileId] : [])
       if (fileIds.length && await tx.fileRecord.count({ where: { id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-write:${userId}`},0))`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-write:${userId}`},0))::text`
       const latest = id ? await tx.communityPost.findUnique({ where: { id } }) : null
       if (id && (!latest || latest.deletedAt || latest.authorId !== userId || !['draft', 'published'].includes(latest.status))) throw new ConflictException('动态状态已变化，请重新读取')
       if (latest && latest.revision !== input.expectedRevision) throw new ConflictException('已有较新的服务端版本，请保留当前输入并重新读取')
