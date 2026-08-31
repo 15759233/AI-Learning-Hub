@@ -68,14 +68,22 @@ npm run bootstrap
 npm run start:dev
 ```
 
-另开终端启动双端：
+分别在两个终端的仓库根目录启动双端，每个终端只执行对应一行：
 
 ```bash
 cd frontend && npm ci && VITE_DATA_MODE=api VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1 npm run dev
 cd admin-web && npm ci && VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1 npm run dev
 ```
 
-默认开发入口为学生端 `:5173`、管理端 `:5174`、API `:3000`。端口有变化时同步调整 `CORS_ORIGINS`，API 模式不得回退 Mock。
+默认开发入口为学生端 `:5173`、管理端 `:5174`、API `:3000`。启动前将 `server/.env` 的开发 URL 配置为：
+
+```dotenv
+CORS_ORIGINS=http://127.0.0.1:5173,http://127.0.0.1:5174
+FRONTEND_URL=http://127.0.0.1:5173
+ADMIN_WEB_URL=http://127.0.0.1:5174
+```
+
+端口有变化时同步调整以上配置，API 模式不得回退 Mock。
 
 空库不会自动创建学习内容；后台发布至少三个学习方向后再开放首次引导。演示数据必须显式 `LOAD_DEMO_DATA=true npm run prisma:seed`。
 
