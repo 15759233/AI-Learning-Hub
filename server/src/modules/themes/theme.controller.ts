@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { Permissions } from '../auth/permissions.decorator'
@@ -12,6 +12,7 @@ import { ThemeService } from './theme.service'
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminThemeController {
   constructor(private readonly themes: ThemeService) {}
+  @Delete(':id') @Permissions('theme.write') remove(@Param('id') id: string, @CurrentUser() user: AuthUser) { return this.themes.remove(id, user.id) }
   @Get() @Permissions('theme.read') list(@Query() query: PageQueryDto) { return this.themes.list(query) }
   @Post() @Permissions('theme.write') create(@Body() input: CreateThemeDto, @CurrentUser() user: AuthUser) { return this.themes.create(input, user.id) }
   @Get(':id') @Permissions('theme.read') detail(@Param('id') id: string) { return this.themes.detail(id) }

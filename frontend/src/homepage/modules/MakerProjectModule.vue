@@ -2,7 +2,7 @@
 import type { PublicHomepageModuleDto } from '@ai-learning-hub/contracts'
 import AppIcon from '../../components/base/AppIcon.vue'
 import CategoryCover from '../../components/base/CategoryCover.vue'
-import { configText, itemNumber, itemPath, itemText } from '../module-utils'
+import { configText, itemNumber, itemPath, itemText, itemCover } from '../module-utils'
 defineProps<{ module: PublicHomepageModuleDto }>()
 </script>
 <template>
@@ -11,7 +11,7 @@ defineProps<{ module: PublicHomepageModuleDto }>()
     <div class="three-grid maker-projects">
       <RouterLink v-for="item in module.items.slice(0, 3)" :key="item.slug" class="project-card" :to="itemPath(item)">
         <div><span class="tag green">综合项目</span><h3>{{ item.title }}</h3><p>{{ item.summary }}</p><strong>{{ itemText(item, 'result') }}</strong><small>{{ (item.data.skills as string[] || []).join(' · ') }} · {{ itemNumber(item, 'steps') }} 步 · {{ itemNumber(item, 'durationMinutes') }} 分钟</small></div>
-        <CategoryCover :title="item.title" :variant="itemText(item, 'coverVariant')" :icon="itemText(item, 'icon')" />
+        <CategoryCover :title="item.title" :media="itemCover(item)" :variant="itemText(item, 'coverVariant')" :icon="itemText(item, 'icon')" />
       </RouterLink>
     </div>
   </section>

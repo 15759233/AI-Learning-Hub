@@ -20,13 +20,13 @@ describe('平台公共契约', () => {
   })
 
   it('结构化内容拒绝脚本协议', () => {
-    const service = new ContentSupportService({} as never)
+    const service = new ContentSupportService({} as never, {} as never)
     expect(() => service.sanitize({ body: '<script>alert(1)</script>' })).toThrow('内容包含不安全脚本')
     expect(() => service.sanitize({ link: 'javascript:alert(1)' })).toThrow('内容包含不安全脚本')
   })
 
   it('安全结构化内容保持 JSON 语义', () => {
-    const service = new ContentSupportService({} as never)
+    const service = new ContentSupportService({} as never, {} as never)
     expect(service.sanitize({ blocks: [{ type: 'paragraph', text: '学习 AI' }] })).toEqual({ blocks: [{ type: 'paragraph', text: '学习 AI' }] })
   })
 

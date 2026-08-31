@@ -18,7 +18,11 @@ export class FileAccessService {
     const resourceEditor = await this.prisma.userRole.count({ where: { userId, role: { permissions: { some: { permission: { code: 'resource.write' } } } } } })
     if (resourceEditor && await this.prisma.resource.count({ where: { fileId: id } })) return file
     const [resource, post, comment] = await Promise.all([
-      this.prisma.resource.count({ where: { fileId: id, status: 'published', deletedAt: null, visibility: 'public' } }),
+      // 学习者只能读取发布快照附件；缺失旧字段也不能回读未发布的当前列。
+      this.prisma.resource.count({ where: { status: 'published', deletedAt: null, publishedVersion: { is: { AND: [
+        { snapshot: { path: ['fileId'], equals: id } },
+        { snapshot: { path: ['visibility'], equals: 'public' } },
+      ] } } } }),
       this.prisma.communityPost.count({ where: { AND: [await this.visibility.where(userId), { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] } }),
       this.prisma.communityComment.count({ where: { deletedAt: null, status: 'published', author: { status: 'active' }, authorId: { notIn: (await this.visibility.authorExclusions(userId)).authors }, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] }, post: await this.visibility.where(userId) } }),
     ])

@@ -2,6 +2,7 @@ FROM node:22.14.0-bookworm-slim@sha256:1c18d9ab3af4585870b92e4dbc5cac5a0dc77dd13
 WORKDIR /workspace
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contracts/src packages/contracts/src
+COPY packages/catalog-assets packages/catalog-assets
 COPY admin-web/package.json admin-web/package-lock.json admin-web/
 RUN cd admin-web && npm ci
 COPY admin-web admin-web

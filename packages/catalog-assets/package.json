@@ -1,0 +1,10 @@
+{
+  "name": "@ai-learning-hub/catalog-assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/manifest.js",
+  "module": "manifest.ts",
+  "types": "dist/manifest.d.ts",
+  "files": ["manifest.ts", "manifest.json", "dist", "images", "icons"]
+}

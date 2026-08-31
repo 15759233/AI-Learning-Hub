@@ -1,6 +1,8 @@
+import type { CatalogCoverData } from '@ai-learning-hub/contracts'
+
 export type Category = '大模型 LLM' | 'AI Agent' | '图像生成' | '模型部署' | '智能硬件' | 'AI 安全'
 
-export interface Course {
+export interface Course extends Partial<CatalogCoverData> {
   id: string
   title: string
   description: string
@@ -16,7 +18,7 @@ export interface Course {
   icon?: string
 }
 
-export interface Lab {
+export interface Lab extends Partial<CatalogCoverData> {
   id: string
   title: string
   description: string
@@ -32,7 +34,7 @@ export interface Lab {
   icon?: string
 }
 
-export interface ResourceItem {
+export interface ResourceItem extends Partial<CatalogCoverData> {
   id: string
   title: string
   category: string
@@ -49,7 +51,7 @@ export interface ResourceItem {
   icon?: string
 }
 
-export interface Article {
+export interface Article extends Partial<CatalogCoverData> {
   id: string
   title: string
   summary: string

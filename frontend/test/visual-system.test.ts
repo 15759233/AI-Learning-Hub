@@ -80,7 +80,7 @@ describe('学习社区视觉契约', () => {
   })
 
   it('关联卡复用原route，内容类别保留差异，关注按钮只承载显示与事件', async () => {
-    for (const [type, category, icon] of [['course', 'course', 'book'], ['lesson', 'course', 'book'], ['lab_run', 'lab', 'terminal'], ['resource', 'resource', 'folder'], ['article', 'article', 'sparkles'], ['challenge', 'challenge', 'trophy'], ['theme', 'theme', 'cube']]) {
+    for (const [type, category, icon] of [['course', 'course', 'book'], ['lesson', 'course', 'book'], ['lab_run', 'lab', 'terminal'], ['resource', 'resource', 'folder'], ['article', 'article', 'sparkles'], ['challenge', 'challenge', 'trophy'], ['theme', 'theme', 'network']]) {
       const mounted = setupComponent<{ category: string; icon: string }>(CommunityBindingCard, { binding: { type, title: '关联内容', route: '/original-route' } })
       try { expect([mounted.state.category, mounted.state.icon]).toEqual([category, icon]) } finally { mounted.unmount() }
     }

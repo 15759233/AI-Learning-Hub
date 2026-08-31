@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { resources as mockResources } from '../../data/mock'
 import { dataMode, request } from '../../services/api/client'
 import type { ResourceItem } from '../../types'
+import { apiCatalogCover } from '../../media/catalog'
 import { localPage, normalizePageQuery, pageKey, pageUrl, type ContentPageQuery } from './paging'
 
 export const mapResource = (item: ResourceSummaryDto): ResourceItem => ({
@@ -15,7 +16,7 @@ export const mapResource = (item: ResourceSummaryDto): ResourceItem => ({
   featured: Boolean(item.data.featured),
   downloads: item.downloads,
   updatedAt: item.updatedAt.slice(0, 10),
-  cover: typeof item.data.cover === 'string' ? item.data.cover : undefined,
+  ...apiCatalogCover(item.data),
   coverVariant: typeof item.data.coverVariant === 'string' ? item.data.coverVariant : undefined,
   icon: typeof item.data.icon === 'string' ? item.data.icon : undefined,
 })

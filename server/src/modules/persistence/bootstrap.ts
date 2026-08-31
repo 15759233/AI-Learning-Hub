@@ -10,6 +10,7 @@ export const requiredPermissions = [
   'community.read', 'community.write', 'community.moderate', 'community.topic.manage',
   'community.report.manage', 'community.official.publish', 'community.feed.manage',
   'user.read', 'user.write', 'user.session.revoke', 'user.export',
+  'media.read', 'media.write', 'media.delete', 'media.default.manage',
 ]
 const roles: Record<string, string> = {
   super_admin: '超级管理员', admin: '管理员', student: '学生', operator: '运营人员',

@@ -68,7 +68,7 @@ export class LocalFileController {
     } catch {
       throw new NotFoundException('文件不存在')
     }
-    const resources = await this.prisma.resource.findMany({ where: { fileId: id, status: 'published' }, select: { id: true } })
+    const resources = await this.prisma.resource.findMany({ where: { status: 'published', deletedAt: null, publishedVersion: { is: { snapshot: { path: ['fileId'], equals: id } } } }, select: { id: true } })
     if (resources.length) {
       await this.prisma.$transaction(resources.flatMap((resource) => [
         this.prisma.resource.update({ where: { id: resource.id }, data: { downloadCount: { increment: 1 } } }),

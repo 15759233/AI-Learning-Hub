@@ -19,7 +19,7 @@ interface Bank { id: string; name: string; _count: { questions: number } }
 interface Paper { id: string; name: string; questions?: Array<{ questionId: string; score: number }> }
 interface KnowledgePoint { id: string; code: string; name: string }
 const list = usePagedList('challenges')
-const { result, keyword, status, loading, error, selected } = list
+const { result, keyword, status, dataOrigin, loading, error, selected } = list
 const drafts = useDraftEditor('challenges')
 const publishing = usePublishAction('challenges')
 const canWrite = usePermissionAction('challenge.write')
@@ -31,7 +31,7 @@ const banks = ref<Bank[]>([])
 const papers = ref<Paper[]>([])
 const knowledgePoints = ref<KnowledgePoint[]>([])
 const questions = ref<Array<{ id: string; stem: string; questionType: string; status: string }>>([])
-const fields = reactive({ challengeType: 'weekly', targetScore: 60, rewardPoints: 0, cover: '', startAt: '', endAt: '', leaderboardEnabled: true, questionBankId: '', paperId: '' })
+const fields = reactive({ challengeType: 'weekly', targetScore: 60, rewardPoints: 0, startAt: '', endAt: '', leaderboardEnabled: true, questionBankId: '', paperId: '' })
 const question = reactive({ questionType: 'single', difficulty: '基础', knowledgePointId: '', stem: '', analysis: '' })
 const answerConfig = ref<Record<string, unknown>>({})
 const questionEditors = {
@@ -53,7 +53,6 @@ watch(list.selected, async (item) => {
     challengeType: loaded.challengeType,
     targetScore: loaded.targetScore,
     rewardPoints: loaded.rewardPoints,
-    cover: String(item.data.cover || ''),
     startAt: String(item.data.startAt || '').slice(0, 16),
     endAt: String(item.data.endAt || '').slice(0, 16),
     leaderboardEnabled: Boolean(item.data.leaderboardEnabled ?? true),
@@ -73,8 +72,8 @@ const loadReferences = async () => {
 onMounted(async () => { await Promise.all([list.load(1), loadReferences()]) })
 watch(() => fields.questionBankId, async (bankId) => { questions.value = bankId ? await api(`/admin/questions?bankId=${encodeURIComponent(bankId)}`) : [] })
 const input = (): UpdateChallengeInput => ({ ...fields, startAt: fields.startAt ? new Date(fields.startAt).toISOString() : undefined, endAt: fields.endAt ? new Date(fields.endAt).toISOString() : undefined })
-const create = async (value: { slug: string; title: string; summary: string }) => { await drafts.createDraft({ ...value, challengeType: 'weekly', targetScore: 60, rewardPoints: 0 }); dialog.value = false; await list.load(1); ElMessage.success('挑战草稿已创建') }
-const save = async (base: { title: string; summary: string; sortOrder: number }) => {
+const create = async (value: { slug: string; title: string; summary: string; coverAssetId: string | null }) => { await drafts.createDraft({ ...value, challengeType: 'weekly', targetScore: 60, rewardPoints: 0 }); dialog.value = false; await list.load(1); ElMessage.success('挑战草稿已创建') }
+const save = async (base: { title: string; summary: string; sortOrder: number; coverAssetId?: string | null }) => {
   if (!list.selected.value) return
   await drafts.saveDraft(list.selected.value, { ...base, ...input() })
   if (fields.questionBankId) await api(`/admin/challenges/${list.selected.value.databaseId}/question-bank`, { method: 'PUT', body: JSON.stringify({ questionBankId: fields.questionBankId }) })
@@ -130,12 +129,12 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
 </script>
 
 <template>
-  <DomainPageShell v-model:dialog="dialog" title="挑战测评管理" description="管理挑战、题库、试卷、知识点与题型草稿" noun="挑战" icon="challenge" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
+  <DomainPageShell content-type="challenge" :category-key="fields.challengeType" :data-origin="dataOrigin" @update:data-origin="list.dataOrigin.value = $event" @remove="drafts.removeDraft(selected, () => list.load())" v-model:dialog="dialog" title="挑战测评管理" description="管理挑战、题库、试卷、知识点与题型草稿" noun="挑战" icon="challenge" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
     <template #kpis><div class="kpi-grid"><AdminKpiCard icon="challenge" label="挑战总数" :value="result.total" color="#ff4d1f" /><AdminKpiCard icon="theme" label="题库" :value="banks.length" color="#3478f6" /><AdminKpiCard icon="course" label="当前题目" :value="questions.length" color="#7c4dff" /><AdminKpiCard icon="check" label="已发布挑战" :value="result.items.filter((item) => item.status === 'published').length" color="#22b66c" /></div></template>
     <template #detail><p>目标 {{ detail?.targetScore ?? '—' }} 分 · 奖励 {{ detail?.rewardPoints ?? '—' }} 积分 · {{ detail?.rules.length || 0 }} 条服务端规则</p></template>
     <template #editor>
       <fieldset class="domain-permission-scope" :disabled="!canWrite">
-      <section class="domain-section"><h3>挑战基础信息</h3><label>挑战类型<input v-model="fields.challengeType" /></label><label>封面<input v-model="fields.cover" /></label><label>开始时间<input v-model="fields.startAt" type="datetime-local" /></label><label>结束时间<input v-model="fields.endAt" type="datetime-local" /></label><label>目标分数<input v-model.number="fields.targetScore" type="number" min="0" max="100" /></label><label>奖励积分<input v-model.number="fields.rewardPoints" type="number" min="0" /></label><label class="toggle-row">排行榜<el-switch v-model="fields.leaderboardEnabled" /></label><label>关联题库<select v-model="fields.questionBankId"><option value="">未关联</option><option v-for="bank in banks" :key="bank.id" :value="bank.id">{{ bank.name }}（{{ bank._count.questions }} 题）</option></select></label><button class="admin-secondary" type="button" :disabled="!canQuestion" @click="createBank">新建题库草稿</button><label>关联试卷<select v-model="fields.paperId"><option value="">未关联</option><option v-for="paper in papers" :key="paper.id" :value="paper.id">{{ paper.name }}</option></select></label></section>
+      <section class="domain-section"><h3>挑战基础信息</h3><label>挑战类型<input v-model="fields.challengeType" /></label><label>开始时间<input v-model="fields.startAt" type="datetime-local" /></label><label>结束时间<input v-model="fields.endAt" type="datetime-local" /></label><label>目标分数<input v-model.number="fields.targetScore" type="number" min="0" max="100" /></label><label>奖励积分<input v-model.number="fields.rewardPoints" type="number" min="0" /></label><label class="toggle-row">排行榜<el-switch v-model="fields.leaderboardEnabled" /></label><label>关联题库<select v-model="fields.questionBankId"><option value="">未关联</option><option v-for="bank in banks" :key="bank.id" :value="bank.id">{{ bank.name }}（{{ bank._count.questions }} 题）</option></select></label><button class="admin-secondary" type="button" :disabled="!canQuestion" @click="createBank">新建题库草稿</button><label>关联试卷<select v-model="fields.paperId"><option value="">未关联</option><option v-for="paper in papers" :key="paper.id" :value="paper.id">{{ paper.name }}</option></select></label></section>
       </fieldset>
       <fieldset class="domain-permission-scope" :disabled="!canQuestion">
       <section class="domain-section"><h3>题目编辑（新题默认草稿）</h3><label>题型<select v-model="question.questionType"><option v-for="type in ['single','multiple','true_false','short_answer','code']" :key="type">{{ type }}</option></select></label><label>知识点<select v-model="question.knowledgePointId"><option v-for="point in knowledgePoints" :key="point.id" :value="point.id">{{ point.code }} · {{ point.name }}</option></select></label><label>难度<input v-model="question.difficulty" /></label><label>题干<textarea v-model="question.stem" rows="3" /></label><component :is="activeQuestionEditor" v-model="answerConfig" /><label>解析<textarea v-model="question.analysis" rows="3" /></label><button class="admin-secondary" type="button" :disabled="!canQuestion || !fields.questionBankId" @click="addQuestion">保存题目草稿</button><ul><li v-for="item in questions" :key="item.id">{{ item.questionType }} · {{ item.stem }} · {{ item.status }}</li></ul></section>

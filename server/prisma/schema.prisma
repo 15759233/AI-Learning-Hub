@@ -328,6 +328,9 @@ model HomepageItem {
 
 model Theme {
   id                    String         @id @default(cuid())
+  coverAssetId          String?        @map("cover_asset_id")
+  coverAsset            MediaAsset?    @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String         @default("admin_created") @map("data_origin")
   slug                  String         @unique
   title                 String
   summary               String
@@ -411,6 +414,9 @@ model PathContent {
 
 model Course {
   id                    String             @id @default(cuid())
+  coverAssetId          String?            @map("cover_asset_id")
+  coverAsset            MediaAsset?        @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String             @default("admin_created") @map("data_origin")
   slug                  String             @unique
   title                 String
   summary               String
@@ -567,6 +573,9 @@ model LearningNote {
 
 model Lab {
   id                    String           @id @default(cuid())
+  coverAssetId          String?          @map("cover_asset_id")
+  coverAsset            MediaAsset?      @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String           @default("admin_created") @map("data_origin")
   slug                  String           @unique
   title                 String
   summary               String
@@ -726,6 +735,80 @@ model LabRunEvent {
   @@map("lab_run_events")
 }
 
+enum MediaAssetKind {
+  cover
+  hero
+  illustration
+  icon_preview
+}
+
+enum MediaAssetSource {
+  upload
+  image2_seed
+  system
+}
+
+enum MediaAssetStatus {
+  active
+  archived
+}
+
+model MediaAsset {
+  id          String           @id @default(cuid())
+  assetKey    String           @unique @map("asset_key")
+  fileId      String           @unique @map("file_id")
+  name        String
+  kind        MediaAssetKind   @default(cover)
+  source      MediaAssetSource @default(upload)
+  contentType String           @default("global") @map("content_type")
+  categoryKey String           @default("generic") @map("category_key")
+  altText     String           @default("") @map("alt_text")
+  width       Int
+  height      Int
+  focalX      Float            @default(0.5) @map("focal_x")
+  focalY      Float            @default(0.5) @map("focal_y")
+  status      MediaAssetStatus @default(active)
+  createdBy   String?          @map("created_by")
+  revision    Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+  file        FileRecord       @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  defaults    MediaDefaultRule[]
+  themes      Theme[]
+  courses     Course[]
+  labs        Lab[]
+  resources   Resource[]
+  articles    Article[]
+  challenges  Challenge[]
+
+  @@index([status, kind, contentType, categoryKey])
+  @@map("media_assets")
+}
+
+model MediaDefaultRule {
+  id          String     @id @default(cuid())
+  contentType String     @map("content_type")
+  categoryKey String     @map("category_key")
+  assetId     String     @map("asset_id")
+  active      Boolean    @default(true)
+  revision    Int        @default(1)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  asset       MediaAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([contentType, categoryKey])
+  @@map("media_default_rules")
+}
+
+model MediaGcJob {
+  id        String   @id @default(cuid())
+  fileId    String   @unique @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("media_gc_jobs")
+}
+
 model FileRecord {
   id            String     @id @default(cuid())
   storageDriver String     @map("storage_driver")
@@ -740,6 +823,7 @@ model FileRecord {
   createdAt     DateTime   @default(now()) @map("created_at")
   uploader      User       @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
   resources     Resource[]
+  mediaAsset    MediaAsset?
 
   @@index([checksum])
   @@map("files")
@@ -747,6 +831,9 @@ model FileRecord {
 
 model Resource {
   id                    String             @id @default(cuid())
+  coverAssetId          String?            @map("cover_asset_id")
+  coverAsset            MediaAsset?        @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String             @default("admin_created") @map("data_origin")
   slug                  String             @unique
   title                 String
   summary               String
@@ -850,6 +937,9 @@ model ResourceView {
 
 model Article {
   id                    String                  @id @default(cuid())
+  coverAssetId          String?                 @map("cover_asset_id")
+  coverAsset            MediaAsset?             @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String                  @default("admin_created") @map("data_origin")
   slug                  String                  @unique
   title                 String
   summary               String
@@ -955,6 +1045,9 @@ model ArticleRecommendation {
 
 model Challenge {
   id                    String               @id @default(cuid())
+  coverAssetId          String?              @map("cover_asset_id")
+  coverAsset            MediaAsset?          @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  dataOrigin            String               @default("admin_created") @map("data_origin")
   slug                  String               @unique
   title                 String
   summary               String

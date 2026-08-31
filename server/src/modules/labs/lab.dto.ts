@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer'
-import { IsArray, IsEnum, IsInt, IsObject, IsOptional, IsString, IsUrl, Length, Max, Min, ValidateIf } from 'class-validator'
+import { IsArray, IsEnum, IsInt, IsObject, IsOptional, IsString, Length, Max, Min } from 'class-validator'
 import { LabType } from '@prisma/client'
 import { CreateContentDto, UpdateContentDto } from '../../common/content/content.dto'
 
@@ -8,7 +8,6 @@ export class CreateLabDto extends CreateContentDto {
   @IsOptional() @IsString() @Length(0, 120) category?: string
   @IsOptional() @IsString() @Length(0, 40) level?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60_000) durationMinutes?: number
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 2000) objective?: string
   @IsOptional() @IsString() @Length(0, 5000) task?: string
   @IsOptional() @IsArray() @IsString({ each: true }) hints?: string[]
@@ -22,7 +21,6 @@ export class UpdateLabDto extends UpdateContentDto {
   @IsOptional() @IsString() @Length(0, 120) category?: string
   @IsOptional() @IsString() @Length(0, 40) level?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60_000) durationMinutes?: number
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 2000) objective?: string
   @IsOptional() @IsString() @Length(0, 5000) task?: string
   @IsOptional() @IsArray() @IsString({ each: true }) hints?: string[]

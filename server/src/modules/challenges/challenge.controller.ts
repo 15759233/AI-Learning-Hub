@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -13,6 +13,7 @@ import { CreateChallengeDto, LinkPaperDto, LinkQuestionBankDto, UpdateChallengeD
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminChallengeController {
   constructor(private readonly challenges: ChallengeService) {}
+  @Delete(':id') @Permissions('challenge.write') remove(@Param('id') id: string, @CurrentUser() user: AuthUser) { return this.challenges.remove(id, user.id) }
   @Get() @Permissions('challenge.read') list(@Query() query: PageQueryDto) { return this.challenges.list(query) }
   @Post() @Permissions('challenge.write') create(@Body() input: CreateChallengeDto, @CurrentUser() user: AuthUser) { return this.challenges.create(input, user.id) }
   @Get(':id') @Permissions('challenge.read') detail(@Param('id') id: string) { return this.challenges.detail(id) }

@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build:contracts": "tsc --project ../packages/contracts/tsconfig.json",
+    "build:contracts": "tsc --project ../packages/contracts/tsconfig.json && tsc --project ../packages/catalog-assets/tsconfig.json",
     "build": "npm run build:contracts && nest build && npm run check:runtime",
     "check:runtime": "node scripts/check-runtime-imports.cjs",
+    "check:seed-runtime": "node scripts/check-seed-runtime.cjs",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "prestart:dev": "npm run build:contracts",
@@ -22,12 +23,19 @@
     "bootstrap": "node dist/modules/persistence/bootstrap.js",
     "persistence:audit": "tsx prisma/audit-persistence.ts",
     "prisma:seed": "tsx prisma/seed.ts",
-    "preprisma:seed": "npm run build:contracts",
+    "preprisma:seed": "npm run check:runtime",
+    "seed:demo": "LOAD_DEMO_DATA=true tsx prisma/seed-demo.ts",
+    "preseed:demo": "npm run check:runtime",
+    "seed:demo-media": "npm run media:import",
+    "media:import": "node dist/modules/media/import-catalog.js",
+    "media:gc": "node dist/modules/media/media-gc.js",
+    "demo:cleanup": "node dist/modules/media/demo-data.js",
     "homepage:upgrade": "tsx prisma/upgrade-landing.ts",
     "prehomepage:upgrade": "npm run build:contracts"
   },
   "dependencies": {
     "@ai-learning-hub/contracts": "file:../packages/contracts",
+    "@ai-learning-hub/catalog-assets": "file:../packages/catalog-assets",
     "@ai-learning-hub/demo-fixtures": "file:../packages/demo-fixtures",
     "@aws-sdk/client-s3": "^3.933.0",
     "@aws-sdk/s3-request-presigner": "^3.933.0",
@@ -46,7 +54,8 @@
     "multer": "^2.0.2",
     "nodemailer": "^9.0.6",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

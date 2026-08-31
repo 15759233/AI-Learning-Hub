@@ -19,7 +19,7 @@ const discuss = () => requireAuth({ reason: '登录后可参与文章讨论', ac
 <template>
   <AppDialog :model-value="modelValue" :title="article?.title || '文章详情'" @update:model-value="emit('update:modelValue', $event)">
     <template v-if="article">
-      <CategoryCover :title="article.title" :variant="article.coverVariant" :icon="article.icon" />
+      <CategoryCover :title="article.title" :media="article" :variant="article.coverVariant" :icon="article.icon" eager />
       <div class="meta"><span>{{ article.category }}</span><span>{{ article.readMinutes }} 分钟阅读</span><span>{{ article.publishedAt }}</span></div>
       <p v-for="paragraph in article.content" :key="paragraph">{{ paragraph }}</p>
       <div v-if="dataMode === 'mock'" class="notice">当前为前端演示文章，不代表实时新闻。</div>

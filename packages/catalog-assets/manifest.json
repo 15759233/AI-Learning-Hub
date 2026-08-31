@@ -1,0 +1,2030 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "assetKey": "course--ai-literacy",
+      "contentType": "course",
+      "contentSlug": "ai-literacy",
+      "categoryKey": "llm",
+      "name": "零基础认识人工智能",
+      "kind": "cover",
+      "file": "images/courses/course--ai-literacy.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "零基础认识人工智能主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--llm-zero",
+      "contentType": "course",
+      "contentSlug": "llm-zero",
+      "categoryKey": "llm",
+      "name": "从零理解大语言模型",
+      "kind": "cover",
+      "file": "images/courses/course--llm-zero.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "从零理解大语言模型主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--transformer-core",
+      "contentType": "course",
+      "contentSlug": "transformer-core",
+      "categoryKey": "llm",
+      "name": "Transformer 核心原理",
+      "kind": "cover",
+      "file": "images/courses/course--transformer-core.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Transformer 核心原理主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--prompt-basics",
+      "contentType": "course",
+      "contentSlug": "prompt-basics",
+      "categoryKey": "llm",
+      "name": "提示词设计入门",
+      "kind": "cover",
+      "file": "images/courses/course--prompt-basics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "提示词设计入门主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--rag-practice",
+      "contentType": "course",
+      "contentSlug": "rag-practice",
+      "categoryKey": "llm",
+      "name": "RAG 检索增强生成实战",
+      "kind": "cover",
+      "file": "images/courses/course--rag-practice.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "RAG 检索增强生成实战主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--llm-finetune",
+      "contentType": "course",
+      "contentSlug": "llm-finetune",
+      "categoryKey": "llm",
+      "name": "大模型微调基础",
+      "kind": "cover",
+      "file": "images/courses/course--llm-finetune.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "大模型微调基础主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--agent-first",
+      "contentType": "course",
+      "contentSlug": "agent-first",
+      "categoryKey": "agent",
+      "name": "构建你的第一个 AI Agent",
+      "kind": "cover",
+      "file": "images/courses/course--agent-first.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "构建你的第一个 AI Agent主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--function-calling",
+      "contentType": "course",
+      "contentSlug": "function-calling",
+      "categoryKey": "agent",
+      "name": "Agent 工具调用与 Function Calling",
+      "kind": "cover",
+      "file": "images/courses/course--function-calling.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Agent 工具调用与 Function Calling主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--agent-memory",
+      "contentType": "course",
+      "contentSlug": "agent-memory",
+      "categoryKey": "agent",
+      "name": "Agent 记忆与上下文管理",
+      "kind": "cover",
+      "file": "images/courses/course--agent-memory.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Agent 记忆与上下文管理主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--multi-agent",
+      "contentType": "course",
+      "contentSlug": "multi-agent",
+      "categoryKey": "agent",
+      "name": "多智能体协作系统",
+      "kind": "cover",
+      "file": "images/courses/course--multi-agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "多智能体协作系统主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--agent-evaluation",
+      "contentType": "course",
+      "contentSlug": "agent-evaluation",
+      "categoryKey": "agent",
+      "name": "AI Agent 评测与可观测性",
+      "kind": "cover",
+      "file": "images/courses/course--agent-evaluation.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI Agent 评测与可观测性主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--stable-diffusion",
+      "contentType": "course",
+      "contentSlug": "stable-diffusion",
+      "categoryKey": "image",
+      "name": "Stable Diffusion 入门",
+      "kind": "cover",
+      "file": "images/courses/course--stable-diffusion.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Stable Diffusion 入门主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--comfyui",
+      "contentType": "course",
+      "contentSlug": "comfyui",
+      "categoryKey": "image",
+      "name": "ComfyUI 工作流基础",
+      "kind": "cover",
+      "file": "images/courses/course--comfyui.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "ComfyUI 工作流基础主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--image-editing",
+      "contentType": "course",
+      "contentSlug": "image-editing",
+      "categoryKey": "image",
+      "name": "图像编辑与控制生成",
+      "kind": "cover",
+      "file": "images/courses/course--image-editing.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "图像编辑与控制生成主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--generative-ethics",
+      "contentType": "course",
+      "contentSlug": "generative-ethics",
+      "categoryKey": "image",
+      "name": "生成式 AI 伦理与版权",
+      "kind": "cover",
+      "file": "images/courses/course--generative-ethics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "生成式 AI 伦理与版权主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--linux-basics",
+      "contentType": "course",
+      "contentSlug": "linux-basics",
+      "categoryKey": "deployment",
+      "name": "Linux 命令行入门",
+      "kind": "cover",
+      "file": "images/courses/course--linux-basics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Linux 命令行入门主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--docker-models",
+      "contentType": "course",
+      "contentSlug": "docker-models",
+      "categoryKey": "deployment",
+      "name": "Docker 与模型容器化",
+      "kind": "cover",
+      "file": "images/courses/course--docker-models.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Docker 与模型容器化主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--fastapi-inference",
+      "contentType": "course",
+      "contentSlug": "fastapi-inference",
+      "categoryKey": "deployment",
+      "name": "使用 FastAPI 发布推理服务",
+      "kind": "cover",
+      "file": "images/courses/course--fastapi-inference.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "使用 FastAPI 发布推理服务主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--vllm-basics",
+      "contentType": "course",
+      "contentSlug": "vllm-basics",
+      "categoryKey": "deployment",
+      "name": "vLLM 推理服务基础",
+      "kind": "cover",
+      "file": "images/courses/course--vllm-basics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "vLLM 推理服务基础主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--gpu-memory",
+      "contentType": "course",
+      "contentSlug": "gpu-memory",
+      "categoryKey": "hardware",
+      "name": "GPU 与显存基础",
+      "kind": "cover",
+      "file": "images/courses/course--gpu-memory.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "GPU 与显存基础主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--aiot-basics",
+      "contentType": "course",
+      "contentSlug": "aiot-basics",
+      "categoryKey": "hardware",
+      "name": "AIoT 智能硬件入门",
+      "kind": "cover",
+      "file": "images/courses/course--aiot-basics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AIoT 智能硬件入门主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--edge-ai",
+      "contentType": "course",
+      "contentSlug": "edge-ai",
+      "categoryKey": "hardware",
+      "name": "边缘 AI 模型应用",
+      "kind": "cover",
+      "file": "images/courses/course--edge-ai.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "边缘 AI 模型应用主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--prompt-injection",
+      "contentType": "course",
+      "contentSlug": "prompt-injection",
+      "categoryKey": "security",
+      "name": "提示词注入与模型安全",
+      "kind": "cover",
+      "file": "images/courses/course--prompt-injection.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "提示词注入与模型安全主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "course--ai-privacy",
+      "contentType": "course",
+      "contentSlug": "ai-privacy",
+      "categoryKey": "security",
+      "name": "AI 应用隐私与数据治理",
+      "kind": "cover",
+      "file": "images/courses/course--ai-privacy.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI 应用隐私与数据治理主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--model-service",
+      "contentType": "lab",
+      "contentSlug": "model-service",
+      "categoryKey": "deployment",
+      "name": "部署你的第一个 AI 模型",
+      "kind": "cover",
+      "file": "images/labs/lab--model-service.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "部署你的第一个 AI 模型主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--campus-agent",
+      "contentType": "lab",
+      "contentSlug": "campus-agent",
+      "categoryKey": "agent",
+      "name": "构建校园问答 AI Agent",
+      "kind": "cover",
+      "file": "images/labs/lab--campus-agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "构建校园问答 AI Agent主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--linux-command",
+      "contentType": "lab",
+      "contentSlug": "linux-command",
+      "categoryKey": "command",
+      "name": "Linux 文件与目录命令训练",
+      "kind": "cover",
+      "file": "images/labs/lab--linux-command.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Linux 文件与目录命令训练主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--service-health",
+      "contentType": "lab",
+      "contentSlug": "service-health",
+      "categoryKey": "deployment",
+      "name": "模型接口健康检查",
+      "kind": "cover",
+      "file": "images/labs/lab--service-health.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "模型接口健康检查主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--rag-lab",
+      "contentType": "lab",
+      "contentSlug": "rag-lab",
+      "categoryKey": "agent",
+      "name": "RAG 知识库搭建",
+      "kind": "cover",
+      "file": "images/labs/lab--rag-lab.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "RAG 知识库搭建主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--multi-tool-agent",
+      "contentType": "lab",
+      "contentSlug": "multi-tool-agent",
+      "categoryKey": "agent",
+      "name": "多工具 Agent 开发",
+      "kind": "cover",
+      "file": "images/labs/lab--multi-tool-agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "多工具 Agent 开发主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--board-structure",
+      "contentType": "lab",
+      "contentSlug": "board-structure",
+      "categoryKey": "hardware",
+      "name": "AI 开发板结构认知",
+      "kind": "cover",
+      "file": "images/labs/lab--board-structure.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI 开发板结构认知主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--sensor-data",
+      "contentType": "lab",
+      "contentSlug": "sensor-data",
+      "categoryKey": "hardware",
+      "name": "传感器数据采集模拟",
+      "kind": "cover",
+      "file": "images/labs/lab--sensor-data.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "传感器数据采集模拟主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--image-web",
+      "contentType": "lab",
+      "contentSlug": "image-web",
+      "categoryKey": "project",
+      "name": "图像分类 Web 应用",
+      "kind": "cover",
+      "file": "images/labs/lab--image-web.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "图像分类 Web 应用主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--monitor",
+      "contentType": "lab",
+      "contentSlug": "monitor",
+      "categoryKey": "deployment",
+      "name": "模型服务监控演练",
+      "kind": "cover",
+      "file": "images/labs/lab--monitor.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "模型服务监控演练主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--git-cli",
+      "contentType": "lab",
+      "contentSlug": "git-cli",
+      "categoryKey": "command",
+      "name": "Git 命令行协作入门",
+      "kind": "cover",
+      "file": "images/labs/lab--git-cli.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Git 命令行协作入门主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--campus-assistant",
+      "contentType": "lab",
+      "contentSlug": "campus-assistant",
+      "categoryKey": "project",
+      "name": "校园知识助手综合项目",
+      "kind": "cover",
+      "file": "images/labs/lab--campus-assistant.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "校园知识助手综合项目主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "lab--energy-analysis",
+      "contentType": "lab",
+      "contentSlug": "energy-analysis",
+      "categoryKey": "project",
+      "name": "宿舍用电智能分析原型",
+      "kind": "cover",
+      "file": "images/labs/lab--energy-analysis.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "宿舍用电智能分析原型主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--llm-handbook",
+      "contentType": "resource",
+      "contentSlug": "llm-handbook",
+      "categoryKey": "handbook",
+      "name": "大模型入门学习手册",
+      "kind": "cover",
+      "file": "images/resources/resource--llm-handbook.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "大模型入门学习手册主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--transformer-visual",
+      "contentType": "resource",
+      "contentSlug": "transformer-visual",
+      "categoryKey": "handbook",
+      "name": "Transformer 图解",
+      "kind": "cover",
+      "file": "images/resources/resource--transformer-visual.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Transformer 图解主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--prompt-template",
+      "contentType": "resource",
+      "contentSlug": "prompt-template",
+      "categoryKey": "prompt-template",
+      "name": "提示词设计模板",
+      "kind": "cover",
+      "file": "images/resources/resource--prompt-template.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "提示词设计模板主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--function-guide",
+      "contentType": "resource",
+      "contentSlug": "function-guide",
+      "categoryKey": "handbook",
+      "name": "Function Calling 操作指南",
+      "kind": "cover",
+      "file": "images/resources/resource--function-guide.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Function Calling 操作指南主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--rag-checklist",
+      "contentType": "resource",
+      "contentSlug": "rag-checklist",
+      "categoryKey": "generic",
+      "name": "RAG 项目检查清单",
+      "kind": "cover",
+      "file": "images/resources/resource--rag-checklist.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "RAG 项目检查清单主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--linux-cheatsheet",
+      "contentType": "resource",
+      "contentSlug": "linux-cheatsheet",
+      "categoryKey": "command-reference",
+      "name": "Linux 命令速查表",
+      "kind": "cover",
+      "file": "images/resources/resource--linux-cheatsheet.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Linux 命令速查表主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--docker-guide",
+      "contentType": "resource",
+      "contentSlug": "docker-guide",
+      "categoryKey": "deployment-guide",
+      "name": "Docker 部署指南",
+      "kind": "cover",
+      "file": "images/resources/resource--docker-guide.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Docker 部署指南主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--vllm-config",
+      "contentType": "resource",
+      "contentSlug": "vllm-config",
+      "categoryKey": "handbook",
+      "name": "vLLM 服务配置手册",
+      "kind": "cover",
+      "file": "images/resources/resource--vllm-config.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "vLLM 服务配置手册主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--hardware-interface",
+      "contentType": "resource",
+      "contentSlug": "hardware-interface",
+      "categoryKey": "hardware-material",
+      "name": "智能硬件接口说明",
+      "kind": "cover",
+      "file": "images/resources/resource--hardware-interface.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "智能硬件接口说明主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--ai-security-list",
+      "contentType": "resource",
+      "contentSlug": "ai-security-list",
+      "categoryKey": "generic",
+      "name": "AI 安全实践清单",
+      "kind": "cover",
+      "file": "images/resources/resource--ai-security-list.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI 安全实践清单主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--agent-workflow",
+      "contentType": "resource",
+      "contentSlug": "agent-workflow",
+      "categoryKey": "generic",
+      "name": "Agent 工作流案例",
+      "kind": "cover",
+      "file": "images/resources/resource--agent-workflow.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Agent 工作流案例主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--course-note",
+      "contentType": "resource",
+      "contentSlug": "course-note",
+      "categoryKey": "handbook",
+      "name": "课程笔记结构模板",
+      "kind": "cover",
+      "file": "images/resources/resource--course-note.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程笔记结构模板主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--model-card",
+      "contentType": "resource",
+      "contentSlug": "model-card",
+      "categoryKey": "generic",
+      "name": "模型卡撰写模板",
+      "kind": "cover",
+      "file": "images/resources/resource--model-card.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "模型卡撰写模板主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--api-test",
+      "contentType": "resource",
+      "contentSlug": "api-test",
+      "categoryKey": "generic",
+      "name": "推理 API 测试集合",
+      "kind": "cover",
+      "file": "images/resources/resource--api-test.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "推理 API 测试集合主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--comfyui-workflow",
+      "contentType": "resource",
+      "contentSlug": "comfyui-workflow",
+      "categoryKey": "generic",
+      "name": "ComfyUI 基础工作流",
+      "kind": "cover",
+      "file": "images/resources/resource--comfyui-workflow.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "ComfyUI 基础工作流主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--image-prompt",
+      "contentType": "resource",
+      "contentSlug": "image-prompt",
+      "categoryKey": "prompt-template",
+      "name": "图像提示词词典",
+      "kind": "cover",
+      "file": "images/resources/resource--image-prompt.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "图像提示词词典主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--sensor-data",
+      "contentType": "resource",
+      "contentSlug": "sensor-data",
+      "categoryKey": "generic",
+      "name": "传感器模拟数据集",
+      "kind": "cover",
+      "file": "images/resources/resource--sensor-data.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "传感器模拟数据集主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--gpu-memory-table",
+      "contentType": "resource",
+      "contentSlug": "gpu-memory-table",
+      "categoryKey": "generic",
+      "name": "GPU 显存需求对照表",
+      "kind": "cover",
+      "file": "images/resources/resource--gpu-memory-table.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "GPU 显存需求对照表主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--evaluation-rubric",
+      "contentType": "resource",
+      "contentSlug": "evaluation-rubric",
+      "categoryKey": "generic",
+      "name": "AI 项目评审量表",
+      "kind": "cover",
+      "file": "images/resources/resource--evaluation-rubric.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI 项目评审量表主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--agent-safety",
+      "contentType": "resource",
+      "contentSlug": "agent-safety",
+      "categoryKey": "generic",
+      "name": "Agent 权限设计示例",
+      "kind": "cover",
+      "file": "images/resources/resource--agent-safety.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Agent 权限设计示例主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--rag-sample",
+      "contentType": "resource",
+      "contentSlug": "rag-sample",
+      "categoryKey": "generic",
+      "name": "校园知识库示例语料",
+      "kind": "cover",
+      "file": "images/resources/resource--rag-sample.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "校园知识库示例语料主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--fastapi-template",
+      "contentType": "resource",
+      "contentSlug": "fastapi-template",
+      "categoryKey": "generic",
+      "name": "FastAPI 推理服务模板",
+      "kind": "cover",
+      "file": "images/resources/resource--fastapi-template.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "FastAPI 推理服务模板主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--git-workflow",
+      "contentType": "resource",
+      "contentSlug": "git-workflow",
+      "categoryKey": "handbook",
+      "name": "Git 协作流程图",
+      "kind": "cover",
+      "file": "images/resources/resource--git-workflow.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Git 协作流程图主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "resource--ethics-cases",
+      "contentType": "resource",
+      "contentSlug": "ethics-cases",
+      "categoryKey": "generic",
+      "name": "生成式 AI 伦理案例集",
+      "kind": "cover",
+      "file": "images/resources/resource--ethics-cases.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "生成式 AI 伦理案例集主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--agent-tools",
+      "contentType": "article",
+      "contentSlug": "agent-tools",
+      "categoryKey": "agent",
+      "name": "从工具调用看 AI Agent 的工程边界",
+      "kind": "cover",
+      "file": "images/articles/article--agent-tools.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "从工具调用看 AI Agent 的工程边界主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--gpt5-campus",
+      "contentType": "article",
+      "contentSlug": "gpt5-campus",
+      "categoryKey": "llm",
+      "name": "新一代大模型如何进入校园学习场景",
+      "kind": "cover",
+      "file": "images/articles/article--gpt5-campus.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "新一代大模型如何进入校园学习场景主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--moe",
+      "contentType": "article",
+      "contentSlug": "moe",
+      "categoryKey": "llm",
+      "name": "MoE 为什么能让大模型更高效",
+      "kind": "cover",
+      "file": "images/articles/article--moe.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "MoE 为什么能让大模型更高效主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--multimodal",
+      "contentType": "article",
+      "contentSlug": "multimodal",
+      "categoryKey": "multimodal",
+      "name": "多模态模型如何对齐图像与语言",
+      "kind": "cover",
+      "file": "images/articles/article--multimodal.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "多模态模型如何对齐图像与语言主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--robot",
+      "contentType": "article",
+      "contentSlug": "robot",
+      "categoryKey": "robotics",
+      "name": "具身智能离校园实验还有多远",
+      "kind": "cover",
+      "file": "images/articles/article--robot.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "具身智能离校园实验还有多远主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--safety",
+      "contentType": "article",
+      "contentSlug": "safety",
+      "categoryKey": "security",
+      "name": "学生开发 AI 应用需要知道的安全边界",
+      "kind": "cover",
+      "file": "images/articles/article--safety.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "学生开发 AI 应用需要知道的安全边界主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--rag",
+      "contentType": "article",
+      "contentSlug": "rag",
+      "categoryKey": "llm",
+      "name": "RAG 的价值不只是让模型知道更多",
+      "kind": "cover",
+      "file": "images/articles/article--rag.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "RAG 的价值不只是让模型知道更多主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--function-call",
+      "contentType": "article",
+      "contentSlug": "function-call",
+      "categoryKey": "agent",
+      "name": "Function Calling 的最小心智模型",
+      "kind": "cover",
+      "file": "images/articles/article--function-call.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "Function Calling 的最小心智模型主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--alignment",
+      "contentType": "article",
+      "contentSlug": "alignment",
+      "categoryKey": "multimodal",
+      "name": "多模态对齐中的数据质量问题",
+      "kind": "cover",
+      "file": "images/articles/article--alignment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "多模态对齐中的数据质量问题主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--small-model",
+      "contentType": "article",
+      "contentSlug": "small-model",
+      "categoryKey": "llm",
+      "name": "小模型为何重新受到关注",
+      "kind": "cover",
+      "file": "images/articles/article--small-model.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "小模型为何重新受到关注主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--context-engineering",
+      "contentType": "article",
+      "contentSlug": "context-engineering",
+      "categoryKey": "agent",
+      "name": "从提示词走向上下文工程",
+      "kind": "cover",
+      "file": "images/articles/article--context-engineering.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "从提示词走向上下文工程主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--vllm-throughput",
+      "contentType": "article",
+      "contentSlug": "vllm-throughput",
+      "categoryKey": "generic",
+      "name": "vLLM 如何提升推理吞吐",
+      "kind": "cover",
+      "file": "images/articles/article--vllm-throughput.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "vLLM 如何提升推理吞吐主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--edge-ai",
+      "contentType": "article",
+      "contentSlug": "edge-ai",
+      "categoryKey": "generic",
+      "name": "边缘 AI 的模型与硬件权衡",
+      "kind": "cover",
+      "file": "images/articles/article--edge-ai.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "边缘 AI 的模型与硬件权衡主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--prompt-injection",
+      "contentType": "article",
+      "contentSlug": "prompt-injection",
+      "categoryKey": "security",
+      "name": "提示词注入攻击的真实路径",
+      "kind": "cover",
+      "file": "images/articles/article--prompt-injection.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "提示词注入攻击的真实路径主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "article--ai-copyright",
+      "contentType": "article",
+      "contentSlug": "ai-copyright",
+      "categoryKey": "security",
+      "name": "生成式 AI 作品中的版权判断",
+      "kind": "cover",
+      "file": "images/articles/article--ai-copyright.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "生成式 AI 作品中的版权判断主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "challenge--weekly-ai",
+      "contentType": "challenge",
+      "contentSlug": "weekly-ai",
+      "categoryKey": "weekly",
+      "name": "本周 AI 能力挑战",
+      "kind": "cover",
+      "file": "images/challenges/challenge--weekly-ai.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "本周 AI 能力挑战主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "challenge--llm-assessment",
+      "contentType": "challenge",
+      "contentSlug": "llm-assessment",
+      "categoryKey": "assessment",
+      "name": "大模型基础模拟测评",
+      "kind": "cover",
+      "file": "images/challenges/challenge--llm-assessment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "大模型基础模拟测评主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "challenge--agent-assessment",
+      "contentType": "challenge",
+      "contentSlug": "agent-assessment",
+      "categoryKey": "assessment",
+      "name": "AI Agent 工程能力测评",
+      "kind": "cover",
+      "file": "images/challenges/challenge--agent-assessment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI Agent 工程能力测评主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "challenge--deployment-assessment",
+      "contentType": "challenge",
+      "contentSlug": "deployment-assessment",
+      "categoryKey": "assessment",
+      "name": "模型部署基础测评",
+      "kind": "cover",
+      "file": "images/challenges/challenge--deployment-assessment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "模型部署基础测评主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "challenge--security-sprint",
+      "contentType": "challenge",
+      "contentSlug": "security-sprint",
+      "categoryKey": "weekly",
+      "name": "AI 安全边界挑战赛",
+      "kind": "cover",
+      "file": "images/challenges/challenge--security-sprint.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "AI 安全边界挑战赛主题科技插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed"
+    },
+    {
+      "assetKey": "default--course--llm",
+      "contentType": "course",
+      "categoryKey": "llm",
+      "name": "课程 llm 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--llm.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程llm分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "llm"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "llm"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--agent",
+      "contentType": "course",
+      "categoryKey": "agent",
+      "name": "课程 agent 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程agent分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "agent"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "agent"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--image",
+      "contentType": "course",
+      "categoryKey": "image",
+      "name": "课程 image 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--image.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程image分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "image"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "image"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--deployment",
+      "contentType": "course",
+      "categoryKey": "deployment",
+      "name": "课程 deployment 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--deployment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程deployment分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "deployment"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "deployment"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--hardware",
+      "contentType": "course",
+      "categoryKey": "hardware",
+      "name": "课程 hardware 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--hardware.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程hardware分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "hardware"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "hardware"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--security",
+      "contentType": "course",
+      "categoryKey": "security",
+      "name": "课程 security 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--security.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程security分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "security"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "security"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--course--generic",
+      "contentType": "course",
+      "categoryKey": "generic",
+      "name": "课程 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--course--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "课程generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "course",
+          "categoryKey": "generic"
+        },
+        {
+          "contentType": "theme",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--deployment",
+      "contentType": "lab",
+      "categoryKey": "deployment",
+      "name": "实训 deployment 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--deployment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训deployment分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "deployment"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--agent",
+      "contentType": "lab",
+      "categoryKey": "agent",
+      "name": "实训 agent 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训agent分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "agent"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--command",
+      "contentType": "lab",
+      "categoryKey": "command",
+      "name": "实训 command 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--command.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训command分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "command"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--hardware",
+      "contentType": "lab",
+      "categoryKey": "hardware",
+      "name": "实训 hardware 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--hardware.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训hardware分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "hardware"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--project",
+      "contentType": "lab",
+      "categoryKey": "project",
+      "name": "实训 project 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--project.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训project分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "project"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--lab--generic",
+      "contentType": "lab",
+      "categoryKey": "generic",
+      "name": "实训 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--lab--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "实训generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "lab",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--handbook",
+      "contentType": "resource",
+      "categoryKey": "handbook",
+      "name": "资源 handbook 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--handbook.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源handbook分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "handbook"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--prompt-template",
+      "contentType": "resource",
+      "categoryKey": "prompt-template",
+      "name": "资源 prompt-template 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--prompt-template.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源prompt-template分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "prompt-template"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--deployment-guide",
+      "contentType": "resource",
+      "categoryKey": "deployment-guide",
+      "name": "资源 deployment-guide 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--deployment-guide.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源deployment-guide分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "deployment-guide"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--agent-case",
+      "contentType": "resource",
+      "categoryKey": "agent-case",
+      "name": "资源 agent-case 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--agent-case.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源agent-case分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "agent-case"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--command-reference",
+      "contentType": "resource",
+      "categoryKey": "command-reference",
+      "name": "资源 command-reference 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--command-reference.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源command-reference分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "command-reference"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--hardware-material",
+      "contentType": "resource",
+      "categoryKey": "hardware-material",
+      "name": "资源 hardware-material 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--hardware-material.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源hardware-material分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "hardware-material"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--resource--generic",
+      "contentType": "resource",
+      "categoryKey": "generic",
+      "name": "资源 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--resource--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "资源generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "resource",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--llm",
+      "contentType": "article",
+      "categoryKey": "llm",
+      "name": "文章 llm 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--llm.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章llm分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "llm"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--agent",
+      "contentType": "article",
+      "categoryKey": "agent",
+      "name": "文章 agent 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--agent.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章agent分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "agent"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--multimodal",
+      "contentType": "article",
+      "categoryKey": "multimodal",
+      "name": "文章 multimodal 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--multimodal.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章multimodal分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "multimodal"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--robotics",
+      "contentType": "article",
+      "categoryKey": "robotics",
+      "name": "文章 robotics 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--robotics.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章robotics分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "robotics"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--security",
+      "contentType": "article",
+      "categoryKey": "security",
+      "name": "文章 security 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--security.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章security分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "security"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--article--generic",
+      "contentType": "article",
+      "categoryKey": "generic",
+      "name": "文章 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--article--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "文章generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "article",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--challenge--weekly",
+      "contentType": "challenge",
+      "categoryKey": "weekly",
+      "name": "挑战 weekly 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--challenge--weekly.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "挑战weekly分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "challenge",
+          "categoryKey": "weekly"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--challenge--assessment",
+      "contentType": "challenge",
+      "categoryKey": "assessment",
+      "name": "挑战 assessment 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--challenge--assessment.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "挑战assessment分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "challenge",
+          "categoryKey": "assessment"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--challenge--practice",
+      "contentType": "challenge",
+      "categoryKey": "practice",
+      "name": "挑战 practice 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--challenge--practice.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "挑战practice分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "challenge",
+          "categoryKey": "practice"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--challenge--generic",
+      "contentType": "challenge",
+      "categoryKey": "generic",
+      "name": "挑战 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--challenge--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "挑战generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "challenge",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "default--global--generic",
+      "contentType": "global",
+      "categoryKey": "generic",
+      "name": "平台 generic 默认封面",
+      "kind": "cover",
+      "file": "images/defaults/default--global--generic.webp",
+      "width": 1200,
+      "height": 675,
+      "altText": "平台generic分类的知识与科技场景插画",
+      "focalX": 0.5,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "global",
+          "categoryKey": "generic"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--topics",
+      "contentType": "page_hero",
+      "contentSlug": "topics",
+      "categoryKey": "topics",
+      "name": "topics 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--topics.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "AI知识地图、课程节点、书本和数字模块的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "topics"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--labs",
+      "contentType": "page_hero",
+      "contentSlug": "labs",
+      "categoryKey": "labs",
+      "name": "labs 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--labs.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "笔记本电脑、模型服务立方体、开发板和智能体节点的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "labs"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--resources",
+      "contentType": "page_hero",
+      "contentSlug": "resources",
+      "categoryKey": "resources",
+      "name": "resources 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--resources.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "文档、知识卡片、文件夹、搜索与工具包的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "resources"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--frontier",
+      "contentType": "page_hero",
+      "contentSlug": "frontier",
+      "categoryKey": "frontier",
+      "name": "frontier 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--frontier.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "研究雷达、模型节点、多模态信号的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "frontier"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--assessments",
+      "contentType": "page_hero",
+      "contentSlug": "assessments",
+      "categoryKey": "assessments",
+      "name": "assessments 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--assessments.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "奖杯、知识节点、能力图谱和测评任务的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "assessments"
+        }
+      ]
+    },
+    {
+      "assetKey": "hero--profile",
+      "contentType": "page_hero",
+      "contentSlug": "profile",
+      "categoryKey": "profile",
+      "name": "profile 页面头图",
+      "kind": "hero",
+      "file": "images/heroes/hero--profile.webp",
+      "width": 1600,
+      "height": 800,
+      "altText": "成长路径、徽章、能力雷达与学习成果的科技插画",
+      "focalX": 0.72,
+      "focalY": 0.5,
+      "source": "image2_seed",
+      "defaultFor": [
+        {
+          "contentType": "page_hero",
+          "categoryKey": "profile"
+        }
+      ]
+    }
+  ],
+  "categoryAliases": {
+    "resource": {
+      "学习手册": "handbook",
+      "知识图解": "handbook",
+      "提示词模板": "prompt-template",
+      "操作指南": "handbook",
+      "检查清单": "generic",
+      "命令速查": "command-reference",
+      "部署指南": "deployment-guide",
+      "配置手册": "handbook",
+      "硬件资料": "hardware-material",
+      "安全清单": "generic",
+      "案例包": "generic",
+      "学习模板": "handbook",
+      "治理模板": "generic",
+      "接口工具": "generic",
+      "工作流": "generic",
+      "数据集": "generic",
+      "参考表": "generic",
+      "评审工具": "generic",
+      "安全案例": "generic",
+      "代码模板": "generic",
+      "案例集": "generic",
+      "Agent 案例": "agent-case"
+    },
+    "article": {
+      "Agent": "agent",
+      "大模型": "llm",
+      "多模态": "multimodal",
+      "机器人": "robotics",
+      "AI 安全": "security",
+      "模型部署": "generic",
+      "智能硬件": "generic",
+      "AI 伦理": "security"
+    }
+  }
+}

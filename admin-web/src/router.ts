@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AdminLayout from './components/AdminLayout.vue'
 import { useSessionStore } from './stores/session'
+import { visibleAdminNavigation } from './navigation'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -18,6 +19,7 @@ const router = createRouter({
         { path: 'courses', component: () => import('./views/management/CourseManagementView.vue'), meta: { title: '课程内容管理', permission: 'course.read' } },
         { path: 'labs', component: () => import('./views/management/LabManagementView.vue'), meta: { title: '实训项目管理', permission: 'lab.read' } },
         { path: 'resources', component: () => import('./views/management/ResourceManagementView.vue'), meta: { title: '资源中心管理', permission: 'resource.read' } },
+        { path: 'media', component: () => import('./views/MediaLibraryView.vue'), meta: { title: '素材库', permission: 'media.read' } },
         { path: 'articles', component: () => import('./views/management/ArticleManagementView.vue'), meta: { title: 'AI 前沿管理', permission: 'article.read' } },
         { path: 'challenges', component: () => import('./views/management/ChallengeManagementView.vue'), meta: { title: '挑战测评管理', permission: 'challenge.read' } },
         { path: 'growth', component: () => import('./views/GrowthView.vue'), meta: { title: '用户成长管理', permission: 'growth.read' } },
@@ -34,9 +36,10 @@ router.beforeEach(async (to) => {
   document.title = `${String(to.meta.title || '管理后台')}｜AI数智化学习平台`
   const session = useSessionStore()
   if (!session.initialized) await session.restore()
+  const landing = visibleAdminNavigation(session.user?.permissions || [])[0]?.items[0]?.[2] || '/search'
   if (!to.meta.public && !session.user) return { path: '/login', query: { redirect: to.fullPath } }
-  if (!to.meta.public && to.meta.permission && !session.user?.permissions.includes(String(to.meta.permission))) return '/dashboard'
-  if (to.path === '/login' && session.user) return '/dashboard'
+  if (!to.meta.public && to.meta.permission && !session.user?.permissions.includes(String(to.meta.permission))) return landing
+  if (to.path === '/login' && session.user) return landing
 })
 
 export default router

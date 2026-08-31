@@ -1,4 +1,15 @@
+import { catalogAssets, getDefaultAssetKeys } from '../../catalog-assets/manifest'
+
+function withCover<T extends { slug: string; coverAssetKey: string }>(type: string, items: Omit<T, 'coverAssetKey'>[]): T[] {
+  return items.map((item) => {
+    const coverAssetKey = type === 'theme' ? getDefaultAssetKeys(type, item.slug)[0] : catalogAssets.find((asset) => asset.contentType === type && asset.contentSlug === item.slug)?.assetKey
+    if (!coverAssetKey) throw new Error(`演示内容缺少素材清单映射: ${type}/${item.slug}`)
+    return { ...item, coverAssetKey } as T
+  })
+}
+
 export interface DemoTheme {
+  coverAssetKey: string
   slug: string
   title: string
   summary: string
@@ -12,6 +23,7 @@ export interface DemoTheme {
 }
 
 export interface DemoCourse {
+  coverAssetKey: string
   slug: string
   title: string
   summary: string
@@ -31,6 +43,7 @@ export interface DemoCourse {
 }
 
 export interface DemoLab {
+  coverAssetKey: string
   slug: string
   title: string
   summary: string
@@ -47,6 +60,7 @@ export interface DemoLab {
 }
 
 export interface DemoResource {
+  coverAssetKey: string
   slug: string
   title: string
   summary: string
@@ -64,6 +78,7 @@ export interface DemoResource {
 }
 
 export interface DemoArticle {
+  coverAssetKey: string
   slug: string
   title: string
   summary: string
@@ -78,7 +93,7 @@ export interface DemoArticle {
   content: string[]
 }
 
-export const demoThemes: DemoTheme[] = [
+export const demoThemes = withCover<DemoTheme>('theme', [
   {
     slug: 'llm', title: '大模型 LLM', summary: '从通识、Transformer 到 RAG 与部署，建立大模型完整知识框架。',
     accent: '#6e5bff', coverVariant: 'llm', icon: 'layers', learners: 12600, courseCount: 6, hours: 42,
@@ -151,9 +166,9 @@ export const demoThemes: DemoTheme[] = [
       { key: 'ethics', name: '伦理与版权测评', description: '形成负责任的 AI 使用判断。', countLabel: '1 个测评', hours: 4, type: 'assessment' },
     ],
   },
-]
+])
 
-export const demoCourses: DemoCourse[] = [
+export const demoCourses = withCover<DemoCourse>('course', [
   { slug: 'ai-literacy', title: '零基础认识人工智能', summary: '建立人工智能、机器学习与生成式 AI 的基本认知。', theme: 'llm', level: '入门', hours: 2.5, durationMinutes: 150, learners: 15680, rating: 4.9, chapters: 4, mode: '图文', coverVariant: 'llm', icon: 'brain', instructor: '林知远', recommended: true, progress: 72 },
   { slug: 'llm-zero', title: '从零理解大语言模型', summary: '理解 Transformer、训练与推理的核心逻辑。', theme: 'llm', level: '入门', hours: 3.5, durationMinutes: 210, learners: 12600, rating: 4.9, chapters: 5, mode: '图文', coverVariant: 'llm', icon: 'layers', instructor: '林知远', recommended: true, progress: 60 },
   { slug: 'transformer-core', title: 'Transformer 核心原理', summary: '从注意力机制到编码器结构，拆解现代大模型基础。', theme: 'llm', level: '中级', hours: 6, durationMinutes: 360, learners: 8920, rating: 4.8, chapters: 6, mode: '视频', coverVariant: 'llm', icon: 'network', instructor: '周思齐', recommended: true, progress: 34 },
@@ -178,9 +193,9 @@ export const demoCourses: DemoCourse[] = [
   { slug: 'edge-ai', title: '边缘 AI 模型应用', summary: '理解轻量化、设备约束与离线推理流程。', theme: 'hardware', level: '高级', hours: 7, durationMinutes: 420, learners: 2840, rating: 4.7, chapters: 5, mode: '实战项目', coverVariant: 'hardware', icon: 'edge', instructor: '陆川', recommended: false, progress: 0 },
   { slug: 'prompt-injection', title: '提示词注入与模型安全', summary: '识别越权指令、数据泄露与工具滥用风险。', theme: 'security', level: '中级', hours: 4, durationMinutes: 240, learners: 5100, rating: 4.9, chapters: 4, mode: '互动实验', coverVariant: 'security', icon: 'shield', instructor: '叶书宁', recommended: true, progress: 0 },
   { slug: 'ai-privacy', title: 'AI 应用隐私与数据治理', summary: '建立最小收集、访问控制和数据留存意识。', theme: 'security', level: '中级', hours: 4.5, durationMinutes: 270, learners: 4120, rating: 4.8, chapters: 4, mode: '图文', coverVariant: 'security', icon: 'lock', instructor: '叶书宁', recommended: true, progress: 0 },
-]
+])
 
-export const demoLabs: DemoLab[] = [
+export const demoLabs = withCover<DemoLab>('lab', [
   { slug: 'model-service', title: '部署你的第一个 AI 模型', summary: '模拟模型服务启动、检查与验证。', labType: 'deployment', level: '中级', durationMinutes: 90, steps: 8, completionRate: 66, participants: 8932, coverVariant: 'deployment', icon: 'server', result: '可访问的模型健康检查与推理接口', skills: ['Linux', 'Docker', 'API'] },
   { slug: 'campus-agent', title: '构建校园问答 AI Agent', summary: '组合检索、工具调用和来源引用。', labType: 'agent', level: '中级', durationMinutes: 110, steps: 7, completionRate: 62, participants: 7521, coverVariant: 'agent', icon: 'bot', result: '可追溯回答的校园知识助手', skills: ['LLM', 'RAG', 'Agent'] },
   { slug: 'linux-command', title: 'Linux 文件与目录命令训练', summary: '使用白名单命令完成文件与目录任务。', labType: 'command', level: '入门', durationMinutes: 60, steps: 6, completionRate: 71, participants: 7921, coverVariant: 'command', icon: 'terminal', result: '可复核的命令操作记录', skills: ['Linux', 'Shell', '日志'] },
@@ -194,9 +209,9 @@ export const demoLabs: DemoLab[] = [
   { slug: 'git-cli', title: 'Git 命令行协作入门', summary: '用安全模拟命令理解分支与提交协作。', labType: 'command', level: '入门', durationMinutes: 55, steps: 6, completionRate: 53, participants: 6102, coverVariant: 'command', icon: 'git', result: '清晰可追溯的协作提交记录', skills: ['Git', '分支', '协作'] },
   { slug: 'campus-assistant', title: '校园知识助手综合项目', summary: '整合课程、资源与校园知识完成可用作品。', labType: 'project', level: '进阶', durationMinutes: 240, steps: 8, completionRate: 41, participants: 3560, coverVariant: 'agent', icon: 'graduation', result: '具备权限和来源说明的校园助手', skills: ['LLM', 'RAG', '前端'] },
   { slug: 'energy-analysis', title: '宿舍用电智能分析原型', summary: '从模拟传感数据发现趋势并提出节能建议。', labType: 'project', level: '中级', durationMinutes: 210, steps: 7, completionRate: 44, participants: 2980, coverVariant: 'hardware', icon: 'energy', result: '用电趋势看板与节能建议', skills: ['数据分析', '可视化', 'AIoT'] },
-]
+])
 
-export const demoResources: DemoResource[] = [
+export const demoResources = withCover<DemoResource>('resource', [
   ['llm-handbook', '大模型入门学习手册', '梳理核心术语、学习路径和练习建议。', '学习手册', 'PDF', '大模型', '入门', 4280, 12600, 980, 'llm', 'file', true, '2026-08-28'],
   ['transformer-visual', 'Transformer 图解', '用结构图理解注意力与编码流程。', '知识图解', 'PDF', '大模型', '中级', 3910, 11200, 860, 'llm', 'diagram', true, '2026-08-27'],
   ['prompt-template', '提示词设计模板', '覆盖目标、上下文、约束和示例字段。', '提示词模板', 'DOCX', 'Agent', '入门', 3650, 9800, 720, 'agent', 'template', true, '2026-08-26'],
@@ -223,9 +238,9 @@ export const demoResources: DemoResource[] = [
   ['ethics-cases', '生成式 AI 伦理案例集', '讨论版权、偏差、隐私与责任边界。', '案例集', 'PDF', 'AI 安全', '入门', 920, 2400, 180, 'security', 'scale', false, '2026-08-05'],
 ].map(([slug, title, summary, category, format, theme, difficulty, downloads, views, favorites, coverVariant, icon, featured, updatedAt]) => ({
   slug, title, summary, category, format, theme, difficulty, downloads, views, favorites, coverVariant, icon, featured, updatedAt,
-})) as DemoResource[]
+})) as Omit<DemoResource, 'coverAssetKey'>[])
 
-export const demoArticles: DemoArticle[] = [
+export const demoArticles = withCover<DemoArticle>('article', [
   ['agent-tools', '从工具调用看 AI Agent 的工程边界', '理解规划、执行、反馈之间的关系，以及何时应该让人参与决策。', 'Agent', 8, 12600, 860, 'agent', 'tool', '2026-08-28', true],
   ['gpt5-campus', '新一代大模型如何进入校园学习场景', '从学习助教、实验反馈到教师协作，观察能力与边界。', '大模型', 9, 11800, 790, 'llm', 'layers', '2026-08-27', true],
   ['moe', 'MoE 为什么能让大模型更高效', '用直观方式理解专家混合架构与路由机制。', '大模型', 6, 9820, 620, 'llm', 'network', '2026-08-26', false],
@@ -244,15 +259,28 @@ export const demoArticles: DemoArticle[] = [
 ].map(([slug, title, summary, category, readMinutes, views, favorites, coverVariant, icon, publishedAt, featured]) => ({
   slug, title, summary, category, readMinutes, views, favorites, coverVariant, icon, publishedAt, featured,
   content: [`${summary}`, '通过概念、案例与可验证实践建立清晰判断，避免把模型能力等同于系统能力。', '课程建议结合相关资源和实训练习完成学习闭环。'],
-})) as DemoArticle[]
+})) as Omit<DemoArticle, 'coverAssetKey'>[])
 
-export const demoChallenges = [
+export interface DemoChallenge {
+  slug: string
+  title: string
+  summary: string
+  type: string
+  targetScore: number
+  rewardPoints: number
+  questions: number
+  durationMinutes: number
+  participants: number
+  difficulty: string
+  coverAssetKey: string
+}
+export const demoChallenges = withCover<DemoChallenge>('challenge', [
   { slug: 'weekly-ai', title: '本周 AI 能力挑战', summary: '覆盖模型基础、Agent、部署与安全边界。', type: 'weekly', targetScore: 80, rewardPoints: 300, questions: 30, durationMinutes: 20, participants: 6840, difficulty: '综合' },
   { slug: 'llm-assessment', title: '大模型基础模拟测评', summary: '检验 Transformer、提示词和 RAG 核心知识。', type: 'assessment', targetScore: 75, rewardPoints: 240, questions: 24, durationMinutes: 35, participants: 5290, difficulty: '中级' },
   { slug: 'agent-assessment', title: 'AI Agent 工程能力测评', summary: '检验工具、记忆、规划和安全设计。', type: 'assessment', targetScore: 78, rewardPoints: 260, questions: 20, durationMinutes: 30, participants: 4380, difficulty: '中级' },
   { slug: 'deployment-assessment', title: '模型部署基础测评', summary: '覆盖 Linux、Docker、API 和健康检查。', type: 'assessment', targetScore: 72, rewardPoints: 220, questions: 20, durationMinutes: 30, participants: 3960, difficulty: '初级' },
   { slug: 'security-sprint', title: 'AI 安全边界挑战赛', summary: '识别提示词注入、敏感信息和越权风险。', type: 'weekly', targetScore: 85, rewardPoints: 360, questions: 18, durationMinutes: 25, participants: 3280, difficulty: '进阶' },
-]
+])
 
 export const demoKnowledgeConcepts = [
   ['ai-literacy', '人工智能基础', '用数据与算法完成感知、生成或决策任务'],

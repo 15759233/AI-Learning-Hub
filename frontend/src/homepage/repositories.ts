@@ -18,6 +18,7 @@ import {
   demoStudents,
 } from '@ai-learning-hub/demo-fixtures'
 import { request } from '../services/api/client'
+import { mockFixtureCover } from '../media/catalog'
 
 const itemsByType = {
   theme: new Map(demoThemes.map((item) => [item.slug, item])),
@@ -37,7 +38,7 @@ const resolve = (type: string, slug: string): HomepageResolvedItemDto | null => 
     slug,
     title: value.title,
     summary: value.summary,
-    data: { ...value },
+    data: { ...value, ...mockFixtureCover(type as keyof typeof itemsByType, value) },
   }
 }
 
@@ -54,12 +55,12 @@ export const MockHomepageRepository: HomepageRepository = {
     const post = fixture.posts.find((item) => item.type === 'note')!
     const postAuthor = fixture.users.find((user) => user.username === post.author)!
     const note: HomepageResolvedItemDto = { targetType: 'community_post', slug: post.id, title: post.title, summary: post.blocks.filter((block) => block.type === 'paragraph').map((block) => 'text' in block ? block.text : '').join('').slice(0, 160), data: { author: { username: postAuthor.username, displayName: postAuthor.displayName }, commentCount: fixture.comments.filter((comment) => comment.postId === post.id).length, likeCount: fixture.reactions.filter((reaction) => reaction.postId === post.id && reaction.type === 'like').length, cover: 'aiWorkspace' } }
-    const experiments = demoLabs.slice(0, 2).map((lab, index) => ({ ...resolve('lab', lab.slug)!, data: { ...lab, cover: index ? 'aiWorkspace' : 'robotVision' } }))
+    const experiments = demoLabs.slice(0, 2).map((lab) => resolve('lab', lab.slug)!)
     const modules = LANDING_MODULE_KEYS.map((key, sortOrder): PublicHomepageModuleDto => ({
       id: `mock-homepage-${key}`, moduleKey: key, name: LANDING_MODULE_LABELS[key], sortOrder,
       config: structuredClone(LANDING_DEFAULT_CONFIG[key]) as unknown as Record<string, unknown>,
       items: key === 'landing_hero' ? [note, ...experiments, resolve('resource', demoResources[0].slug)!]
-        : key === 'landing_featured' ? [{ ...experiments[0], data: { ...experiments[0].data, cover: 'robotCar' } }, { ...experiments[1], data: { ...experiments[1].data, cover: 'robotVision' } }, note]
+        : key === 'landing_featured' ? [...experiments, note]
           : key === 'landing_community_overview' ? [
             ...fixture.topics.slice(0, 5).map((topic): HomepageResolvedItemDto => ({ targetType: 'community_topic', slug: topic.slug, title: topic.name, summary: topic.description, data: { id: topic.id, postCount: fixture.posts.filter((item) => item.topics.includes(topic.slug)).length, followerCount: 0, recommended: topic.recommended } })),
             ...creators.map((creator): HomepageResolvedItemDto => ({ targetType: 'community_user', slug: creator.username, title: creator.displayName, summary: creator.headline, data: { ...creator } })),

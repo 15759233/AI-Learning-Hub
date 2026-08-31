@@ -14,7 +14,8 @@ export async function lockFileReferences(tx: Prisma.TransactionClient) {
 /** JSON 内容块没有外键；与写入共用事务锁，保守检查所有业务字段及历史快照。 */
 export async function fileReferenced(tx: Prisma.TransactionClient, id: string) {
   for (const model of Prisma.dmmf.datamodel.models) {
-    if (model.name === 'FileRecord') continue
+    // 清理队列是失败重试凭据，不是业务引用；旧审计与所有版本仍参与保护。
+    if (['FileRecord', 'MediaGcJob'].includes(model.name)) continue
     const fields = model.fields.filter((field) => field.kind === 'scalar' && ['String', 'Json'].includes(field.type) && !field.isId)
     if (!fields.length) continue
     const table = Prisma.raw(`"${model.dbName || model.name}"`)

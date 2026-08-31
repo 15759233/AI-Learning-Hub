@@ -1,11 +1,12 @@
 import { createCommunityFixtures, demoArticles, demoChallenges, demoCourses, demoLabs, demoResources, demoStudents, demoThemes } from '@ai-learning-hub/demo-fixtures'
 import type { CommunityAuthorDto, CommunityCommentDto, CommunityContentBlock, CommunityContextDto, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityProfileDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { randomId } from './random-id'
+import { mockFixtureCover } from '../../media/catalog'
 const fixtures = createCommunityFixtures({ courses: demoCourses, labs: demoLabs, articles: demoArticles, themes: demoThemes, students: demoStudents })
 const authors: CommunityAuthorDto[] = fixtures.users.map((user) => ({ id: user.username, username: user.username, displayName: user.displayName, verifiedType: user.verifiedType, avatar: null, major: user.major, school: 'AI 创客学院' }))
 const initialPosts: CommunityPostDetailDto[] = fixtures.posts.map((post) => ({
   id: post.id, type: post.type, status: 'published', visibility: post.visibility, title: post.title, body: post.blocks.map((b) => b.type === 'code' ? b.code : b.type === 'image' ? b.alt : b.text).join('\n'), bodyPreview: '', contentBlocks: post.blocks, author: authors.find((user) => user.id === post.author)!,
-  bindings: post.bindings.filter((b) => b.type !== 'lab_run').map((binding) => { const content = (binding.type === 'course' ? demoCourses : binding.type === 'lab' ? demoLabs : demoArticles).find((row) => row.slug === binding.id)!; return { type: binding.type, id: binding.id, slug: binding.id, title: content.title, summary: content.summary, route: binding.type === 'course' ? `/courses/${binding.id}` : binding.type === 'lab' ? `/labs/${binding.id}` : `/frontier?article=${binding.id}`, status: 'published' } }),
+  bindings: post.bindings.filter((b) => b.type !== 'lab_run').map((binding) => { const content = (binding.type === 'course' ? demoCourses : binding.type === 'lab' ? demoLabs : demoArticles).find((row) => row.slug === binding.id)!; return { type: binding.type, id: binding.id, slug: binding.id, title: content.title, summary: content.summary, cover: mockFixtureCover(binding.type === 'course' ? 'course' : binding.type === 'lab' ? 'lab' : 'article', content).cover, route: binding.type === 'course' ? `/courses/${binding.id}` : binding.type === 'lab' ? `/labs/${binding.id}` : `/frontier?article=${binding.id}`, status: 'published' } }),
   topics: [], stats: { likes: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'like').length, useful: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'useful').length, comments: 2, bookmarks: fixtures.bookmarks.filter((r) => r.postId === post.id).length },
   viewerState: { liked: fixtures.reactions.some((r) => r.postId === post.id && r.username === authors[0].id && r.type === 'like'), markedUseful: fixtures.reactions.some((r) => r.postId === post.id && r.username === authors[0].id && r.type === 'useful'), bookmarked: fixtures.bookmarks.some((r) => r.postId === post.id && r.username === authors[0].id), followingAuthor: fixtures.follows.some((f) => f.follower === authors[0].id && f.followee === post.author) }, recommendationReasons: ['显式演示数据 · 与 Seed 共用语义'], labels: [], question: post.type === 'question' ? { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, publishedAt: post.publishedAt, editedAt: null,
 }))
@@ -101,7 +102,8 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     const content = catalog.find((item) => item.slug === id)
     if (!content) throw new Error('关联内容不存在或不属于当前演示用户')
     const routes: Record<string, string> = { course: `/courses/${id}`, lab: `/labs/${id}`, resource: `/resources?resource=${id}`, article: `/frontier?article=${id}`, theme: `/topics?theme=${id}`, challenge: `/assessments?challenge=${id}` }
-    const binding = { type: type!, id: id!, title: content.title, route: routes[type!], status: 'published' }
+    const cover = mockFixtureCover(type as 'course' | 'lab' | 'resource' | 'article' | 'theme' | 'challenge', content).cover
+    const binding = { type: type!, id: id!, title: content.title, cover, route: routes[type!], status: 'published' }
     const course = demoCourses.find((c) => binding.type === 'course' && c.slug === binding.id)
     value = { binding, topicIds: course ? topics.filter((topic) => topic.themeId === course.theme).slice(0, 3).map((topic) => topic.id) : [] }
   }

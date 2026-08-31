@@ -7,6 +7,7 @@ import {
   demoResources,
 } from '@ai-learning-hub/demo-fixtures'
 import { reactive } from 'vue'
+import { mockCatalogCover } from '../media/catalog'
 import heroCampus from '../assets/hero-campus.webp'
 import learningCover from '../assets/learning-cover.webp'
 import labCover from '../assets/lab-cover.webp'
@@ -33,6 +34,7 @@ export const courses = reactive<Course[]>(demoCourses.map((item) => ({
   learners: item.learners,
   progress: item.progress,
   mode: item.mode as Course['mode'],
+  ...mockCatalogCover('course', item.theme, item.coverAssetKey),
   coverVariant: item.coverVariant,
   accent: themeMeta[item.theme as keyof typeof themeMeta].accent,
   icon: item.icon,
@@ -56,6 +58,7 @@ export const labs = reactive<Lab[]>(demoLabs.map((item) => ({
   steps: item.steps,
   completion: item.completionRate,
   learners: item.participants,
+  ...mockCatalogCover('lab', item.labType, item.coverAssetKey),
   coverVariant: item.coverVariant,
   icon: item.icon,
 })))
@@ -70,6 +73,7 @@ export const resources = reactive<ResourceItem[]>(demoResources.map((item) => ({
   featured: item.featured,
   downloads: item.downloads,
   updatedAt: item.updatedAt,
+  ...mockCatalogCover('resource', item.category, item.coverAssetKey),
   coverVariant: item.coverVariant,
   icon: item.icon,
 })))
@@ -82,6 +86,7 @@ export const articles = reactive<Article[]>(demoArticles.map((item) => ({
   readMinutes: item.readMinutes,
   publishedAt: item.publishedAt,
   content: item.content,
+  ...mockCatalogCover('article', item.category, item.coverAssetKey),
   coverVariant: item.coverVariant,
   icon: item.icon,
 })))
@@ -93,6 +98,7 @@ export const makerProjects = reactive(demoLabs.filter((item) => item.labType ===
   skills: item.skills.join(' · '),
   steps: item.steps,
   duration: `${Math.round(item.durationMinutes / 30) / 2} 小时`,
+  ...mockCatalogCover('lab', item.labType, item.coverAssetKey),
   coverVariant: item.coverVariant,
   icon: item.icon,
 })))
@@ -104,7 +110,7 @@ export const studentActivities = reactive(demoActivities.slice(0, 6).map((item, 
   points: `+${item.points} 经验值`,
 })))
 
-export const assessmentAchievements = reactive(demoAchievements.slice(0, 6).map((item, index) => ({
+export const assessmentAchievements = reactive(demoAchievements.map((item, index) => ({
   title: item.name,
   icon: item.code,
   unlocked: index < 4,

@@ -5,11 +5,12 @@ import { PrismaService } from '../../prisma/prisma.service'
 import type { PageQueryDto } from '../../common/content/page-query.dto'
 import type { CreateThemeDto, UpdateThemeDto } from './theme.dto'
 
-const fields = ['subtitle', 'introduction', 'cover', 'icon', 'accent', 'recommended', 'recommendedCourseIds', 'relatedLabIds', 'relatedResourceIds']
+const fields = ['subtitle', 'introduction', 'coverAssetId', 'icon', 'accent', 'recommended', 'recommendedCourseIds', 'relatedLabIds', 'relatedResourceIds']
 
 @Injectable()
 export class ThemeService {
   constructor(private readonly prisma: PrismaService, private readonly support: ContentSupportService) {}
+  remove(id: string, actorId: string) { return this.support.remove('theme', id, actorId) }
 
   private snapshot(snapshot: Prisma.JsonValue | null | undefined) {
     const value = this.support.data(snapshot)
@@ -38,18 +39,19 @@ export class ThemeService {
       }),
       this.prisma.theme.count({ where }),
     ])
+    const covers = await this.support.media.prepare(items, publicOnly)
     return {
-      items: items.map((item) => {
+      items: await Promise.all(items.map(async (item) => {
         const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
         return {
-          ...this.support.base({
+          ...await this.support.render('theme', {
             ...item,
             title: published?.title || item.title,
             summary: published?.summary || item.summary,
-          }, !publicOnly, published?.data || this.support.data(item.payload)),
+          }, !publicOnly, published?.data || this.support.data(item.payload), covers),
           paths: publicOnly ? published?.paths || [] : item.paths,
         }
-      }),
+      })),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -73,7 +75,7 @@ export class ThemeService {
     if (!item) throw new NotFoundException('主题不存在')
     const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
     return {
-      ...this.support.base({
+      ...await this.support.render('theme', {
         ...item,
         title: published?.title || item.title,
         summary: published?.summary || item.summary,
@@ -88,10 +90,12 @@ export class ThemeService {
   }
 
   async create(input: CreateThemeDto, actorId: string) {
-    const data = this.support.pick(input, fields)
+    const data = { coverAssetId: null, ...this.support.pick(input, fields) }
     const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
       const theme = await tx.theme.create({
         data: {
+          coverAssetId: input.coverAssetId || null,
           slug: input.slug,
           title: input.title,
           summary: input.summary,
@@ -105,43 +109,37 @@ export class ThemeService {
       return tx.theme.update({ where: { id: theme.id }, data: { currentDraftVersionId: version.id } })
     })
     await this.support.audit(actorId, 'create', 'themes', item.id)
-    return this.support.base(item, true)
+    return this.support.render('theme', item, true)
   }
 
   async update(id: string, input: UpdateThemeDto, actorId: string) {
-    const draftId = await this.ensureDraft(id)
-    const current = await this.prisma.theme.findUnique({ where: { id } })
-    if (!current) throw new NotFoundException('主题不存在')
-    const data = { ...this.support.data(current.payload), ...this.support.pick(input, fields) }
-    const item = await this.prisma.theme.update({
-      where: { id },
-      data: {
-        ...this.support.pick(input, ['title', 'summary', 'sortOrder']),
-        payload: this.support.sanitize(data),
-        version: { increment: 1 },
-      },
-    })
-    const draft = await this.prisma.themeVersion.findUnique({ where: { id: draftId } })
-    const snapshot = this.snapshot(draft?.snapshot)
-    await this.prisma.themeVersion.update({
-      where: { id: draftId },
-      data: { snapshot: this.support.json({ title: item.title, summary: item.summary, data, paths: snapshot.paths }) },
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
+      const draftId = await this.ensureDraft(id, tx)
+      const current = await tx.theme.findUniqueOrThrow({ where: { id } })
+      const data = { ...this.support.data(current.payload), ...this.support.pick(input, fields) }
+      const theme = await tx.theme.update({ where: { id }, data: {
+        ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'coverAssetId']), payload: this.support.sanitize(data), version: { increment: 1 },
+      } })
+      const draft = await tx.themeVersion.findUniqueOrThrow({ where: { id: draftId } })
+      await tx.themeVersion.update({ where: { id: draftId }, data: { snapshot: this.support.json({ title: theme.title, summary: theme.summary, data, paths: this.snapshot(draft.snapshot).paths }) } })
+      return theme
     })
     await this.support.audit(actorId, 'update', 'themes', id)
-    return this.support.base(item, true)
+    return this.support.render('theme', item, true)
   }
 
   async setPublished(id: string, published: boolean, actorId: string) {
-    const draftId = published ? await this.ensureDraft(id) : null
-    if (published) await this.refreshDraft(id)
-    const item = await this.prisma.theme.update({
-      where: { id },
-      data: published
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      const draftId = published ? await this.ensureDraft(id, tx) : null
+      if (published) await this.refreshDraft(id, tx)
+      return tx.theme.update({ where: { id }, data: published
         ? { status: PublishStatus.published, publishedAt: new Date(), publishedVersionId: draftId, version: { increment: 1 } }
-        : { status: PublishStatus.archived, version: { increment: 1 } },
+        : { status: PublishStatus.archived, version: { increment: 1 } } })
     })
     await this.support.audit(actorId, published ? 'publish' : 'archive', 'themes', id)
-    return this.support.base(item, true)
+    return this.support.render('theme', item, true)
   }
 
   async upsertPath(themeId: string, input: {
@@ -157,8 +155,9 @@ export class ThemeService {
       targetId?: string
     }>
   }) {
-    await this.ensureDraft(themeId)
     const path = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      await this.ensureDraft(themeId, tx)
       const theme = await tx.theme.findUnique({ where: { id: themeId } })
       if (!theme) throw new NotFoundException('主题不存在')
       const saved = await tx.learningPath.upsert({
@@ -183,20 +182,20 @@ export class ThemeService {
           await tx.pathContent.create({ data: { stageId: created.id, targetType: stage.targetType, targetId: stage.targetId } })
         }
       }
+      await this.refreshDraft(themeId, tx)
       return tx.learningPath.findUnique({ where: { id: saved.id }, include: { stages: { orderBy: { sortOrder: 'asc' }, include: { contents: true } } } })
     })
-    await this.refreshDraft(themeId)
     return path
   }
 
-  private async ensureDraft(themeId: string) {
-    const theme = await this.prisma.theme.findUnique({
-      where: { id: themeId },
+  private async ensureDraft(themeId: string, tx: Prisma.TransactionClient): Promise<string> {
+    const theme = await tx.theme.findUnique({
+      where: { id: themeId, deletedAt: null },
       include: { currentDraftVersion: true, _count: { select: { versions: true } } },
     })
     if (!theme) throw new NotFoundException('主题不存在')
     if (theme.currentDraftVersionId && theme.currentDraftVersionId !== theme.publishedVersionId) return theme.currentDraftVersionId
-    const version = await this.prisma.themeVersion.create({
+    const version = await tx.themeVersion.create({
       data: {
         themeId,
         versionNo: theme._count.versions + 1,
@@ -208,19 +207,19 @@ export class ThemeService {
         }) as Prisma.InputJsonValue,
       },
     })
-    await this.prisma.theme.update({ where: { id: themeId }, data: { currentDraftVersionId: version.id } })
+    await tx.theme.update({ where: { id: themeId }, data: { currentDraftVersionId: version.id } })
     return version.id
   }
 
-  private async refreshDraft(themeId: string) {
-    const theme = await this.prisma.theme.findUnique({
+  private async refreshDraft(themeId: string, tx: Prisma.TransactionClient) {
+    const theme = await tx.theme.findUnique({
       where: { id: themeId },
       include: {
         paths: { orderBy: { sortOrder: 'asc' }, include: { stages: { orderBy: { sortOrder: 'asc' }, include: { contents: true } } } },
       },
     })
     if (!theme?.currentDraftVersionId) throw new NotFoundException('主题草稿不存在')
-    await this.prisma.themeVersion.update({
+    await tx.themeVersion.update({
       where: { id: theme.currentDraftVersionId },
       data: {
         snapshot: this.support.json({

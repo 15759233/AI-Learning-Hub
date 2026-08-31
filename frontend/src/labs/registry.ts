@@ -1,4 +1,6 @@
 import type { LabDefinition, LabStep, LabType } from './types'
+import { demoLabs } from '@ai-learning-hub/demo-fixtures'
+import { mockCatalogCover } from '../media/catalog'
 
 const steps = (names: string[]): LabStep[] => names.map((title, index) => ({
   id: `step-${index + 1}`,
@@ -63,6 +65,10 @@ const definitions: LabDefinition[] = [
   common('image-web', 'project', '图像分类 Web 应用', '设计图片输入、分类结果与可信提示的前端原型。', '综合项目', '中级', 90, 'image', ['需求分析', '交互设计', '模型选择', '模块搭建', '结果验证', '成果说明'], '完成图像分类页面流程并说明模型不确定性。', '图像分类 Web 原型已生成演示结果，真实模型推理接口待接入。'),
 ]
 
+for (const definition of definitions) {
+  const fixture = demoLabs.find((item) => item.slug === definition.id)
+  if (fixture) Object.assign(definition, mockCatalogCover('lab', fixture.labType, fixture.coverAssetKey))
+}
 export const labRegistry = new Map(definitions.map((definition) => [definition.id, definition]))
 
 export const getLabDefinition = (labId: string) => labRegistry.get(labId)

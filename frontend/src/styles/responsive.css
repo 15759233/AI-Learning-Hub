@@ -52,6 +52,7 @@
   .growth-section > div:first-child { grid-column: auto; }
   .featured-course { grid-column: 1 / -1; grid-row: auto; min-height: 390px; }
   .page-hero { padding: 35px; }
+  .page-hero .hero-copy { max-width: 70%; }
   .page-hero > img { order: -1; height: 220px; }
   .catalog-layout { grid-template-columns: 1fr; }
   .filter-panel { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -143,6 +144,8 @@
   .bottom-cta { flex-direction: column; align-items: flex-start; padding: 30px; }
   .bottom-cta h2 { font-size: 2rem; }
   .page-hero { display: flex; flex-direction: column; padding: 24px; }
+  .page-hero .hero-copy { max-width: 100%; }
+  .page-hero-art::after { background: rgba(250,247,242,.82); }
   .page-hero > img { width: 100%; }
   .category-tabs { display: flex; overflow-x: auto; }
   .category-tabs button { flex: 0 0 auto; }
@@ -153,9 +156,7 @@
   .course-hero .hero-progress { grid-column: auto; display: flex; }
   .lesson-content { padding: 20px; }
   .lesson-aside { grid-template-columns: 1fr; }
-  .video-placeholder img { height: 220px; }
   .featured-lab { grid-template-columns: 1fr; }
-  .featured-lab img { height: 230px; }
   .featured-actions { grid-column: auto; }
   .lab-hero { grid-template-columns: 1fr; }
   .lab-hero > img { order: -1; }
@@ -172,7 +173,12 @@
   .editorial-list img { height: 210px; }
   .assessment-title aside { width: 100%; }
   .challenge-hero { grid-template-columns: 1fr; }
-  .challenge-hero img { order: -1; }
+  .challenge-hero > .category-cover { order: -1; }
+  .record-list article { grid-template-columns: 80px minmax(0, 1fr); }
+  .record-list article > a { grid-column: 2; justify-self: start; }
+  .record-cover.category-cover { width: 80px; }
+  .favorite-list > div { grid-template-columns: 80px auto minmax(0, 1fr) auto; }
+  .challenge-catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .exam-stats { grid-template-columns: 1fr; }
   .profile-user { flex-direction: column; align-items: flex-start; }
   .profile-kpis, .stat-row.six { grid-template-columns: 1fr 1fr; }

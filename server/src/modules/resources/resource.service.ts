@@ -6,11 +6,12 @@ import type { PageQueryDto } from '../../common/content/page-query.dto'
 import type { CreateResourceDto, UpdateResourceDto } from './resource.dto'
 import { lockFileReferences } from '../../common/persistence'
 
-const dataFields = ['downloadPermission', 'difficulty', 'tags', 'cover', 'themeId', 'courseId', 'labId']
+const dataFields = ['downloadPermission', 'difficulty', 'tags', 'coverAssetId', 'themeId', 'courseId', 'labId']
 
 @Injectable()
 export class ResourceService {
   constructor(private readonly prisma: PrismaService, private readonly support: ContentSupportService) {}
+  remove(id: string, actorId: string) { return this.support.remove('resource', id, actorId) }
 
   private snapshot(snapshot: Prisma.JsonValue | null | undefined) {
     const value = this.support.data(snapshot)
@@ -31,22 +32,23 @@ export class ResourceService {
       this.prisma.resource.findMany({ ...this.support.page(query), where, include: { publishedVersion: true } }),
       this.prisma.resource.count({ where }),
     ])
+    const covers = await this.support.media.prepare(items, publicOnly)
     return {
-      items: items.map((item) => {
+      items: await Promise.all(items.map(async (item) => {
         const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
         return {
-          ...this.support.base({
+          ...await this.support.render('resource', {
             ...item,
             title: published?.title || item.title,
             summary: published?.summary || item.summary,
-          }, !publicOnly, published?.data || this.support.data(item.payload)),
+          }, !publicOnly, published?.data || this.support.data(item.payload), covers),
           category: published?.category || item.category,
           format: published?.format || item.format,
           visibility: published?.visibility || item.visibility,
           downloads: item.downloadCount,
           views: item.viewCount,
         }
-      }),
+      })),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -70,7 +72,7 @@ export class ResourceService {
       : null
     const file = publicOnly ? publishedFile : item.file
     return {
-      ...this.support.base({
+      ...await this.support.render('resource', {
         ...item,
         title: published?.title || item.title,
         summary: published?.summary || item.summary,
@@ -96,12 +98,13 @@ export class ResourceService {
   }
 
   async create(input: CreateResourceDto, actorId: string) {
-    const data = this.support.pick(input, dataFields)
+    const data = { coverAssetId: null, ...this.support.pick(input, dataFields) }
     const item = await this.prisma.$transaction(async (tx) => {
-      await lockFileReferences(tx)
+      await this.support.binding(tx, input.coverAssetId)
       if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
       const resource = await tx.resource.create({
         data: {
+          coverAssetId: input.coverAssetId || null,
           slug: input.slug,
           title: input.title,
           summary: input.summary,
@@ -120,20 +123,20 @@ export class ResourceService {
     })
     await this.syncRelations(item.id, input.courseId, input.labId)
     await this.support.audit(actorId, 'create', 'resources', item.id)
-    return this.support.base(item, true)
+    return this.support.render('resource', item, true)
   }
 
   async update(id: string, input: UpdateResourceDto, actorId: string) {
-    const current = await this.prisma.resource.findUnique({ where: { id } })
-    if (!current) throw new NotFoundException('资源不存在')
-    const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
     const item = await this.prisma.$transaction(async (tx) => {
-      await lockFileReferences(tx)
+      await this.support.binding(tx, input.coverAssetId)
+      const current = await tx.resource.findUnique({ where: { id, deletedAt: null } })
+      if (!current) throw new NotFoundException('资源不存在')
+      const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
       if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
       const resource = await tx.resource.update({
         where: { id },
         data: {
-          ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'category', 'format', 'visibility', 'fileId']),
+          ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'category', 'format', 'visibility', 'fileId', 'coverAssetId']),
           payload: this.support.sanitize(data),
           version: { increment: 1 },
         },
@@ -158,19 +161,19 @@ export class ResourceService {
     })
     if (input.courseId !== undefined || input.labId !== undefined) await this.syncRelations(id, input.courseId, input.labId)
     await this.support.audit(actorId, 'update', 'resources', id)
-    return this.support.base(item, true)
+    return this.support.render('resource', item, true)
   }
 
   async setPublished(id: string, published: boolean, actorId: string) {
-    const draftId = published ? await this.ensureDraft(id) : null
-    const item = await this.prisma.resource.update({
-      where: { id },
-      data: published
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      const draftId = published ? await this.ensureDraft(id, tx) : null
+      return tx.resource.update({ where: { id }, data: published
         ? { status: PublishStatus.published, publishedAt: new Date(), publishedVersionId: draftId, version: { increment: 1 } }
-        : { status: PublishStatus.archived, version: { increment: 1 } },
+        : { status: PublishStatus.archived, version: { increment: 1 } } })
     })
     await this.support.audit(actorId, published ? 'publish' : 'archive', 'resources', id)
-    return this.support.base(item, true)
+    return this.support.render('resource', item, true)
   }
 
   async restoreVersion(id: string, versionId: string, actorId: string) {
@@ -192,6 +195,7 @@ export class ResourceService {
           format: snapshot.format || '',
           visibility: snapshot.visibility || 'authenticated',
           payload: this.support.sanitize(snapshot.data),
+          coverAssetId: typeof snapshot.data.coverAssetId === 'string' ? snapshot.data.coverAssetId : null,
           fileId: snapshot.fileId,
           currentDraftVersionId: draft.id,
           version: { increment: 1 },
@@ -202,14 +206,14 @@ export class ResourceService {
     return this.detail(id)
   }
 
-  private async ensureDraft(resourceId: string) {
-    const resource = await this.prisma.resource.findUnique({
-      where: { id: resourceId },
+  private async ensureDraft(resourceId: string, tx: Prisma.TransactionClient): Promise<string> {
+    const resource = await tx.resource.findUnique({
+      where: { id: resourceId, deletedAt: null },
       include: { currentDraftVersion: true, _count: { select: { versions: true } } },
     })
     if (!resource) throw new NotFoundException('资源不存在')
     if (resource.currentDraftVersionId && resource.currentDraftVersionId !== resource.publishedVersionId) return resource.currentDraftVersionId
-    const version = await this.prisma.resourceVersion.create({
+    const version = await tx.resourceVersion.create({
       data: {
         resourceId,
         versionNo: resource._count.versions + 1,
@@ -224,7 +228,7 @@ export class ResourceService {
         })) as Prisma.InputJsonValue,
       },
     })
-    await this.prisma.resource.update({ where: { id: resourceId }, data: { currentDraftVersionId: version.id } })
+    await tx.resource.update({ where: { id: resourceId }, data: { currentDraftVersionId: version.id } })
     return version.id
   }
 

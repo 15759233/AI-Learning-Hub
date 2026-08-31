@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service'
 import type { StoredFile, UploadedFile, UploadOptions } from './storage.types'
 import { StorageService } from './storage.types'
 import { fileReferenced, lockFileReferences } from '../../common/persistence'
+import { inspectMediaImage } from '../media/image-validation'
 
 const allowed = new Map([
   ['.pdf', ['application/pdf']],
@@ -30,7 +31,8 @@ export abstract class StorageBase extends StorageService {
     if (file.size <= 0 || file.size > 20 * 1024 * 1024) throw new BadRequestException('文件大小必须在 1 字节到 20MB 之间')
     const safeName = path.basename(file.originalname).replace(/[^\p{L}\p{N}._-]/gu, '_')
     const extension = path.extname(safeName).toLowerCase()
-    if (!allowed.get(extension)?.includes(file.mimetype)) throw new BadRequestException('文件扩展名或 MIME 类型不允许')
+    if (options.catalogMedia) await inspectMediaImage(file, options.trustedSvg)
+    if (!allowed.get(extension)?.includes(file.mimetype) && !(options.catalogMedia && options.trustedSvg && extension === '.svg')) throw new BadRequestException('文件扩展名或 MIME 类型不允许')
     const b = file.buffer
     const valid = extension === '.png' ? b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
       : ['.jpg', '.jpeg'].includes(extension) ? b[0] === 255 && b[1] === 216 && b[2] === 255
@@ -40,6 +42,27 @@ export abstract class StorageBase extends StorageService {
       : !b.includes(0)
     if (!valid || b.length !== file.size) throw new BadRequestException('文件内容与 MIME 或大小不匹配')
     const checksum = createHash('sha256').update(file.buffer).digest('hex')
+    if (options.catalogMedia) {
+      let ownedObject: string | null = null
+      try { return await this.prisma.$transaction(async (tx) => {
+        await lockFileReferences(tx)
+        const existing = await tx.fileRecord.findFirst({ where: { checksum, storageDriver: this.driver, visibility: 'public', mimeType: file.mimetype, objectKey: { startsWith: 'catalog/' } } })
+        if (existing) {
+          if (!await this.objectExists(existing.objectKey)) await this.putObject(existing.objectKey, file)
+          return { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType, size: existing.size, checksum }
+        }
+        // 每次新写独占对象键；checksum锁负责去重，失败补偿不碰其他成功事务。
+        const objectKey = `catalog/${checksum}-${randomUUID()}${extension}`
+        ownedObject = objectKey
+        await this.putObject(objectKey, file)
+        const record = await tx.fileRecord.create({ data: { storageDriver: this.driver, objectKey, originalName: safeName, extension, mimeType: file.mimetype, size: file.size, checksum, visibility: 'public', uploadedBy: options.uploadedBy } })
+        return { id: record.id, originalName: record.originalName, mimeType: record.mimeType, size: record.size, checksum }
+      }, { timeout: 30000 }) } catch (error) {
+        // 提交结果不明时先核对元数据，不能把已成功提交的文件误删。
+        if (ownedObject && !await this.prisma.fileRecord.count({ where: { objectKey: ownedObject } })) await this.removeObject(ownedObject)
+        throw error
+      }
+    }
     const objectKey = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}${extension}`
     await this.putObject(objectKey, file)
     const record = await this.prisma.fileRecord.create({

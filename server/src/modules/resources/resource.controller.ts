@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { Permissions } from '../auth/permissions.decorator'
@@ -12,6 +12,7 @@ import { ResourceService } from './resource.service'
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminResourceController {
   constructor(private readonly resources: ResourceService) {}
+  @Delete(':id') @Permissions('resource.write') remove(@Param('id') id: string, @CurrentUser() user: AuthUser) { return this.resources.remove(id, user.id) }
   @Get() @Permissions('resource.read') list(@Query() query: PageQueryDto) { return this.resources.list(query) }
   @Post() @Permissions('resource.write') create(@Body() input: CreateResourceDto, @CurrentUser() user: AuthUser) { return this.resources.create(input, user.id) }
   @Get(':id') @Permissions('resource.read') detail(@Param('id') id: string) { return this.resources.detail(id) }

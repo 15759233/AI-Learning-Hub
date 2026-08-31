@@ -3,9 +3,10 @@ import { ElMessage } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 import AdminPageHeader from '../components/AdminPageHeader.vue'
 import { api } from '../services/api'
-import type { RegistrationConfigDto, RegistrationSettingsDto } from '@ai-learning-hub/contracts'
+import { publicPageVisualKeys, type AdminPageVisualsDto, type PublicPageVisualKey, type RegistrationConfigDto, type RegistrationSettingsDto } from '@ai-learning-hub/contracts'
 import { usePermissionAction } from '../composables/usePermissionAction'
 import PersistenceStatus from '../components/PersistenceStatus.vue'
+import MediaAssetPicker from '../components/MediaAssetPicker.vue'
 
 interface Setting { key: string; value: unknown; sensitive: boolean }
 interface School { id: string; name: string; departments: Array<{ id: string; name: string }>; _count: { users: number } }
@@ -20,6 +21,25 @@ const settingsVersion = ref(0)
 const registration = ref<RegistrationConfigDto>()
 const registrationError = ref('')
 const canWrite = usePermissionAction('settings.write')
+const canReadMedia = usePermissionAction('media.read'), canManageVisuals = usePermissionAction('media.default.manage')
+const visuals = ref<AdminPageVisualsDto>(), visualError = ref(''), visualBusy = ref(false)
+const visualLabels: Record<PublicPageVisualKey, string> = { topicsHeroAssetId: '学习主题', labsHeroAssetId: '实训工坊', resourcesHeroAssetId: '资源中心', frontierHeroAssetId: 'AI 前沿', assessmentsHeroAssetId: '挑战测评', profileHeroAssetId: '个人中心' }
+const loadVisuals = async () => {
+  if (!canReadMedia.value) return
+  visualError.value = ''
+  try { visuals.value = await api<AdminPageVisualsDto>('/admin/page-visuals') }
+  catch (cause) { visualError.value = cause instanceof Error ? cause.message : '页面主视觉读取失败' }
+}
+const saveVisuals = async () => {
+  if (!visuals.value || !canManageVisuals.value || visualBusy.value) return
+  visualBusy.value = true; visualError.value = ''
+  try {
+    await api('/admin/page-visuals', { method: 'PUT', body: JSON.stringify({ value: { ...visuals.value.value }, expectedRevision: visuals.value.revision }) })
+    await loadVisuals()
+    ElMessage.success('六个页面主视觉已保存')
+  } catch (cause) { visualError.value = cause instanceof Error ? cause.message : '页面主视觉保存失败' }
+  finally { visualBusy.value = false }
+}
 const saveRegistration = async () => {
   if (!canWrite.value) { registrationError.value = '当前账号仅可查看注册设置'; return }
   if (!registration.value) return
@@ -41,6 +61,7 @@ const form = reactive<Record<string, string | number | boolean | string[]>>({
 const allowedFileTypesText = ref('pdf,docx,pptx,zip,txt,png,jpg,webp')
 const allowedLoginDomainsText = ref('')
 onMounted(async () => {
+  void loadVisuals()
   try { registration.value = await api<RegistrationConfigDto>('/admin/registration/settings') } catch (cause) { registrationError.value = cause instanceof Error ? cause.message : '注册配置读取失败' }
   ;[settings.value, schools.value, loginLogs.value, operationLogs.value, notifications.value] = await Promise.all([
     api<Setting[]>('/admin/settings'),
@@ -88,6 +109,13 @@ const createNotification = async () => {
     <template #actions><button class="admin-primary" type="button" @click="save">保存设置</button></template>
   </AdminPageHeader>
   <div class="settings-grid">
+    <section v-if="canReadMedia" class="panel page-visual-settings">
+      <h2>页面主视觉</h2>
+      <p class="settings-note">仅六个公开页面的图片设置，独立于通用系统配置；移除显式图片后使用对应默认图。</p>
+      <div v-if="visuals" class="page-visual-grid"><div v-for="key in publicPageVisualKeys" :key="key"><h3>{{ visualLabels[key] }}</h3><MediaAssetPicker v-model="visuals.value[key]" kind="hero" content-type="page_hero" :category-key="key.replace('HeroAssetId', '')" :disabled="!canManageVisuals || visualBusy" /></div></div>
+      <p v-if="visualError" class="error-banner" role="alert">{{ visualError }} <button type="button" :disabled="visualBusy" @click="loadVisuals">重新读取最新设置</button></p>
+      <button class="admin-primary" type="button" :disabled="!visuals || !canManageVisuals || visualBusy" @click="saveVisuals">保存页面主视觉</button>
+    </section>
     <section class="panel"><h2>注册设置</h2><form v-if="registration" class="admin-form" @submit.prevent="saveRegistration"><label>注册模式<select v-model="registration.mode"><option value="open">开放注册</option><option value="invite">邀请注册</option><option value="closed">关闭注册</option></select></label><label class="toggle-row">注册时验证邮箱<el-switch v-model="registration.emailVerification" :disabled="!registration.mailAvailable" /></label><label>协议版本<input v-model="registration.agreementVersion" required maxlength="60" /></label><label>密码最低长度<input v-model.number="registration.passwordMinLength" type="number" min="8" max="72" required /></label><label class="toggle-row">首次引导学校必填<el-switch v-model="registration.schoolRequired" /></label><p class="settings-note">邮件通道{{ registration.mailAvailable ? '已配置' : '未配置，找回密码不可用' }}；邀请码{{ registration.inviteAvailable ? '已配置' : '尚未配置' }}。密钥只能在部署环境注入。</p><button class="admin-primary">保存注册设置</button></form><p v-if="registrationError" role="alert">{{ registrationError }}</p></section>
     <section class="panel"><h2>平台基础信息</h2><form class="admin-form" @submit.prevent="save"><label>平台名称<input v-model="form.platform_name as string" /></label><label>平台副标题<input v-model="form.platform_subtitle as string" /></label><label>会话时长（分钟）<input v-model.number="form.session_minutes as number" type="number" min="15" /></label><label class="toggle-row">启用平台通知<el-switch v-model="form.notification_enabled as boolean" /></label><label>允许登录的邮箱域名（逗号分隔）<input v-model="allowedLoginDomainsText" placeholder="为空表示不限制" /></label></form></section>
     <section class="panel"><h2>文件与存储策略</h2><form class="admin-form" @submit.prevent="save"><label>单文件上限（MB）<input v-model.number="form.upload_max_mb as number" type="number" min="1" max="20" /></label><label>允许的扩展名<input v-model="allowedFileTypesText" /></label><p class="settings-note">扩展名按字符串数组保存；本地、MinIO 与 S3 驱动由服务部署环境选择。访问密钥不会通过本页面读取或返回。</p></form></section>
@@ -97,3 +125,12 @@ const createNotification = async () => {
     <section class="panel security-boundary"><h2>安全边界</h2><ul><li>JWT、数据库和对象存储密钥仅从运行环境读取。</li><li>学生端公开接口不返回题目答案与评分规则。</li><li>实训仅执行结构化白名单动作，不开放真实 Shell。</li><li>管理接口由服务端 RBAC 校验，不依赖前端菜单。</li></ul></section>
   </div>
 </template>
+
+<style scoped>
+.page-visual-settings { grid-column: 1 / -1; min-width: 0; }
+.page-visual-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.page-visual-grid > div { min-width: 0; }
+.page-visual-grid h3 { font-size: 14px; }
+@media (max-width: 1100px) { .page-visual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .page-visual-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>

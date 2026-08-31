@@ -16,7 +16,7 @@ import { usePublishAction } from '../../composables/usePublishAction'
 import { api } from '../../services/api'
 
 const list = usePagedList('labs')
-const { result, keyword, status, loading, error, selected } = list
+const { result, keyword, status, dataOrigin, loading, error, selected } = list
 const drafts = useDraftEditor('labs')
 const publishing = usePublishAction('labs')
 const canWrite = usePermissionAction('lab.write')
@@ -47,8 +47,8 @@ watch(list.selected, async (item) => {
   typeConfig.value = { ...(loaded.data.typeConfig || {}) }
 })
 onMounted(() => void list.load(1))
-const create = async (value: { slug: string; title: string; summary: string }) => { await drafts.createDraft({ ...value, labType: LabType.AGENT }); dialog.value = false; await list.load(1); ElMessage.success('实训草稿已创建') }
-const save = async (base: { title: string; summary: string; sortOrder: number }) => {
+const create = async (value: { slug: string; title: string; summary: string; coverAssetId: string | null }) => { await drafts.createDraft({ ...value, labType: LabType.AGENT }); dialog.value = false; await list.load(1); ElMessage.success('实训草稿已创建') }
+const save = async (base: { title: string; summary: string; sortOrder: number; coverAssetId?: string | null }) => {
   if (!list.selected.value) return
   const input: UpdateLabInput = { ...base, ...fields, hints: fields.hints.split('\n').filter(Boolean), typeConfig: typeConfig.value }
   await drafts.saveDraft(list.selected.value, input)
@@ -97,7 +97,7 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
 </script>
 
 <template>
-  <DomainPageShell v-model:dialog="dialog" title="实训项目管理" description="配置受控实训类型、步骤、动作、校验与工具环境" noun="实训" icon="lab" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
+  <DomainPageShell content-type="lab" :category-key="fields.labType" :data-origin="dataOrigin" @update:data-origin="list.dataOrigin.value = $event" @remove="drafts.removeDraft(selected, () => list.load())" v-model:dialog="dialog" title="实训项目管理" description="配置受控实训类型、步骤、动作、校验与工具环境" noun="实训" icon="lab" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
     <template #kpis><div class="kpi-grid"><AdminKpiCard icon="lab" label="实训总数" :value="result.total" color="#3478f6" /><AdminKpiCard icon="check" label="已发布" :value="result.items.filter((item) => item.status === 'published').length" color="#22b66c" /><AdminKpiCard icon="theme" label="当前步骤" :value="detail?.steps.length || 0" color="#ff4d1f" /><AdminKpiCard icon="tool" label="当前工具" :value="tools.length" color="#7c4dff" /></div></template>
     <template #detail><p>{{ detail?.labType || '尚未配置' }} · {{ detail?.steps.length || 0 }} 个服务端校验步骤</p></template>
     <template #editor>

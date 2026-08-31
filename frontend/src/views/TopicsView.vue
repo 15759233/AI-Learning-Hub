@@ -7,7 +7,6 @@ import ContentPagination from '../components/ContentPagination.vue'
 import PageHero from '../components/PageHero.vue'
 import ProgressBar from '../components/ProgressBar.vue'
 import AppIcon from '../components/base/AppIcon.vue'
-import { assets } from '../data/mock'
 import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
 import { useCoursesStore } from '../stores/content/courses'
@@ -117,7 +116,7 @@ const search = () => courseStore.load({ page: 1, keyword: query.value }, true)
 
 <template>
   <div class="page-container">
-    <PageHero title="学习主题" description="系统化学习 AI 核心主题，从理论到实践，掌握前沿技术，用 AI 能力创造属于你的作品。" :image="assets.learningCover">
+    <PageHero title="学习主题" description="系统化学习 AI 核心主题，从理论到实践，掌握前沿技术，用 AI 能力创造属于你的作品。" visual-key="topicsHeroAssetId">
       <form class="hero-search" role="search" @submit.prevent="search"><input v-model="query" aria-label="搜索课程" placeholder="搜索课程、主题或技能…" /><button class="button primary" type="submit">搜索</button></form>
     </PageHero>
     <div class="category-tabs" role="tablist" aria-label="课程主题分类">

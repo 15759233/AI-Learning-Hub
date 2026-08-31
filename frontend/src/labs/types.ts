@@ -1,3 +1,4 @@
+import type { CatalogCoverData } from '@ai-learning-hub/contracts'
 export type LabType = 'agent' | 'deployment' | 'command' | 'hardware' | 'project'
 
 export type LabRunState = 'idle' | 'ready' | 'running' | 'success' | 'failed' | 'stopped' | 'submitted'
@@ -19,7 +20,7 @@ export interface LabScoringRule {
   points: number
 }
 
-export interface LabDefinition {
+export interface LabDefinition extends Partial<CatalogCoverData> {
   id: string
   type: LabType
   title: string

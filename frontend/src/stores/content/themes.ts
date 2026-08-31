@@ -2,6 +2,7 @@ import { PublishStatus, type PageResult, type ThemeDetailDto, type ThemeSummaryD
 import { demoThemes } from '@ai-learning-hub/demo-fixtures'
 import { defineStore } from 'pinia'
 import { dataMode, request } from '../../services/api/client'
+import { mockCatalogCover } from '../../media/catalog'
 import { normalizePageQuery, pageKey, pageUrl, type ContentPageQuery } from './paging'
 
 const mockThemes: ThemeDetailDto[] = demoThemes.map((theme) => ({
@@ -14,6 +15,7 @@ const mockThemes: ThemeDetailDto[] = demoThemes.map((theme) => ({
   publishedAt: '2026-08-29T00:00:00.000Z',
   updatedAt: '2026-08-29T00:00:00.000Z',
   data: {
+    ...mockCatalogCover('theme', theme.slug),
     accent: theme.accent,
     coverVariant: theme.coverVariant,
     icon: theme.icon,

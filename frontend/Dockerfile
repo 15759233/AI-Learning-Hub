@@ -4,6 +4,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contracts/src packages/contracts/src
 COPY packages/demo-fixtures/package.json packages/demo-fixtures/package.json
 COPY packages/demo-fixtures/src packages/demo-fixtures/src
+COPY packages/catalog-assets packages/catalog-assets
 COPY frontend/package.json frontend/package-lock.json frontend/
 RUN cd frontend && npm ci
 COPY frontend frontend

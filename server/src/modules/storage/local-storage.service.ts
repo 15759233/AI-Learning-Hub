@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { access, mkdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import * as path from 'node:path'
 import { PrismaService } from '../../prisma/prisma.service'
 import { StorageBase } from './storage.base'
@@ -24,7 +25,11 @@ export class LocalStorageAdapter extends StorageBase {
   protected async putObject(objectKey: string, file: UploadedFile) {
     const target = this.target(objectKey)
     await mkdir(path.dirname(target), { recursive: true, mode: 0o750 })
-    await writeFile(target, file.buffer, { mode: 0o640 })
+    const staging = `${target}.${randomUUID()}.pending`
+    try {
+      await writeFile(staging, file.buffer, { mode: 0o640, flag: 'wx' })
+      await rename(staging, target)
+    } finally { await rm(staging, { force: true }) }
   }
 
   protected async removeObject(objectKey: string) {

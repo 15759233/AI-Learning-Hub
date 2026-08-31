@@ -18,9 +18,12 @@ import {
 } from '@ai-learning-hub/demo-fixtures'
 import { hash } from 'bcryptjs'
 import { isDeepStrictEqual } from 'node:util'
+import { createRequire } from 'node:module'
 import { seedCommunity } from './seed-community'
 import { upgradeLanding } from '../src/modules/homepage/upgrade-landing'
 import { bootstrapDatabase } from '../src/modules/persistence/bootstrap'
+import { ConfigService } from '@nestjs/config'
+import type { PrismaService } from '../src/prisma/prisma.service'
 
 const prisma = new PrismaClient()
 if (process.env.LOAD_DEMO_DATA !== 'true') throw new Error('演示数据仅允许在 LOAD_DEMO_DATA=true 时显式初始化')
@@ -57,6 +60,10 @@ async function seed() {
     await upgradeLanding(prisma)
     return
   }
+  // Seed在构建后运行；只加载编译模块，不要求运行镜像复制应用源码依赖树。
+  const loadRuntime = createRequire(__filename)
+  const { importCatalogAssets } = loadRuntime('../dist/modules/media/import-catalog') as typeof import('../src/modules/media/import-catalog')
+  const { createStorageAdapter } = loadRuntime('../dist/modules/storage/storage.module') as typeof import('../src/modules/storage/storage.module')
   const permissions = [
     'dashboard.read', 'homepage.read', 'homepage.write', 'homepage.publish',
     'platform.manage',
@@ -157,6 +164,12 @@ async function seed() {
   await prisma.userRole.upsert({ where: { userId_roleId: { userId: admin.id, roleId: adminRole.id } }, update: {}, create: { userId: admin.id, roleId: adminRole.id } })
   await prisma.userRole.upsert({ where: { userId_roleId: { userId: admin.id, roleId: superAdminRole.id } }, update: {}, create: { userId: admin.id, roleId: superAdminRole.id } })
   await prisma.userRole.upsert({ where: { userId_roleId: { userId: student.id, roleId: studentRole.id } }, update: {}, create: { userId: student.id, roleId: studentRole.id } })
+  const importedMedia = await importCatalogAssets(prisma, createStorageAdapter(prisma as PrismaService, new ConfigService()), admin.id)
+  const coverId = (key: string) => {
+    const id = importedMedia.assetIds[key]
+    if (!id) throw new Error(`演示封面尚未导入: ${key}`)
+    return id
+  }
   const studentIds = new Map<string, string>([['student', student.id]])
   for (const demoStudent of demoStudents.filter((item) => item.username !== 'student')) {
     const saved = await prisma.user.upsert({
@@ -184,6 +197,7 @@ async function seed() {
   const courseIds = new Map<string, string>()
   for (const [index, fixture] of themes.entries()) {
     const payload = {
+      coverAssetId: coverId(fixture.coverAssetKey),
       accent: fixture.accent,
       coverVariant: fixture.coverVariant,
       icon: fixture.icon,
@@ -194,8 +208,9 @@ async function seed() {
     }
     const theme = await prisma.theme.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, payload, sortOrder: index, status: PublishStatus.published },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, payload, sortOrder: index, status: PublishStatus.published },
       create: {
+        coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed',
         slug: fixture.slug, title: fixture.title, summary: fixture.summary, status: PublishStatus.published, sortOrder: index,
         publishedAt: new Date(), payload,
       },
@@ -211,6 +226,7 @@ async function seed() {
   for (const [courseIndex, fixture] of courses.entries()) {
     const theme = themes.find((item) => item.slug === fixture.theme)
     const payload = {
+      coverAssetId: coverId(fixture.coverAssetKey),
       category: theme?.title,
       level: fixture.level,
       hours: fixture.hours,
@@ -228,8 +244,9 @@ async function seed() {
     }
     const course = await prisma.course.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, themeId: themeIds.get(fixture.theme), payload, sortOrder: courseIndex, status: PublishStatus.published },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, themeId: themeIds.get(fixture.theme), payload, sortOrder: courseIndex, status: PublishStatus.published },
       create: {
+        coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed',
         slug: fixture.slug, title: fixture.title, summary: fixture.summary, themeId: themeIds.get(fixture.theme), status: PublishStatus.published,
         sortOrder: courseIndex, publishedAt: new Date(), payload,
       },
@@ -324,6 +341,7 @@ async function seed() {
   for (const [labIndex, fixture] of labs.entries()) {
     const labType = fixture.labType as LabType
     const payload = {
+      coverAssetId: coverId(fixture.coverAssetKey),
       category: fixture.labType === 'command' ? 'Linux 命令' : fixture.labType === 'deployment' ? '模型部署' : fixture.labType === 'hardware' ? '智能硬件' : fixture.labType === 'project' ? '综合项目' : 'AI Agent',
       level: fixture.level,
       durationMinutes: fixture.durationMinutes,
@@ -340,8 +358,9 @@ async function seed() {
     }
     const lab = await prisma.lab.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, labType, payload, sortOrder: labIndex, status: PublishStatus.published },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, labType, payload, sortOrder: labIndex, status: PublishStatus.published },
       create: {
+        coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed',
         slug: fixture.slug, title: fixture.title, summary: fixture.summary, labType, status: PublishStatus.published, sortOrder: labIndex,
         publishedAt: new Date(), payload,
       },
@@ -367,11 +386,12 @@ async function seed() {
 
   const resourceIds = new Map<string, string>()
   for (const [resourceIndex, fixture] of resources.entries()) {
-    const payload = { theme: fixture.theme, difficulty: fixture.difficulty, icon: fixture.icon, coverVariant: fixture.coverVariant, featured: fixture.featured, favorites: fixture.favorites }
+    const payload = { coverAssetId: coverId(fixture.coverAssetKey), theme: fixture.theme, difficulty: fixture.difficulty, icon: fixture.icon, coverVariant: fixture.coverVariant, featured: fixture.featured, favorites: fixture.favorites }
     const resource = await prisma.resource.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, category: fixture.category, format: fixture.format, payload, sortOrder: resourceIndex, downloadCount: fixture.downloads, viewCount: fixture.views, status: PublishStatus.published },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, category: fixture.category, format: fixture.format, payload, sortOrder: resourceIndex, downloadCount: fixture.downloads, viewCount: fixture.views, status: PublishStatus.published },
       create: {
+        coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed',
         slug: fixture.slug, title: fixture.title, summary: fixture.summary, category: fixture.category, format: fixture.format, status: PublishStatus.published,
         sortOrder: resourceIndex, publishedAt: new Date(fixture.updatedAt), downloadCount: fixture.downloads, viewCount: fixture.views, payload,
       },
@@ -390,11 +410,12 @@ async function seed() {
 
   const articleIds = new Map<string, string>()
   for (const [articleIndex, fixture] of articles.entries()) {
-    const payload = { readMinutes: fixture.readMinutes, content: fixture.content, icon: fixture.icon, coverVariant: fixture.coverVariant, favorites: fixture.favorites }
+    const payload = { coverAssetId: coverId(fixture.coverAssetKey), readMinutes: fixture.readMinutes, content: fixture.content, icon: fixture.icon, coverVariant: fixture.coverVariant, favorites: fixture.favorites }
     const article = await prisma.article.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, category: fixture.category, payload, sortOrder: articleIndex, viewCount: fixture.views, status: PublishStatus.published },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, category: fixture.category, payload, sortOrder: articleIndex, viewCount: fixture.views, status: PublishStatus.published },
       create: {
+        coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed',
         slug: fixture.slug, title: fixture.title, summary: fixture.summary, category: fixture.category, status: PublishStatus.published, sortOrder: articleIndex,
         publishedAt: new Date(fixture.publishedAt), viewCount: fixture.views, payload,
       },
@@ -420,11 +441,11 @@ async function seed() {
 
   const challengeIds = new Map<string, string>()
   for (const [challengeIndex, fixture] of demoChallenges.entries()) {
-    const payload = { durationMinutes: fixture.durationMinutes, questions: fixture.questions, participants: fixture.participants, difficulty: fixture.difficulty, leaderboardEnabled: true, integration: 'web-native' }
+    const payload = { coverAssetId: coverId(fixture.coverAssetKey), durationMinutes: fixture.durationMinutes, questions: fixture.questions, participants: fixture.participants, difficulty: fixture.difficulty, leaderboardEnabled: true, integration: 'web-native' }
     const challenge = await prisma.challenge.upsert({
       where: { slug: fixture.slug },
-      update: { title: fixture.title, summary: fixture.summary, challengeType: fixture.type, targetScore: fixture.targetScore, rewardPoints: fixture.rewardPoints, payload, sortOrder: challengeIndex, status: PublishStatus.published },
-      create: { slug: fixture.slug, title: fixture.title, summary: fixture.summary, challengeType: fixture.type, targetScore: fixture.targetScore, rewardPoints: fixture.rewardPoints, payload, sortOrder: challengeIndex, status: PublishStatus.published, publishedAt: new Date() },
+      update: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', title: fixture.title, summary: fixture.summary, challengeType: fixture.type, targetScore: fixture.targetScore, rewardPoints: fixture.rewardPoints, payload, sortOrder: challengeIndex, status: PublishStatus.published },
+      create: { coverAssetId: payload.coverAssetId, dataOrigin: 'demo_seed', slug: fixture.slug, title: fixture.title, summary: fixture.summary, challengeType: fixture.type, targetScore: fixture.targetScore, rewardPoints: fixture.rewardPoints, payload, sortOrder: challengeIndex, status: PublishStatus.published, publishedAt: new Date() },
     })
     challengeIds.set(fixture.slug, challenge.id)
   }

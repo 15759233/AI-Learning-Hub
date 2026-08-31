@@ -10,7 +10,6 @@ import ResourceCard from '../components/cards/ResourceCard.vue'
 import ContentPagination from '../components/ContentPagination.vue'
 import PageHero from '../components/PageHero.vue'
 import ResourcePreviewDialog from '../components/ResourcePreviewDialog.vue'
-import { assets } from '../data/mock'
 import { behaviorApi } from '../services/api/behavior'
 import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
@@ -77,11 +76,11 @@ watch(() => route.query.preview, async (slug) => {
 
 <template>
   <div class="page-container">
-    <PageHero title="资源中心" description="汇集学习手册、提示词模板、部署指南、Agent 案例、命令速查和硬件资料。" :image="assets.learningCover">
+    <PageHero title="资源中心" description="汇集学习手册、提示词模板、部署指南、Agent 案例、命令速查和硬件资料。" visual-key="resourcesHeroAssetId">
       <form class="hero-search" @submit.prevent="search"><input v-model="query" aria-label="搜索资源" placeholder="搜索资源名称…" /><button class="button primary">搜索</button></form>
     </PageHero>
     <div class="category-tabs" role="tablist"><button v-for="item in categories" :key="item" type="button" :class="{ active: category === item }" @click="category = item">{{ item }}</button></div>
-    <section class="featured-resources"><div class="section-heading"><div><span class="eyebrow">精选推荐</span><h2>精选资源推荐</h2></div></div><div class="featured-resource-row"><button v-for="item in resources.filter((resource) => resource.featured).slice(0, 4)" :key="item.id" type="button" @click="openPreview(item)"><CategoryCover :title="item.title" :variant="item.coverVariant" :icon="item.icon" :image="item.cover" /><span><small>{{ item.theme }} · {{ item.format }}</small><strong>{{ item.title }}</strong><em>预览资源 <AppIcon name="arrow-right" :size="14" /></em></span></button></div></section>
+    <section class="featured-resources"><div class="section-heading"><div><span class="eyebrow">精选推荐</span><h2>精选资源推荐</h2></div></div><div class="featured-resource-row"><button v-for="item in resources.filter((resource) => resource.featured).slice(0, 4)" :key="item.id" type="button" @click="openPreview(item)"><CategoryCover :title="item.title" :media="item" :variant="item.coverVariant" :icon="item.icon" /><span><small>{{ item.theme }} · {{ item.format }}</small><strong>{{ item.title }}</strong><em>预览资源 <AppIcon name="arrow-right" :size="14" /></em></span></button></div></section>
     <div class="resource-layout">
       <section>
         <div class="catalog-toolbar resource-toolbar"><strong>{{ category }} <small>共 {{ filtered.length }} 个{{ dataMode === 'api' ? '已发布' : '演示' }}资源</small></strong><label>资源类型<select v-model="category"><option v-for="item in categories" :key="item">{{ item }}</option></select></label><label>主题<select v-model="theme"><option>全部主题</option><option>大模型</option><option>Agent</option><option>编程工具</option><option>智能硬件</option></select></label><label>难度<select v-model="difficulty"><option>全部难度</option><option>入门</option><option>中级</option><option>进阶</option></select></label><label>格式<select v-model="format"><option>全部格式</option><option>PDF</option><option>DOCX</option><option>PPTX</option><option>ZIP</option><option>TXT</option></select></label><label>排序<select v-model="sort"><option>最新发布</option><option>下载最多</option></select></label><label class="check-label"><input v-model="featuredOnly" type="checkbox" />仅看精选</label></div>

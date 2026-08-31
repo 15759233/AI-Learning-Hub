@@ -1,15 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma, PublishStatus } from '@prisma/client'
 import { ContentSupportService } from '../../common/content/content-support.service'
 import { PrismaService } from '../../prisma/prisma.service'
 import type { PageQueryDto } from '../../common/content/page-query.dto'
 import type { CreateCourseDto, UpdateCourseDto } from './course.dto'
 
-const dataFields = ['category', 'level', 'cover', 'mode', 'hours', 'durationMinutes', 'certificate']
+const dataFields = ['category', 'level', 'coverAssetId', 'mode', 'hours', 'durationMinutes', 'certificate']
 
 @Injectable()
 export class CourseService {
   constructor(private readonly prisma: PrismaService, private readonly support: ContentSupportService) {}
+  remove(id: string, actorId: string) { return this.support.remove('course', id, actorId) }
 
   private courseData(input: CreateCourseDto | UpdateCourseDto) {
     const data = this.support.pick(input, dataFields)
@@ -34,15 +35,16 @@ export class CourseService {
       this.prisma.course.findMany({ ...this.support.page(query), where, include: { publishedVersion: true } }),
       this.prisma.course.count({ where }),
     ])
+    const covers = await this.support.media.prepare(items, publicOnly)
     return {
-      items: items.map((item) => {
+      items: await Promise.all(items.map(async (item) => {
         const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
-        return this.support.base({
+        return this.support.render('course', {
           ...item,
           title: published?.title || item.title,
           summary: published?.summary || item.summary,
-        }, !publicOnly, published?.data || this.support.data(item.payload))
-      }),
+        }, !publicOnly, published?.data || this.support.data(item.payload), covers)
+      })),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -70,7 +72,7 @@ export class CourseService {
     if (!item) throw new NotFoundException('课程不存在')
     const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
     return {
-      ...this.support.base({
+      ...await this.support.render('course', {
         ...item,
         title: published?.title || item.title,
         summary: published?.summary || item.summary,
@@ -95,10 +97,12 @@ export class CourseService {
   }
 
   async create(input: CreateCourseDto, actorId: string) {
-    const data = this.courseData(input)
+    const data = { coverAssetId: null, ...this.courseData(input) }
     const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
       const course = await tx.course.create({
         data: {
+          coverAssetId: input.coverAssetId || null,
           slug: input.slug,
           title: input.title,
           summary: input.summary,
@@ -113,48 +117,58 @@ export class CourseService {
       return tx.course.update({ where: { id: course.id }, data: { currentDraftVersionId: version.id } })
     })
     await this.support.audit(actorId, 'create', 'courses', item.id)
-    return this.support.base(item, true)
+    return this.support.render('course', item, true)
   }
 
   async update(id: string, input: UpdateCourseDto, actorId: string) {
-    const draftId = await this.ensureDraft(id)
-    const current = await this.prisma.course.findUnique({ where: { id } })
-    if (!current) throw new NotFoundException('课程不存在')
-    const data = { ...this.support.data(current.payload), ...this.courseData(input) }
-    const item = await this.prisma.course.update({
-      where: { id },
-      data: {
-        ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'themeId']),
-        payload: this.support.sanitize(data),
-        version: { increment: 1 },
-      },
-    })
-    const draft = await this.prisma.courseVersion.findUnique({ where: { id: draftId } })
-    const snapshot = this.support.data(draft?.snapshot)
-    await this.prisma.courseVersion.update({
-      where: { id: draftId },
-      data: { snapshot: this.support.json({ ...snapshot, title: item.title, summary: item.summary, data }) },
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
+      const draftId = await this.ensureDraft(id, tx)
+      const current = await tx.course.findUniqueOrThrow({ where: { id } })
+      const data = { ...this.support.data(current.payload), ...this.courseData(input) }
+      const course = await tx.course.update({ where: { id }, data: {
+        ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'themeId', 'coverAssetId']),
+        payload: this.support.sanitize(data), version: { increment: 1 },
+      } })
+      const draft = await tx.courseVersion.findUniqueOrThrow({ where: { id: draftId } })
+      await tx.courseVersion.update({ where: { id: draftId }, data: { snapshot: this.support.json({ ...this.support.data(draft.snapshot), title: course.title, summary: course.summary, data }) } })
+      return course
     })
     await this.support.audit(actorId, 'update', 'courses', id)
-    return this.support.base(item, true)
+    return this.support.render('course', item, true)
   }
 
   async setPublished(id: string, published: boolean, actorId: string) {
-    const draftId = published ? await this.ensureDraft(id) : null
-    if (published && !draftId) throw new BadRequestException('课程没有可发布草稿版本')
-    const item = await this.prisma.course.update({
-      where: { id },
-      data: published
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      const draftId = published ? await this.ensureDraft(id, tx) : null
+      if (published && !draftId) throw new BadRequestException('课程没有可发布草稿版本')
+      return tx.course.update({ where: { id }, data: published
         ? { status: PublishStatus.published, publishedAt: new Date(), publishedVersionId: draftId, version: { increment: 1 } }
-        : { status: PublishStatus.archived, version: { increment: 1 } },
+        : { status: PublishStatus.archived, version: { increment: 1 } } })
     })
     await this.support.audit(actorId, published ? 'publish' : 'archive', 'courses', id)
-    return this.support.base(item, true)
+    return this.support.render('course', item, true)
   }
 
-  async ensureDraft(courseId: string) {
-    const course = await this.prisma.course.findUnique({
-      where: { id: courseId },
+  async editStructure<T>(kind: 'course' | 'chapter' | 'lesson' | 'block', id: string, change: (tx: Prisma.TransactionClient, targetId: string, versionId: string, resolveId: (value: string) => string) => Promise<T>) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      const version = kind === 'chapter' ? (await tx.courseChapter.findUnique({ where: { id }, include: { version: true } }))?.version
+        : kind === 'lesson' ? (await tx.courseLesson.findUnique({ where: { id }, include: { chapter: { include: { version: true } } } }))?.chapter.version
+        : kind === 'block' ? (await tx.lessonBlock.findUnique({ where: { id }, include: { lesson: { include: { chapter: { include: { version: true } } } } } }))?.lesson.chapter.version
+        : null
+      if (kind !== 'course' && !version) throw new NotFoundException('课程结构不存在')
+      const remapped = new Map<string, string>(), versionId = await this.ensureDraft(kind === 'course' ? id : version!.courseId, tx, remapped)
+      if (version && version.id !== versionId && !remapped.has(id)) throw new ConflictException('课程草稿已变化，请刷新后编辑，已发布版本不会被修改')
+      const resolveId = (value: string) => remapped.get(value) || value
+      return change(tx, resolveId(id), versionId, resolveId)
+    })
+  }
+
+  private async ensureDraft(courseId: string, tx: Prisma.TransactionClient, remapped = new Map<string, string>()): Promise<string> {
+    const course = await tx.course.findUnique({
+      where: { id: courseId, deletedAt: null },
       include: {
         currentDraftVersion: { include: { chapters: { orderBy: { sortOrder: 'asc' }, include: { lessons: { orderBy: { sortOrder: 'asc' }, include: { blocks: { orderBy: { sortOrder: 'asc' } } } } } } } },
         _count: { select: { versions: true } },
@@ -162,7 +176,6 @@ export class CourseService {
     })
     if (!course) throw new NotFoundException('课程不存在')
     if (course.currentDraftVersionId && course.currentDraftVersionId !== course.publishedVersionId) return course.currentDraftVersionId
-    return this.prisma.$transaction(async (tx) => {
       const source = course.currentDraftVersion
       const version = await tx.courseVersion.create({
         data: {
@@ -175,6 +188,7 @@ export class CourseService {
         const createdChapter = await tx.courseChapter.create({
           data: { courseVersionId: version.id, title: chapter.title, description: chapter.description, sortOrder: chapter.sortOrder },
         })
+        remapped.set(chapter.id, createdChapter.id)
         for (const lesson of chapter.lessons) {
           const createdLesson = await tx.courseLesson.create({
             data: {
@@ -186,20 +200,23 @@ export class CourseService {
               sortOrder: lesson.sortOrder,
             },
           })
+          remapped.set(lesson.id, createdLesson.id)
           for (const block of lesson.blocks) {
-            await tx.lessonBlock.create({
+            const createdBlock = await tx.lessonBlock.create({
               data: { lessonId: createdLesson.id, blockType: block.blockType, sortOrder: block.sortOrder, content: block.content as Prisma.InputJsonValue },
             })
+            remapped.set(block.id, createdBlock.id)
           }
         }
       }
       await tx.course.update({ where: { id: courseId }, data: { currentDraftVersionId: version.id } })
       return version.id
-    })
   }
 
   async setRelations(courseId: string, resourceIds: string[], labIds: string[]) {
     await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      await this.ensureDraft(courseId, tx)
       await tx.courseResource.deleteMany({ where: { courseId } })
       await tx.courseLab.deleteMany({ where: { courseId } })
       for (const [sortOrder, resourceId] of resourceIds.entries()) {

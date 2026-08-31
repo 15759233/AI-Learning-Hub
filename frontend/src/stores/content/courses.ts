@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { courses as mockCourses } from '../../data/mock'
 import { dataMode, request } from '../../services/api/client'
 import type { Course } from '../../types'
+import { apiCatalogCover } from '../../media/catalog'
 import { localPage, normalizePageQuery, pageKey, pageUrl, type ContentPageQuery } from './paging'
 
 export const mapCourse = (item: CourseSummaryDto): Course => ({
@@ -18,7 +19,7 @@ export const mapCourse = (item: CourseSummaryDto): Course => ({
       : undefined,
   learners: typeof item.data.learners === 'number' ? item.data.learners : undefined,
   mode: String(item.data.mode || '尚未配置') as Course['mode'],
-  cover: typeof item.data.cover === 'string' ? item.data.cover : undefined,
+  ...apiCatalogCover(item.data),
   coverVariant: typeof item.data.coverVariant === 'string' ? item.data.coverVariant : undefined,
   icon: typeof item.data.icon === 'string' ? item.data.icon : undefined,
 })

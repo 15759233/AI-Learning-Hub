@@ -6,6 +6,7 @@ COPY packages/contracts/tsconfig.json packages/contracts/tsconfig.json
 COPY packages/contracts/src packages/contracts/src
 COPY packages/demo-fixtures/package.json packages/demo-fixtures/package.json
 COPY packages/demo-fixtures/src packages/demo-fixtures/src
+COPY packages/catalog-assets packages/catalog-assets
 COPY server/package.json server/package-lock.json server/
 RUN cd server && npm ci
 COPY server server
@@ -20,6 +21,7 @@ COPY --chown=node:node --from=build /workspace/packages /workspace/packages
 COPY --chown=node:node --from=build /workspace/server/node_modules ./node_modules
 COPY --chown=node:node --from=build /workspace/server/package.json /workspace/server/package-lock.json ./
 COPY --chown=node:node --from=build /workspace/server/scripts/check-runtime-imports.cjs ./scripts/check-runtime-imports.cjs
+COPY --chown=node:node --from=build /workspace/server/scripts/check-seed-runtime.cjs ./scripts/check-seed-runtime.cjs
 COPY --chown=node:node --from=build /workspace/server/prisma ./prisma
 COPY --chown=node:node --from=build /workspace/server/src/modules/homepage/upgrade-landing.ts ./src/modules/homepage/upgrade-landing.ts
 COPY --chown=node:node --from=build /workspace/server/src/modules/persistence/bootstrap.ts ./src/modules/persistence/bootstrap.ts

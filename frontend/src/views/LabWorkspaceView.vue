@@ -12,6 +12,7 @@ import { useAuthStore } from '../stores/auth'
 import { useLabsStore } from '../stores/content/labs'
 import { useLearningStore } from '../stores/learning'
 import { useCommunityStore } from '../stores/community'
+import { apiCatalogCover } from '../media/catalog'
 
 const route = useRoute()
 const store = useLearningStore()
@@ -208,6 +209,7 @@ const loadDefinition = async () => {
     const item = await labsStore.detail(String(route.params.labId))
     if (!item) return
     apiDefinition.value = {
+      ...apiCatalogCover(item.data),
       id: item.slug,
       type: item.labType,
       title: item.title,

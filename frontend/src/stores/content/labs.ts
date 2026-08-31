@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { labs as mockLabs } from '../../data/mock'
 import { dataMode, request } from '../../services/api/client'
 import type { Lab } from '../../types'
+import { apiCatalogCover } from '../../media/catalog'
 import { localPage, normalizePageQuery, pageKey, pageUrl, type ContentPageQuery } from './paging'
 
 const mapLab = (item: LabSummaryDto): Lab => ({
@@ -15,7 +16,7 @@ const mapLab = (item: LabSummaryDto): Lab => ({
   steps: undefined,
   completion: undefined,
   learners: undefined,
-  cover: typeof item.data.cover === 'string' ? item.data.cover : undefined,
+  ...apiCatalogCover(item.data),
   coverVariant: item.labType,
   icon: typeof item.data.icon === 'string' ? item.data.icon : undefined,
 })

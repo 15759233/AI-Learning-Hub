@@ -1,4 +1,13 @@
 import type { HomepageResolvedItemDto, PublicHomepageModuleDto } from '@ai-learning-hub/contracts'
+import { apiCatalogCover, type CoverData } from '../media/catalog'
+import { landingAssets, type LandingAssetKey } from '../assets/landing/manifest'
+
+// 旧首页显式coverOverride仍由服务端合并到data.cover；只兼容白名单键，不为API内容猜图。
+export const itemCover = (item: HomepageResolvedItemDto): CoverData => {
+  const media = apiCatalogCover(item.data as CoverData)
+  return typeof media.cover === 'string' && Object.hasOwn(landingAssets, media.cover)
+    ? { ...media, cover: landingAssets[media.cover as LandingAssetKey] } : media
+}
 
 export const configText = (module: PublicHomepageModuleDto, key: string, fallback = '') => {
   const value = module.config[key]
@@ -26,7 +35,7 @@ export const itemPath = (item: HomepageResolvedItemDto) => ({
   lab: `/labs/${item.slug}`,
   resource: `/resources?preview=${item.slug}`,
   article: `/frontier?article=${item.slug}`,
-  challenge: '/assessments',
+  challenge: `/assessments?challenge=${item.slug}`,
   community_post: `/community/post/${item.slug}`,
   community_topic: `/community/topic/${item.slug}`,
   community_user: `/community/user/${item.slug}`,

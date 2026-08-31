@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
 import { ContentReferenceService } from './content-reference.service'
-@Module({ providers: [ContentReferenceService], exports: [ContentReferenceService] })
+import { MediaModule } from '../../modules/media/media.module'
+@Module({ imports: [MediaModule], providers: [ContentReferenceService], exports: [ContentReferenceService] })
 export class ContentReferenceModule {}

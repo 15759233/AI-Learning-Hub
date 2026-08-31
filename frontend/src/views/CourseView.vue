@@ -10,7 +10,7 @@ import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import NotFoundState from '../components/NotFoundState.vue'
 import ProgressBar from '../components/ProgressBar.vue'
-import { assets } from '../data/mock'
+import CategoryCover from '../components/base/CategoryCover.vue'
 import { dataMode } from '../services/api/client'
 import { useAuthStore } from '../stores/auth'
 import { mapCourse, useCoursesStore } from '../stores/content/courses'
@@ -116,7 +116,7 @@ watch(courseId, async () => {
   <div v-else class="page-container">
     <section class="course-hero">
       <div class="hero-copy"><span class="tag purple">{{ course.category }}</span><h1>{{ course.title }}</h1><p>{{ course.description }}{{ dataMode === 'mock' ? ' 从核心概念出发，逐步走向受控实践。' : '' }}</p><div class="meta"><span>{{ course.level }}</span><span>{{ chapterCount }} 章 · {{ displayLessons.length }} 节</span><span>{{ course.learners === undefined ? '学习人数 —' : `${course.learners.toLocaleString()} 人学习` }}</span><span>{{ dataMode === 'api' ? (courseDetail?.data.rating ? `${courseDetail.data.rating} 分` : '评分 —') : '4.9 分' }}</span></div><div class="teacher"><CommunityAvatar :name="courseDetail?.data.instructor?.name || '讲师'" :avatar-key="dataMode === 'mock' ? 'official-teacher' : undefined" /><div><strong>{{ courseDetail?.data.instructor?.name || (dataMode === 'api' ? '讲师待配置' : '林知远老师') }}</strong><small>{{ courseDetail?.data.instructor?.title || (dataMode === 'api' ? '信息待配置' : '高校 AI 应用课程讲师') }}</small></div><FollowButton v-if="dataMode === 'mock'" :active="followed" @click="followed = !followed" /></div></div>
-      <img v-if="course.cover || dataMode === 'mock'" :src="course.cover || assets.learningCover" :alt="`${course.title}课程插画`" />
+      <CategoryCover :title="course.title" :media="course" eager />
       <aside class="hero-progress"><ProgressBar v-if="accountDataReady" :value="store.courseProgress[course.id] ?? course.progress ?? 0" label="学习进度" /><p v-else class="notice">{{ accountDataMessage }}</p><strong>当前第 {{ currentLesson }} / {{ displayLessons.length }} 课时</strong><button class="button primary full-width" type="button" :disabled="!displayLessons.length" @click="startLearning()">{{ store.courseProgress[course.id] ? '继续学习' : '开始学习' }}</button><button class="button secondary full-width" type="button" :disabled="!displayLessons.length" @click="completeCurrentLesson">完成本节</button><button class="button secondary full-width" type="button" @click="store.toggleFavorite('course', course.id)">{{ store.isFavorite('course', course.id) ? '已收藏' : '收藏课程' }}</button></aside>
     </section>
     <RouterLink class="text-link" :to="`/community/search?bindingId=${courseId}`">查看课程相关讨论 ↗</RouterLink>
@@ -153,7 +153,7 @@ watch(courseId, async () => {
         <template v-else>
         <span class="eyebrow">核心概念</span><h2>{{ lessons[currentLesson - 1] }}</h2><p>Transformer 通过注意力机制理解序列中不同位置之间的关系。与逐步处理的传统结构相比，它能并行处理信息，并在大规模数据上形成更稳定的表示能力。</p>
         <div class="concept-diagram"><div>输入序列</div><AppIcon name="arrow-right" :size="17" /><div>注意力</div><AppIcon name="arrow-right" :size="17" /><div>前馈网络</div><AppIcon name="arrow-right" :size="17" /><div>上下文表示</div></div>
-        <div class="video-placeholder"><img :src="assets.learningCover" alt="课程视频封面插画" /><button type="button" aria-label="播放演示视频" @click="videoMessage = '暂无真实视频，当前为课程封面预览'">{{ videoMessage }}</button></div>
+        <div class="video-placeholder"><CategoryCover :title="course.title" :media="course" /><button type="button" aria-label="播放演示视频" @click="videoMessage = '暂无真实视频，当前为课程封面预览'">{{ videoMessage }}</button></div>
         <section class="code-card"><div><span>Python</span><button type="button" @click="copyCode">{{ copyMessage }}</button></div><pre><code>{{ code }}</code></pre></section>
         <div class="key-grid"><article><strong>并行计算</strong><p>减少序列处理的依赖。</p></article><article><strong>上下文关联</strong><p>学习远距离信息关系。</p></article><article><strong>规模扩展</strong><p>支持更大数据与模型。</p></article></div>
         <section class="quiz-card"><span class="eyebrow">知识小测</span><h3>注意力机制主要解决什么问题？</h3><label v-for="answer in ['捕捉序列中不同位置的关联', '直接连接真实服务器', '替代所有数据清洗']" :key="answer" :class="{ selected: selectedAnswer === answer }"><input v-model="selectedAnswer" type="radio" name="answer" :value="answer" />{{ answer }}</label><button class="button primary" type="button" :disabled="!selectedAnswer || submitted" @click="submitQuiz">{{ submitted ? '已提交' : '提交答案' }}</button><p v-if="submitted" :class="selectedAnswer.startsWith('捕捉') ? 'answer-correct' : 'answer-wrong'"><strong>本题得分：{{ selectedAnswer.startsWith('捕捉') ? 100 : 0 }}</strong><br />{{ selectedAnswer.startsWith('捕捉') ? '回答正确。注意力会计算不同位置之间的相关程度。' : '回答不正确。请回顾“上下文关联”部分。' }}</p></section>

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { articles as mockArticles } from '../../data/mock'
 import { dataMode, request } from '../../services/api/client'
 import type { Article } from '../../types'
+import { apiCatalogCover } from '../../media/catalog'
 import { localPage, normalizePageQuery, pageKey, pageUrl, type ContentPageQuery } from './paging'
 
 export const mapArticle = (item: ArticleSummaryDto): Article => ({
@@ -14,7 +15,7 @@ export const mapArticle = (item: ArticleSummaryDto): Article => ({
   publishedAt: item.publishedAt?.slice(0, 10) || '',
   content: Array.isArray(item.data.content) ? item.data.content.map(String) : [],
   recommendations: item.recommendations.map((recommendation) => recommendation.positionKey),
-  cover: typeof item.data.cover === 'string' ? item.data.cover : undefined,
+  ...apiCatalogCover(item.data),
   coverVariant: typeof item.data.coverVariant === 'string' ? item.data.coverVariant : undefined,
   icon: typeof item.data.icon === 'string' ? item.data.icon : undefined,
 })

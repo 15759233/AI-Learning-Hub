@@ -1,10 +1,10 @@
-.profile-hero { display: grid; grid-template-columns: 1fr 1.05fr; align-items: center; gap: 40px; margin: 36px 0 28px; padding: 30px; border: 1px solid #e7e1f4; border-radius: var(--radius-hero); background: linear-gradient(120deg, #fffaf5, #f4f1ff); }
+.profile-hero { position: relative; isolation: isolate; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: 40px; min-height: 300px; margin: 36px 0 28px; padding: 30px; border: 1px solid #e7e1f4; border-radius: var(--radius-hero); background: #faf7f2; }
 .profile-user { display: flex; align-items: center; gap: 20px; }
 .profile-user h1 { margin-bottom: 8px; font-size: 2rem; }
 .profile-user h1 small { padding: 5px 8px; color: var(--purple); background: #eeeaff; border-radius: 8px; font-size: var(--amc-font-meta); }
 .profile-user p { margin-bottom: 5px; }
 .profile-user > div > span { color: var(--secondary); font-size: .8rem; }
-.profile-level { display: grid; gap: 15px; }
+.profile-level { display: grid; gap: 15px; padding: 18px; background: rgba(255,255,255,.82); border-radius: var(--radius-card); }
 .profile-level > div:first-child { display: flex; justify-content: space-between; }
 .profile-level > div:first-child strong { color: var(--purple); font-size: 1.45rem; }
 .profile-level > div:first-child span { color: var(--muted); font-size: .75rem; }
@@ -27,7 +27,7 @@
 .radar-legend span { display: flex; align-items: center; gap: 5px; }
 .radar-legend i { width: 16px; height: 3px; background: var(--brand); }
 .radar-legend i.average { background: var(--purple); }
-.badge-wall { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+.badge-wall { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .badge-wall button { display: grid; place-items: center; min-height: 155px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; cursor: pointer; }
 .badge-wall button > span { display: grid; place-items: center; width: 65px; height: 65px; margin-bottom: 9px; color: white; background: linear-gradient(145deg, var(--purple), var(--brand)); border: 6px double #ffe5ae; border-radius: 18px; font-size: 1.4rem; }
 .badge-wall strong { font-size: .75rem; }
@@ -35,14 +35,18 @@
 .badge-wall .locked { filter: grayscale(1); opacity: .58; }
 .profile-two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .record-list { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; }
-.record-list article { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px; min-height: 95px; padding: 15px; border-bottom: 1px solid var(--border); }
+.record-list article { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 95px; padding: 15px; border-bottom: 1px solid var(--border); }
+.record-cover.category-cover { width: 96px; min-height: 0; border-radius: 8px; }
 .record-list article:last-child { border-bottom: 0; }
-.record-list article > div { display: grid; gap: 6px; }
+.record-list article > div:not(.category-cover) { display: grid; gap: 6px; min-width: 0; }
 .record-list small { color: var(--muted); }
 .favorites-panel, .plan-card { margin-top: 78px; }
 .favorites-panel .section-heading, .plan-card .section-heading { margin-top: 0; }
 .favorite-list { margin-top: 15px; }
-.favorite-list > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 48px; border-top: 1px solid var(--border); }
+.favorite-list > div { display: grid; grid-template-columns: 96px auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 76px; padding-block: 10px; border-top: 1px solid var(--border); }
+.favorite-list .record-cover { grid-row: span 2; }
+.favorite-list small { grid-column: 2 / 4; grid-row: 2; }
+.favorite-list button { grid-column: 4; grid-row: 1 / 3; }
 .favorite-list small { color: var(--muted); font-size: var(--amc-font-meta); }
 .favorite-list button { border: 0; background: transparent; cursor: pointer; }
 .plan-card ul { padding-left: 20px; color: var(--secondary); line-height: 2; }

@@ -8,7 +8,9 @@ import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import ContentPagination from '../components/ContentPagination.vue'
 import ProgressBar from '../components/ProgressBar.vue'
-import { assessmentAchievements, assets } from '../data/mock'
+import { assessmentAchievements } from '../data/mock'
+import CategoryCover from '../components/base/CategoryCover.vue'
+import PageHeroArt from '../components/PageHeroArt.vue'
 import { loadAssessmentRanking, type ChallengeRankingEntry } from '../services/api/assessments'
 import { dataMode } from '../services/api/client'
 import { quizBridge } from '../services/quizBridge'
@@ -64,6 +66,7 @@ const loadChallenges = async () => {
   challengeLoadError.value = ''
   try {
     await challengeStore.load()
+    if (dataMode === 'mock') await selectChallenge(route.query.challenge)
   } catch (error) {
     challengeLoadError.value = error instanceof Error ? error.message : '挑战加载失败'
   }
@@ -106,16 +109,22 @@ onBeforeUnmount(() => { selectionEpoch++; rankingEpoch++ })
 
 <template>
   <div class="page-container assessment-page">
-    <section class="assessment-title"><div><span class="eyebrow">学习 · 实践 · 验证</span><h1>挑战与测评</h1><p>检验学习效果，发现知识盲点，持续突破自我。</p></div><aside><template v-if="accountDataReady"><strong>已记录 {{ store.assessmentRecords.length }} 次测评</strong><ProgressBar :value="store.serverGrowth?.knowledgeAccuracy || 0" label="知识正确率" /></template><p v-else class="notice">{{ accountDataMessage }}</p><button v-if="dataMode === 'mock'" class="text-link" type="button" @click="quizBridge.openReport()">查看学习报告 <AppIcon name="arrow-right" :size="16" /></button></aside></section>
+    <section class="assessment-title"><PageHeroArt visual-key="assessmentsHeroAssetId" /><div><span class="eyebrow">学习 · 实践 · 验证</span><h1>挑战与测评</h1><p>检验学习效果，发现知识盲点，持续突破自我。</p></div><aside><template v-if="accountDataReady"><strong>已记录 {{ store.assessmentRecords.length }} 次测评</strong><ProgressBar :value="store.serverGrowth?.knowledgeAccuracy || 0" label="知识正确率" /></template><p v-else class="notice">{{ accountDataMessage }}</p><button v-if="dataMode === 'mock'" class="text-link" type="button" @click="quizBridge.openReport()">查看学习报告 <AppIcon name="arrow-right" :size="16" /></button></aside></section>
     <section v-if="challenge" class="challenge-hero">
       <div><span class="tag purple">已发布挑战</span><h2>{{ challenge.title }}</h2><p>{{ challenge.summary }}</p><div class="meta"><span>目标 {{ challenge.targetScore }} 分</span><span>{{ challenge.data.endAt ? `截止 ${challenge.data.endAt.slice(0, 10)}` : '长期开放' }}</span><span>奖励 {{ challenge.rewardPoints }} 积分</span></div><div class="hero-actions"><button class="button primary" type="button" @click="startChallenge">立即参加挑战</button><button class="button secondary" type="button" @click="ruleOpen = true">查看挑战规则</button></div></div>
-      <img :src="assets.labCover" alt="AI 挑战工作流插画" />
+      <CategoryCover :title="challenge.title" :media="challenge.data" eager />
       <div class="challenge-target"><h3>挑战目标</h3><strong>{{ challenge.targetScore }} 分</strong><ProgressBar v-if="accountDataReady" :value="store.serverGrowth?.knowledgeAccuracy || 0" label="知识正确率" /><span v-else>{{ accountDataMessage }}</span><span v-if="rankingState === 'ready'">排行榜已有 {{ ranking.length }} 条有效最佳成绩</span><span v-else-if="rankingState === 'login-required'">登录后查看挑战排行榜</span><span v-else-if="rankingState === 'error'">{{ rankingMessage }}</span><span v-else>排行榜加载中…</span><span>通过后奖励 {{ challenge.rewardPoints }} 积分</span></div>
     </section>
     <div v-else-if="selectionError" class="inline-empty" role="alert"><p>{{ selectionError }}</p><RouterLink class="text-link" to="/assessments">返回挑战列表</RouterLink></div>
     <div v-else-if="selectionLoading" class="inline-empty" role="status"><p>正在加载指定挑战…</p></div>
     <div v-else-if="challengeLoadError" class="inline-empty"><p>{{ challengeLoadError }}</p></div>
     <div v-else-if="dataMode === 'api'" class="inline-empty"><p>{{ challengeStore.loading ? '正在加载已发布挑战…' : '当前没有已发布挑战。' }}</p></div>
+    <section v-if="challenges.length" class="challenge-catalog" aria-label="选择已发布挑战">
+      <RouterLink v-for="item in challenges" :key="item.id" :to="{ path: '/assessments', query: { challenge: item.slug } }" :aria-current="challenge?.slug === item.slug ? 'true' : undefined">
+        <CategoryCover :title="item.title" :media="item.data" />
+        <div><strong>{{ item.title }}</strong><small>目标 {{ item.targetScore }} 分 · {{ item.rewardPoints }} 积分</small></div>
+      </RouterLink>
+    </section>
     <div class="assessment-grid">
       <section class="exam-card"><span class="eyebrow">{{ dataMode === 'api' ? '统一题库' : '全真模拟测评' }}</span><h2>{{ dataMode === 'api' ? '已发布挑战列表' : 'AI 综合能力测评' }}</h2><div v-if="dataMode === 'api'" class="exam-stats"><button v-for="item in challenges" :key="item.id" class="text-link" type="button" @click="startAssessment(item.slug)">{{ item.title }} · 目标 {{ item.targetScore }} 分</button><ContentPagination :page="challengeStore.page" :page-size="challengeStore.pageSize" :total="challengeStore.total" @change="challengeStore.load({ page: $event })" /></div><template v-else><p>60 道题 · 90 分钟 · 综合难度</p><div class="exam-stats"><span><strong>{{ store.assessmentRecords.length }}</strong>本地入口记录</span><span><strong>演示</strong>桥接状态</span><span><strong>待接入</strong>真实成绩</span></div><button class="button primary" type="button" @click="startAssessment('full-ai')">开始模拟测评</button></template></section>
       <aside class="leaderboard"><div class="panel-title"><h3>挑战排行榜</h3><div v-if="dataMode === 'mock'"><button v-for="tab in ['本周榜', '总榜'] as const" :key="tab" type="button" :class="{ active: rankTab === tab }" @click="rankTab = tab">{{ tab }}</button></div></div><label v-if="dataMode === 'mock'" class="rank-filter">学校筛选<select v-model="school"><option>全部高校</option><option>本校</option><option>同城高校</option></select></label><ol v-if="rankingState === 'ready' && ranking.length"><li v-for="item in ranking.slice(0, 10)" :key="item.userId"><span>{{ String(item.rank).padStart(2, '0') }}</span>{{ item.displayName }}<strong>{{ item.score }}</strong></li></ol><p v-else-if="rankingState === 'login-required'">登录后查看挑战排行榜。</p><p v-else-if="rankingState === 'error'">{{ rankingMessage }}</p><p v-else-if="rankingState === 'ready'">暂无有效成绩。</p><p v-else>排行榜加载中…</p></aside>
@@ -130,7 +139,7 @@ onBeforeUnmount(() => { selectionEpoch++; rankingEpoch++ })
       <aside class="study-aside"><h3>近期成绩</h3><div v-for="(item, index) in ['本周 AI 挑战', '大模型专项练习', 'Python 基础测评']" :key="item" class="result-row"><strong>{{ item }}</strong><span>{{ 86 - index * 4 }}% · {{ 18 + index * 4 }} 分钟</span><small>{{ index === 0 ? '第 128 名' : `${82 - index * 3} 分 · ${['A', 'B+', 'B'][index]} 级` }} · {{ index + 1 }} 天前</small></div></aside>
     </div>
     <section><div class="section-heading"><h2>推荐练习</h2></div><div class="three-grid practice-grid"><article v-for="(title, index) in ['强化学习基础', '计算机视觉入门', '模型安全边界']" :key="title"><span>薄弱项推荐</span><h3>{{ title }}</h3><p>{{ 12 + index * 3 }} 道题 · 当前正确率 {{ 62 + index * 4 }}%</p><button class="button secondary" type="button" @click="startPractice(`practice-${index}`)">开始练习</button></article></div></section>
-    <section><div class="section-heading"><div><span class="eyebrow">成长记录</span><h2>我的成就</h2></div></div><div class="assessment-achievements"><article v-for="achievement in assessmentAchievements" :key="achievement.title" :class="{ locked: !achievement.unlocked }"><span>{{ achievement.icon }}</span><div><h3>{{ achievement.title }}</h3><p>{{ achievement.description }}</p><small>{{ achievement.unlocked ? '已获得' : '待解锁' }}</small></div></article></div></section>
+    <section><div class="section-heading"><div><span class="eyebrow">成长记录</span><h2>我的成就</h2></div></div><div class="assessment-achievements"><article v-for="achievement in assessmentAchievements" :key="achievement.title" :class="{ locked: !achievement.unlocked }"><span><AppIcon :name="achievement.icon" :size="32" /></span><div><h3>{{ achievement.title }}</h3><p>{{ achievement.description }}</p><small>{{ achievement.unlocked ? '已获得' : '待解锁' }}</small></div></article></div></section>
     </template>
   </div>
   <AppDialog v-model="ruleOpen" title="挑战规则"><pre v-if="dataMode === 'api'">{{ JSON.stringify(challenge?.data || {}, null, 2) }}</pre><ol v-else><li>答题入口由《题盒》统一提供。</li><li>本页不保存题库、计时或判分逻辑。</li><li>演示入口记录只保存在当前浏览器。</li></ol></AppDialog>

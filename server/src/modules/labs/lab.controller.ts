@@ -14,6 +14,7 @@ import { LabService } from './lab.service'
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminLabController {
   constructor(private readonly labs: LabService, private readonly prisma: PrismaService) {}
+  @Delete(':id') @Permissions('lab.write') remove(@Param('id') id: string, @CurrentUser() user: AuthUser) { return this.labs.remove(id, user.id) }
   @Get() @Permissions('lab.read') list(@Query() query: PageQueryDto) { return this.labs.list(query) }
   @Post() @Permissions('lab.write') create(@Body() input: CreateLabDto, @CurrentUser() user: AuthUser) { return this.labs.create(input, user.id) }
   @Get(':id') @Permissions('lab.read') detail(@Param('id') id: string) { return this.labs.detail(id) }
@@ -23,50 +24,42 @@ export class AdminLabController {
 
   @Post(':id/steps') @Permissions('lab.write')
   async step(@Param('id') labId: string, @Body() input: CreateLabStepDto) {
-    await this.labs.ensureDraft(labId)
-    const step = await this.prisma.labStep.create({
+    return this.labs.editDraft(labId, (tx) => tx.labStep.create({
       data: { labId, ...input, instruction: input.instruction as Prisma.InputJsonValue, validator: input.validator as Prisma.InputJsonValue },
-    })
-    await this.labs.refreshDraft(labId)
-    return step
+    }))
   }
 
   @Patch(':labId/steps/:id') @Permissions('lab.write')
   async updateStep(@Param('labId') labId: string, @Param('id') id: string, @Body() input: UpdateLabStepDto) {
     const { instruction, validator, ...rest } = input
-    const step = await this.prisma.labStep.update({
-      where: { id },
+    return this.labs.editDraft(labId, (tx) => tx.labStep.update({
+      where: { id, labId },
       data: { ...rest, ...(instruction ? { instruction: instruction as Prisma.InputJsonValue } : {}), ...(validator ? { validator: validator as Prisma.InputJsonValue } : {}) },
-    })
-    if (step.labId !== labId) throw new NotFoundException('步骤不属于当前实训')
-    await this.labs.refreshDraft(labId)
-    return step
+    }))
   }
 
   @Delete(':labId/steps/:id') @Permissions('lab.write')
   async deleteStep(@Param('labId') labId: string, @Param('id') id: string) {
-    const deleted = await this.prisma.labStep.deleteMany({ where: { id, labId } })
-    if (!deleted.count) throw new NotFoundException('步骤不属于当前实训')
-    await this.labs.refreshDraft(labId)
-    return { deleted: true }
+    return this.labs.editDraft(labId, async (tx) => {
+      const deleted = await tx.labStep.deleteMany({ where: { id, labId } })
+      if (!deleted.count) throw new NotFoundException('步骤不属于当前实训')
+      return { deleted: true }
+    })
   }
 
   @Put(':id/steps/reorder') @Permissions('lab.write')
   async reorderSteps(@Param('id') labId: string, @Body() input: ReorderLabDto) {
-    await this.labs.ensureDraft(labId)
-    const valid = await this.prisma.labStep.count({ where: { labId, id: { in: input.items.map((item) => item.id) } } })
-    if (valid !== input.items.length) throw new NotFoundException('步骤不属于当前实训')
-    await this.prisma.$transaction(input.items.map((item) => this.prisma.labStep.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } })))
-    await this.labs.refreshDraft(labId)
-    return this.prisma.labStep.findMany({ where: { labId }, orderBy: { sortOrder: 'asc' } })
+    return this.labs.editDraft(labId, async (tx) => {
+      const valid = await tx.labStep.count({ where: { labId, id: { in: input.items.map((item) => item.id) } } })
+      if (valid !== input.items.length) throw new NotFoundException('步骤不属于当前实训')
+      for (const item of input.items) await tx.labStep.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } })
+      return tx.labStep.findMany({ where: { labId }, orderBy: { sortOrder: 'asc' } })
+    })
   }
 
   @Put(':id/tools') @Permissions('lab.write')
   async tools(@Param('id') id: string, @Body() input: UpdateLabToolsDto) {
-    await this.labs.ensureDraft(id)
-    const lab = await this.prisma.lab.findUnique({ where: { id } })
-    if (!lab) throw new NotFoundException('实训不存在')
-    await this.prisma.$transaction(async (tx) => {
+    await this.labs.editDraft(id, async (tx) => {
       await tx.labToolBinding.deleteMany({ where: { labId: id } })
       for (const [index, item] of input.tools.entries()) {
         const tool = await tx.labTool.upsert({
@@ -77,19 +70,17 @@ export class AdminLabController {
         await tx.labToolBinding.create({ data: { labId: id, toolId: tool.id, sortOrder: index + 1 } })
       }
     })
-    await this.labs.refreshDraft(id)
     return this.labs.detail(id)
   }
 
   @Put(':id/resources') @Permissions('lab.write')
   async resources(@Param('id') labId: string, @Body() input: LabResourcesDto) {
-    await this.prisma.$transaction(async (tx) => {
+    await this.labs.editDraft(labId, async (tx) => {
       await tx.labResource.deleteMany({ where: { labId } })
       for (const [sortOrder, resourceId] of input.resourceIds.entries()) {
         await tx.labResource.create({ data: { labId, resourceId, sortOrder } })
       }
     })
-    await this.labs.refreshDraft(labId)
     return this.labs.detail(labId)
   }
 

@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString, IsUrl, Length, ValidateIf } from 'class-validator'
+import { IsArray, IsIn, IsOptional, IsString, Length } from 'class-validator'
 import { CreateContentDto, UpdateContentDto } from '../../common/content/content.dto'
 
 export class CreateResourceDto extends CreateContentDto {
@@ -8,7 +8,6 @@ export class CreateResourceDto extends CreateContentDto {
   @IsOptional() @IsIn(['public', 'authenticated', 'restricted']) downloadPermission?: string
   @IsOptional() @IsString() difficulty?: string
   @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[]
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() fileId?: string
   @IsOptional() @IsString() themeId?: string
   @IsOptional() @IsString() courseId?: string
@@ -22,7 +21,6 @@ export class UpdateResourceDto extends UpdateContentDto {
   @IsOptional() @IsIn(['public', 'authenticated', 'restricted']) downloadPermission?: string
   @IsOptional() @IsString() difficulty?: string
   @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[]
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() fileId?: string
   @IsOptional() @IsString() themeId?: string
   @IsOptional() @IsString() courseId?: string

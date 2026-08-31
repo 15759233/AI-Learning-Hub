@@ -1,11 +1,10 @@
 import { Type } from 'class-transformer'
-import { IsArray, IsBoolean, IsHexColor, IsIn, IsObject, IsOptional, IsString, IsUrl, Length, Matches, ValidateIf, ValidateNested } from 'class-validator'
+import { IsArray, IsBoolean, IsHexColor, IsIn, IsObject, IsOptional, IsString, Length, Matches, ValidateNested } from 'class-validator'
 import { CreateContentDto, UpdateContentDto } from '../../common/content/content.dto'
 
 export class CreateThemeDto extends CreateContentDto {
   @IsOptional() @IsString() @Length(0, 160) subtitle?: string
   @IsOptional() @IsString() @Length(0, 2000) introduction?: string
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 120) icon?: string
   @IsOptional() @IsHexColor() accent?: string
   @IsOptional() @IsBoolean() recommended?: boolean
@@ -17,7 +16,6 @@ export class CreateThemeDto extends CreateContentDto {
 export class UpdateThemeDto extends UpdateContentDto {
   @IsOptional() @IsString() @Length(0, 160) subtitle?: string
   @IsOptional() @IsString() @Length(0, 2000) introduction?: string
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 120) icon?: string
   @IsOptional() @IsHexColor() accent?: string
   @IsOptional() @IsBoolean() recommended?: boolean

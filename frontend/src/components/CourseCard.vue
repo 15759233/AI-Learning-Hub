@@ -20,7 +20,7 @@ const accountDataMessage = computed(() => {
 </script>
 
 <template>
-  <BaseContentCard class="course-card" :compact="compact" :title="course.title" :to="`/courses/${course.id}`" :image="course.cover" :cover-variant="course.coverVariant" :icon="course.icon" :tag="course.category">
+  <BaseContentCard class="course-card" :compact="compact" :title="course.title" :to="`/courses/${course.id}`" :media="course" :cover-variant="course.coverVariant" :icon="course.icon" :tag="course.category">
       <div class="meta"><span>{{ course.level }}</span><span>{{ course.hours == null ? '时长 —' : `${course.hours} 小时` }}</span><span>{{ course.learners == null ? '学习人数 —' : `${(course.learners / 1000).toFixed(1)}k 人` }}</span></div>
       <RouterLink :to="`/courses/${course.id}`"><h3>{{ course.title }}</h3></RouterLink>
       <p>{{ course.description }}</p>

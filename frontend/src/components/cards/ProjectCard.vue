@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import BaseContentCard from '../base/BaseContentCard.vue'
 import AppIcon from '../base/AppIcon.vue'
+import type { CoverData } from '../../media/catalog'
 
 defineProps<{
-  project: {
+  project: CoverData & {
     id: string
     title: string
     description: string
@@ -17,7 +18,7 @@ defineProps<{
 </script>
 
 <template>
-  <BaseContentCard :title="project.title" :to="`/labs/${project.id}`" :cover-variant="project.coverVariant" :icon="project.icon" tag="综合项目">
+  <BaseContentCard :title="project.title" :to="`/labs/${project.id}`" :media="project" :cover-variant="project.coverVariant" :icon="project.icon" tag="综合项目">
     <h3>{{ project.title }}</h3>
     <p>{{ project.description }}</p>
     <small>{{ project.skills }} · {{ project.steps }} 步 · {{ project.duration }}</small>

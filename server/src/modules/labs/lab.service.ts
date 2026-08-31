@@ -5,11 +5,12 @@ import { PrismaService } from '../../prisma/prisma.service'
 import type { PageQueryDto } from '../../common/content/page-query.dto'
 import type { CreateLabDto, UpdateLabDto } from './lab.dto'
 
-const dataFields = ['category', 'level', 'durationMinutes', 'cover', 'objective', 'task', 'hints', 'scoring', 'resultSubmission', 'typeConfig']
+const dataFields = ['category', 'level', 'durationMinutes', 'coverAssetId', 'objective', 'task', 'hints', 'scoring', 'resultSubmission', 'typeConfig']
 
 @Injectable()
 export class LabService {
   constructor(private readonly prisma: PrismaService, private readonly support: ContentSupportService) {}
+  remove(id: string, actorId: string) { return this.support.remove('lab', id, actorId) }
 
   private snapshot(snapshot: Prisma.JsonValue | null | undefined) {
     const value = this.support.data(snapshot)
@@ -30,18 +31,19 @@ export class LabService {
       this.prisma.lab.findMany({ ...this.support.page(query), where, include: { publishedVersion: true } }),
       this.prisma.lab.count({ where }),
     ])
+    const covers = await this.support.media.prepare(items, publicOnly)
     return {
-      items: items.map((item) => {
+      items: await Promise.all(items.map(async (item) => {
         const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
         return {
-          ...this.support.base({
+          ...await this.support.render('lab', {
             ...item,
             title: published?.title || item.title,
             summary: published?.summary || item.summary,
-          }, !publicOnly, published?.data || this.support.data(item.payload)),
+          }, !publicOnly, published?.data || this.support.data(item.payload), covers),
           labType: published?.labType || item.labType,
         }
-      }),
+      })),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -66,7 +68,7 @@ export class LabService {
     if (!item) throw new NotFoundException('实训不存在')
     const published = publicOnly ? this.snapshot(item.publishedVersion?.snapshot) : null
     return {
-      ...this.support.base({
+      ...await this.support.render('lab', {
         ...item,
         title: published?.title || item.title,
         summary: published?.summary || item.summary,
@@ -89,10 +91,12 @@ export class LabService {
   }
 
   async create(input: CreateLabDto, actorId: string) {
-    const data = this.support.pick(input, dataFields)
+    const data = { coverAssetId: null, ...this.support.pick(input, dataFields) }
     const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
       const lab = await tx.lab.create({
         data: {
+          coverAssetId: input.coverAssetId || null,
           slug: input.slug,
           title: input.title,
           summary: input.summary,
@@ -107,45 +111,43 @@ export class LabService {
       return tx.lab.update({ where: { id: lab.id }, data: { currentDraftVersionId: version.id } })
     })
     await this.support.audit(actorId, 'create', 'labs', item.id)
-    return { ...this.support.base(item, true), labType: item.labType }
+    return { ...await this.support.render('lab', item, true), labType: item.labType }
   }
 
   async update(id: string, input: UpdateLabDto, actorId: string) {
-    await this.ensureDraft(id)
-    const current = await this.prisma.lab.findUnique({ where: { id } })
-    if (!current) throw new NotFoundException('实训不存在')
-    const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
-    const item = await this.prisma.lab.update({
-      where: { id },
-      data: {
-        ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'labType']),
-        payload: this.support.sanitize(data),
-        version: { increment: 1 },
-      },
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, input.coverAssetId)
+      await this.ensureDraft(id, tx)
+      const current = await tx.lab.findUniqueOrThrow({ where: { id } })
+      const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
+      const lab = await tx.lab.update({ where: { id }, data: {
+        ...this.support.pick(input, ['title', 'summary', 'sortOrder', 'labType', 'coverAssetId']), payload: this.support.sanitize(data), version: { increment: 1 },
+      } })
+      await this.refreshDraft(id, tx)
+      return lab
     })
-    await this.refreshDraft(id)
     await this.support.audit(actorId, 'update', 'labs', id)
-    return { ...this.support.base(item, true), labType: item.labType }
+    return { ...await this.support.render('lab', item, true), labType: item.labType }
   }
 
   async setPublished(id: string, published: boolean, actorId: string) {
-    const draftId = published ? await this.ensureDraft(id) : null
-    if (published) await this.refreshDraft(id)
-    const item = await this.prisma.lab.update({
-      where: { id },
-      data: published
+    const item = await this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      const draftId = published ? await this.ensureDraft(id, tx) : null
+      if (published) await this.refreshDraft(id, tx)
+      return tx.lab.update({ where: { id }, data: published
         ? { status: PublishStatus.published, publishedAt: new Date(), publishedVersionId: draftId, version: { increment: 1 } }
-        : { status: PublishStatus.archived, version: { increment: 1 } },
+        : { status: PublishStatus.archived, version: { increment: 1 } } })
     })
     await this.support.audit(actorId, published ? 'publish' : 'archive', 'labs', id)
-    return { ...this.support.base(item, true), labType: item.labType }
+    return { ...await this.support.render('lab', item, true), labType: item.labType }
   }
 
-  async ensureDraft(labId: string) {
-    const lab = await this.prisma.lab.findUnique({ where: { id: labId }, include: { currentDraftVersion: true, _count: { select: { versions: true } } } })
+  private async ensureDraft(labId: string, tx: Prisma.TransactionClient): Promise<string> {
+    const lab = await tx.lab.findUnique({ where: { id: labId, deletedAt: null }, include: { currentDraftVersion: true, _count: { select: { versions: true } } } })
     if (!lab) throw new NotFoundException('实训不存在')
     if (lab.currentDraftVersionId && lab.currentDraftVersionId !== lab.publishedVersionId) return lab.currentDraftVersionId
-    const version = await this.prisma.labVersion.create({
+    const version = await tx.labVersion.create({
       data: {
         labId,
         versionNo: lab._count.versions + 1,
@@ -160,12 +162,22 @@ export class LabService {
         }) as Prisma.InputJsonValue,
       },
     })
-    await this.prisma.lab.update({ where: { id: labId }, data: { currentDraftVersionId: version.id } })
+    await tx.lab.update({ where: { id: labId }, data: { currentDraftVersionId: version.id } })
     return version.id
   }
 
-  async refreshDraft(labId: string) {
-    const lab = await this.prisma.lab.findUnique({
+  async editDraft<T>(labId: string, change: (tx: Prisma.TransactionClient) => Promise<T>) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.support.binding(tx, undefined)
+      await this.ensureDraft(labId, tx)
+      const result = await change(tx)
+      await this.refreshDraft(labId, tx)
+      return result
+    })
+  }
+
+  private async refreshDraft(labId: string, tx: Prisma.TransactionClient) {
+    const lab = await tx.lab.findUnique({
       where: { id: labId },
       include: {
         steps: { orderBy: { sortOrder: 'asc' } },
@@ -174,7 +186,7 @@ export class LabService {
       },
     })
     if (!lab?.currentDraftVersionId) throw new NotFoundException('实训草稿不存在')
-    await this.prisma.labVersion.update({
+    await tx.labVersion.update({
       where: { id: lab.currentDraftVersionId },
       data: {
         snapshot: JSON.parse(JSON.stringify({

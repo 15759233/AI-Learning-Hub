@@ -2,13 +2,14 @@ import { BadRequestException, Injectable } from '@nestjs/common'
 import type { CommunityBindingInput, HomepageResolvedItemDto, LandingPublicAuthor, LearningContentReferenceDto, LearningContentType } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { authorDto, authorInclude } from '../../modules/community/community.mapper'
+import { MediaResolverService } from '../../modules/media/media-resolver.service'
 
 const types: LearningContentType[] = ['theme', 'course', 'lesson', 'lab', 'resource', 'article', 'challenge', 'lab_run']
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
 @Injectable()
 export class ContentReferenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly media: MediaResolverService) {}
 
   /** 门户仅投影当前公开对象；不返回草稿、正文块、媒体令牌或账号内部字段。 */
   async resolvePublicCommunity(type: string, id: string): Promise<HomepageResolvedItemDto | null> {
@@ -74,10 +75,11 @@ export class ContentReferenceService {
             : type === 'resource' ? await this.prisma.resource.findMany({ where: { ...where, visibility: 'public' }, include })
               : type === 'article' ? await this.prisma.article.findMany({ where, include })
                 : await this.prisma.challenge.findMany({ where, include })
+      const covers = await this.media.prepare(rows, true)
       for (const row of rows) {
         if (!row.publishedVersion) continue
         const snapshot = object(row.publishedVersion.snapshot)
-        const data = object(snapshot.data || snapshot.payload)
+        const data = await this.media.data(type, row, object(snapshot.data || snapshot.payload), true, covers)
         const routes = { theme: `/topics?theme=${row.slug}`, course: `/courses/${row.slug}`, lab: `/labs/${row.slug}`, resource: `/resources?resource=${row.slug}`, article: `/frontier?article=${row.slug}`, challenge: `/assessments?challenge=${row.slug}` }
         const ref: LearningContentReferenceDto = { type, id: row.id, slug: row.slug, title: String(snapshot.title || row.title), summary: String(snapshot.summary || row.summary), route: routes[type], status: 'published', ...(typeof data.cover === 'string' ? { cover: data.cover } : {}), ...(typeof data.category === 'string' ? { category: data.category } : {}) }
         result.set(`${type}:${row.id}`, ref)

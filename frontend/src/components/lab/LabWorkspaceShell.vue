@@ -46,7 +46,7 @@ const related = computed(() => props.definition.relatedResourceIds
           <div class="meta"><span>{{ definition.duration ? `预计 ${definition.duration} 分钟` : '预计时长 —' }}</span><span>{{ dataMode === 'api' ? '服务端受控状态机' : '浏览器内受控模拟' }}</span></div>
           <ProgressBar :value="progress" label="学习进度" dark />
         </div>
-        <CategoryCover :title="definition.title" :variant="definition.coverVariant" :icon="definition.type.toUpperCase()" />
+        <CategoryCover :title="definition.title" :media="definition" :variant="definition.coverVariant" icon="terminal" eager />
         <div class="lab-hero-actions">
           <button class="button lab-secondary" type="button" @click="emit('reset')">重新开始</button>
           <button class="button lab-secondary" type="button" @click="store.toggleFavorite('lab', definition.id)">{{ favorite ? '已收藏' : '收藏实验' }}</button>

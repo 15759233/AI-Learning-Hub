@@ -8,6 +8,8 @@ export interface UploadedFile {
 export interface UploadOptions {
   uploadedBy: string
   visibility: 'public' | 'private'
+  catalogMedia?: boolean
+  trustedSvg?: boolean
 }
 
 export interface StoredFile {

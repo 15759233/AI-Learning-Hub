@@ -22,6 +22,7 @@ import { GrowthModule } from './modules/growth/growth.module'
 import { CommunityModule } from './modules/community/community.module'
 import { UsersModule } from './modules/users/users.module'
 import { PersistenceModule } from './modules/persistence/persistence.module'
+import { MediaModule } from './modules/media/media.module'
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { PersistenceModule } from './modules/persistence/persistence.module'
     CommunityModule,
     UsersModule,
     PersistenceModule,
+    MediaModule,
   ],
   controllers: [AppController],
   providers: [OperationLogInterceptor],

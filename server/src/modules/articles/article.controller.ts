@@ -1,5 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
-import { PublishStatus } from '@prisma/client'
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -14,6 +13,7 @@ import { ArticleService } from './article.service'
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminArticleController {
   constructor(private readonly articles: ArticleService, private readonly prisma: PrismaService) {}
+  @Delete(':id') @Permissions('article.write') remove(@Param('id') id: string, @CurrentUser() user: AuthUser) { return this.articles.remove(id, user.id) }
   @Get() @Permissions('article.read') list(@Query() query: PageQueryDto) { return this.articles.list(query) }
   @Post() @Permissions('article.write') create(@Body() input: CreateArticleDto, @CurrentUser() user: AuthUser) { return this.articles.create(input, user.id) }
   @Get(':id') @Permissions('article.read') detail(@Param('id') id: string) { return this.articles.detail(id) }
@@ -23,9 +23,7 @@ export class AdminArticleController {
 
   @Post(':id/schedule') @Permissions('article.write')
   async schedule(@Param('id') id: string, @Body() input: ScheduleArticleDto) {
-    await this.articles.ensureDraft(id)
-    await this.articles.refreshDraft(id)
-    return this.prisma.article.update({ where: { id }, data: { scheduledAt: new Date(input.scheduledAt), status: PublishStatus.reviewing } })
+    return this.articles.schedule(id, new Date(input.scheduledAt))
   }
 
   @Put(':id/recommendations') @Permissions('article.write')

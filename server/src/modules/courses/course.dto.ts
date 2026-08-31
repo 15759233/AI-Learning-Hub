@@ -1,12 +1,11 @@
 import { Type } from 'class-transformer'
-import { IsArray, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUrl, Length, Max, Min, ValidateIf } from 'class-validator'
+import { IsArray, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Length, Max, Min } from 'class-validator'
 import { CreateContentDto, UpdateContentDto } from '../../common/content/content.dto'
 
 export class CreateCourseDto extends CreateContentDto {
   @IsOptional() @IsString() themeId?: string
   @IsOptional() @IsString() @Length(0, 120) category?: string
   @IsOptional() @IsString() @Length(0, 40) level?: string
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 40) mode?: string
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(1000) hours?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60_000) durationMinutes?: number
@@ -19,7 +18,6 @@ export class UpdateCourseDto extends UpdateContentDto {
   @IsOptional() @IsString() themeId?: string
   @IsOptional() @IsString() @Length(0, 120) category?: string
   @IsOptional() @IsString() @Length(0, 40) level?: string
-  @IsOptional() @ValidateIf((_, value) => value !== '') @IsUrl({ require_tld: false }) cover?: string
   @IsOptional() @IsString() @Length(0, 40) mode?: string
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(1000) hours?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(60_000) durationMinutes?: number

@@ -1,3 +1,5 @@
+import type { CatalogCoverData } from './media'
+
 export enum PublishStatus {
   DRAFT = 'draft',
   REVIEWING = 'reviewing',
@@ -72,6 +74,7 @@ export interface CatalogBaseDto<TData extends object = Record<string, unknown>> 
 export interface AdminCatalogItemDto<TData extends object = Record<string, unknown>>
   extends CatalogBaseDto<TData> {
   databaseId: string
+  dataOrigin?: 'demo_seed' | 'admin_created' | 'imported'
 }
 
 export interface ContentCreateBase {
@@ -90,7 +93,7 @@ export interface ContentUpdateBase {
 export interface ThemeWriteFields {
   subtitle?: string
   introduction?: string
-  cover?: string
+  coverAssetId?: string | null
   icon?: string
   accent?: string
   recommended?: boolean
@@ -99,7 +102,7 @@ export interface ThemeWriteFields {
   relatedResourceIds?: string[]
 }
 
-export interface ThemeData extends ThemeWriteFields {
+export interface ThemeData extends ThemeWriteFields, Partial<CatalogCoverData> {
   learners?: number
   completionRate?: number
   courseCount?: number
@@ -129,7 +132,7 @@ export interface AdminThemeDetailDto extends AdminThemeSummaryDto {
 export interface CreateThemeInput extends ContentCreateBase, ThemeWriteFields {}
 export type UpdateThemeInput = ContentUpdateBase & Partial<ThemeWriteFields>
 
-export interface CourseData {
+export interface CourseData extends Partial<CatalogCoverData> {
   category?: string
   level?: string
   cover?: string
@@ -176,7 +179,7 @@ export interface CreateCourseInput extends ContentCreateBase {
   themeId?: string
   category?: string
   level?: string
-  cover?: string
+  coverAssetId?: string | null
   mode?: string
   hours?: number
   durationMinutes?: number
@@ -190,7 +193,7 @@ export interface LabWriteFields {
   category?: string
   level?: string
   durationMinutes?: number
-  cover?: string
+  coverAssetId?: string | null
   objective?: string
   task?: string
   hints?: string[]
@@ -198,7 +201,7 @@ export interface LabWriteFields {
   resultSubmission?: string
   typeConfig?: Record<string, unknown>
 }
-export interface LabData extends LabWriteFields {
+export interface LabData extends LabWriteFields, Partial<CatalogCoverData> {
   icon?: string
   coverVariant?: string
   completionRate?: number
@@ -233,7 +236,7 @@ export interface CreateLabInput extends ContentCreateBase, LabWriteFields {
 export type UpdateLabInput = ContentUpdateBase & Partial<Omit<CreateLabInput, keyof ContentCreateBase>>
 
 export interface ResourceWriteFields {
-  cover?: string
+  coverAssetId?: string | null
   difficulty?: string
   tags?: string[]
   downloadPermission?: 'public' | 'authenticated' | 'restricted'
@@ -241,7 +244,7 @@ export interface ResourceWriteFields {
   courseId?: string
   labId?: string
 }
-export interface ResourceData extends ResourceWriteFields {
+export interface ResourceData extends ResourceWriteFields, Partial<CatalogCoverData> {
   coverVariant?: string
   icon?: string
   theme?: string
@@ -278,13 +281,13 @@ export interface CreateResourceInput extends ContentCreateBase, ResourceWriteFie
 export type UpdateResourceInput = ContentUpdateBase & Partial<Omit<CreateResourceInput, keyof ContentCreateBase>>
 
 export interface ArticleWriteFields {
-  cover?: string
+  coverAssetId?: string | null
   author?: string
   readMinutes?: number
   blocks?: Array<Record<string, unknown>>
   tags?: string[]
 }
-export interface ArticleData extends ArticleWriteFields {
+export interface ArticleData extends ArticleWriteFields, Partial<CatalogCoverData> {
   content?: string[]
   coverVariant?: string
   icon?: string
@@ -306,13 +309,13 @@ export interface CreateArticleInput extends ContentCreateBase, ArticleWriteField
 export type UpdateArticleInput = ContentUpdateBase & Partial<Omit<CreateArticleInput, keyof ContentCreateBase>>
 
 export interface ChallengeWriteFields {
-  cover?: string
+  coverAssetId?: string | null
   startAt?: string
   endAt?: string
   leaderboardEnabled?: boolean
   integration?: 'web-native' | 'quiz-box-miniapp' | 'quiz-box-webview' | 'external-url'
 }
-export interface ChallengeData extends ChallengeWriteFields {
+export interface ChallengeData extends ChallengeWriteFields, Partial<CatalogCoverData> {
   durationMinutes?: number
   questions?: number
   participants?: number
@@ -464,3 +467,4 @@ export * from './community'
 export * from './auth'
 export * from './persistence'
 export * from './landing'
+export * from './media'

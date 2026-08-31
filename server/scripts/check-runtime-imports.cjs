@@ -10,6 +10,9 @@ async function check() {
   assert.equal(typeof require('../dist/modules/homepage/upgrade-landing.js').upgradeLanding, 'function')
   assert.equal(typeof require('../dist/modules/homepage/homepage.service.js').HomepageService, 'function')
   assert.equal(typeof require('../dist/app.module.js').AppModule, 'function')
+  assert.equal(require('node:zlib').crc32(Buffer.from('123456789')), 0xcbf43926)
+  assert.equal(typeof require('../dist/modules/media/import-catalog.js').importCatalogAssets, 'function')
+  assert.equal(typeof require('../dist/modules/media/media-gc.js').collectArchivedMedia, 'function')
   console.log(JSON.stringify({ check: 'runtime-imports', node: process.version, contracts: 'compiled-commonjs', commonjs: true, esm: true, upgrade: true, appModule: true, networkStarted: false }))
 }
 

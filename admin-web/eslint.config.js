@@ -9,6 +9,7 @@ export default [
     files: ['**/*.{js,ts,vue}'],
     languageOptions: { globals: globals.browser },
   },
+  { files: ['scripts/**/*.mjs'], languageOptions: { globals: globals.node } },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...vue.configs['flat/essential'],

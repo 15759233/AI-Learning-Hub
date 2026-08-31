@@ -9,6 +9,7 @@ export const usePagedList = <K extends keyof AdminDomainDtoMap>(kind: K) => {
   const result = shallowRef<PageResult<AdminDomainDtoMap[K]>>({ items: [], page: 1, pageSize: 10, total: 0 })
   const keyword = ref(String(route.query.keyword || ''))
   const status = ref('')
+  const dataOrigin = ref('')
   const loading = ref(false)
   const error = ref('')
   const { selected, select } = useDetailSelection<AdminDomainDtoMap[K]>()
@@ -20,6 +21,7 @@ export const usePagedList = <K extends keyof AdminDomainDtoMap>(kind: K) => {
       const query = new URLSearchParams({ page: String(page), pageSize: String(result.value.pageSize) })
       if (keyword.value) query.set('keyword', keyword.value)
       if (status.value) query.set('status', status.value)
+      if (dataOrigin.value) query.set('dataOrigin', dataOrigin.value)
       result.value = await api(`/admin/${kind}?${query}`)
       select(result.value.items.find((item) => item.id === selected.value?.id) || result.value.items[0] || null)
     } catch (reason) {
@@ -29,5 +31,5 @@ export const usePagedList = <K extends keyof AdminDomainDtoMap>(kind: K) => {
     }
   }
 
-  return { result, keyword, status, loading, error, selected, select, load }
+  return { result, keyword, status, dataOrigin, loading, error, selected, select, load }
 }
