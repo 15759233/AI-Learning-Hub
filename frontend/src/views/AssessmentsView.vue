@@ -26,6 +26,11 @@ const route = useRoute()
 const selectedChallenge = ref<ChallengeDetailDto | null>(null)
 const selectionError = ref(''), selectionLoading = ref(false)
 const challenge = computed(() => route.query.challenge === undefined ? challenges.value[0] : selectedChallenge.value)
+const challengeRules = computed(() => JSON.stringify(Object.fromEntries(
+  Object.entries(challenge.value?.data || {}).filter(([key]) => ![
+    'coverAssetId', 'cover', 'coverAlt', 'coverFocalPoint', 'coverSource', 'coverFallback',
+  ].includes(key)),
+), null, 2))
 let selectionEpoch = 0, rankingEpoch = 0
 const accountDataReady = computed(() => dataMode === 'mock' || store.accountSyncState === 'synced')
 const accountDataMessage = computed(() => {
@@ -142,6 +147,6 @@ onBeforeUnmount(() => { selectionEpoch++; rankingEpoch++ })
     <section><div class="section-heading"><div><span class="eyebrow">成长记录</span><h2>我的成就</h2></div></div><div class="assessment-achievements"><article v-for="achievement in assessmentAchievements" :key="achievement.title" :class="{ locked: !achievement.unlocked }"><span><AppIcon :name="achievement.icon" :size="32" /></span><div><h3>{{ achievement.title }}</h3><p>{{ achievement.description }}</p><small>{{ achievement.unlocked ? '已获得' : '待解锁' }}</small></div></article></div></section>
     </template>
   </div>
-  <AppDialog v-model="ruleOpen" title="挑战规则"><pre v-if="dataMode === 'api'">{{ JSON.stringify(challenge?.data || {}, null, 2) }}</pre><ol v-else><li>答题入口由《题盒》统一提供。</li><li>本页不保存题库、计时或判分逻辑。</li><li>演示入口记录只保存在当前浏览器。</li></ol></AppDialog>
+  <AppDialog v-model="ruleOpen" title="挑战规则" class="challenge-rules-dialog"><pre v-if="dataMode === 'api'">{{ challengeRules }}</pre><ol v-else><li>答题入口由《题盒》统一提供。</li><li>本页不保存题库、计时或判分逻辑。</li><li>演示入口记录只保存在当前浏览器。</li></ol></AppDialog>
   <AppDialog v-model="wrongOpen" title="错题解析"><p>注意力机制通过相关性权重聚合不同位置的信息，从而建立上下文联系。</p><button class="button primary" type="button" @click="startPractice('attention')">通过《题盒》继续练习</button></AppDialog>
 </template>

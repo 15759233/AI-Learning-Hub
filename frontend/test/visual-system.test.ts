@@ -118,6 +118,20 @@ describe('学习社区视觉契约', () => {
     expect(source('views/TopicsView.vue')).toContain('<RouterLink to="/profile">查看完整路径')
   })
 
+  it('规则弹窗局部约束宽度并单独滚动长内容，关闭按钮不随内容挤出', () => {
+    const page = source('views/AssessmentsView.vue'), css = source('styles/pages/assessments.css')
+    expect(page).toContain('class="challenge-rules-dialog"')
+    expect(page).toContain('{{ challengeRules }}')
+    expect(page).not.toContain('JSON.stringify(challenge?.data')
+    const card = css.match(/\.challenge-rules-dialog \.dialog-card\s*\{([^}]+)\}/)?.[1]
+    expect(card).toContain('grid-template-columns: minmax(0, 1fr)')
+    expect(card).toContain('grid-template-rows: auto minmax(0, 1fr)')
+    expect(card).toContain('overflow: hidden')
+    const pre = css.match(/\.challenge-rules-dialog pre\s*\{([^}]+)\}/)?.[1]
+    for (const rule of ['min-width: 0', 'min-height: 0', 'white-space: pre-wrap', 'overflow-wrap: anywhere', 'overflow: auto']) expect(pre).toContain(rule)
+    expect(css.match(/\.challenge-rules-dialog \.dialog-title \.icon-button\s*\{([^}]+)\}/)?.[1]).toContain('flex-shrink: 0')
+  })
+
   it('样式入口只加载分层文件，基础重置、复选框和深色工作台迁移完整', () => {
     const imports = [...source('styles.css').matchAll(/@import "\.\/([^"]+)";/g)].map((match) => match[1]!)
     expect(new Set(imports).size).toBe(imports.length)

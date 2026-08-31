@@ -11,6 +11,9 @@
 .challenge-catalog strong { display: -webkit-box; min-height: 2.9em; overflow: hidden; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .challenge-catalog small { display: block; margin-top: 8px; color: var(--muted); }
 .challenge-target { display: grid; gap: 13px; padding: 20px; border: 1px solid rgba(110,91,255,.18); border-radius: 14px; background: rgba(255,255,255,.72); }
+.challenge-rules-dialog .dialog-card { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.challenge-rules-dialog .dialog-title .icon-button { flex-shrink: 0; }
+.challenge-rules-dialog pre { min-width: 0; min-height: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
 .assessment-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr); gap: 20px; margin-top: 24px; }
 .exam-card, .wrong-card { min-height: 300px; }
 .exam-card h2 { margin: 14px 0 8px; }
