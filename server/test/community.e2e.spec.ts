@@ -414,8 +414,15 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     expect((await request(`/files/${upload.data.id}/download`, c)).status).toBe(404)
     const ownDownload = await fetch(`${base}/files/${upload.data.id}/download`, { headers: { authorization: `Bearer ${b}` } })
     expect(ownDownload.status).toBe(200); expect((await ownDownload.arrayBuffer()).byteLength).toBe(bytes.length)
-    await db.resource.create({ data: { slug: `${prefix}-public-file`, title: '公开学习图', summary: '共享存储公开资源回归', category: '学习资料', format: 'PNG', fileId: upload.data.id, status: 'published', visibility: 'public' } })
-    expect((await fetch(`${base}/files/${upload.data.id}/download`, { headers: { authorization: `Bearer ${c}` } })).status).toBe(200)
+    const resource = await db.resource.create({ data: { slug: `${prefix}-public-file`, title: '公开学习图', summary: '共享存储公开资源回归', category: '学习资料', format: 'PNG', fileId: upload.data.id, status: 'published', visibility: 'public' } })
+    // 仅有行状态不能授予附件权限；真实发布必须建立含附件和可见性的发布快照。
+    expect((await fetch(`${base}/files/${upload.data.id}/download`, { headers: { authorization: `Bearer ${c}` } })).status).toBe(404)
+    expect((await request(`/admin/resources/${resource.id}/publish`, admin, 'POST')).status).toBe(201)
+    const published = await db.resource.findUniqueOrThrow({ where: { id: resource.id }, include: { publishedVersion: true } })
+    expect(published.publishedVersion?.snapshot).toMatchObject({ fileId: upload.data.id, visibility: 'public' })
+    const publicDownload = await fetch(`${base}/files/${upload.data.id}/download`, { headers: { authorization: `Bearer ${c}` } })
+    expect(publicDownload.status).toBe(200)
+    expect(Buffer.from(await publicDownload.arrayBuffer())).toEqual(bytes)
     expect((await request(`/community/posts/${post.id}`, b)).status).toBe(200)
   })
   it('成果草稿默认关闭，开启后幂等生成且不包含成绩日志', async () => {

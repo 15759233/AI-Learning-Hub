@@ -102,6 +102,22 @@ describe('学习社区视觉契约', () => {
     expect(router).toContain('｜AI数智化学习平台')
   })
 
+  it('手机学习路径标题、说明和操作纵向排列，桌面与其他区块标题不变', () => {
+    const css = source('styles/responsive.css')
+    const start = css.indexOf('@media (max-width: 767px) {')
+    const mobile = css.slice(start, css.indexOf('\n}\n', start))
+    const heading = mobile.match(/\.learning-path \.section-heading\s*\{([^}]+)\}/)?.[1]
+    expect(heading).toContain('flex-direction: column')
+    expect(heading).toContain('align-items: stretch')
+    expect(heading).toContain('gap: 8px')
+    const action = mobile.match(/\.learning-path \.section-heading a\s*\{([^}]+)\}/)?.[1]
+    expect(action).toContain('margin-left: 0')
+    expect(action).toContain('align-self: flex-start')
+    expect(mobile).not.toMatch(/(?:^|\n)\s*\.section-heading\s*\{/)
+    expect(source('styles/pages/topics.css')).toContain('.learning-path .section-heading { align-items: baseline; justify-content: flex-start')
+    expect(source('views/TopicsView.vue')).toContain('<RouterLink to="/profile">查看完整路径')
+  })
+
   it('样式入口只加载分层文件，基础重置、复选框和深色工作台迁移完整', () => {
     const imports = [...source('styles.css').matchAll(/@import "\.\/([^"]+)";/g)].map((match) => match[1]!)
     expect(new Set(imports).size).toBe(imports.length)

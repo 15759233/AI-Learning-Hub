@@ -278,10 +278,19 @@ describe('MEDIA-001 真实PostgreSQL权限、版本与文件边界', () => {
   })
   it.each(kinds.filter(([type]) => type !== 'theme'))('%s演示内容删除后bootstrap两次不复活，显式恢复不重写版本', async (type, route, fields) => {
     const model = db[type] as any, versionsModel = db[`${type}Version`] as any
-    const created = (await request(`/admin/${route}`, admin.accessToken, 'POST', { slug: `${prefix}-demo-${type}`, title: '可删除演示内容', summary: '普通数据库记录', ...fields, coverAssetId: second.id })).data
+    const keyword = `${prefix}-demo-${type}`
+    const created = (await request(`/admin/${route}`, admin.accessToken, 'POST', { slug: keyword, title: `${keyword} 可删除演示内容`, summary: '普通数据库记录', ...fields, coverAssetId: second.id })).data
     const row = await model.update({ where: { id: created.databaseId }, data: { dataOrigin: 'demo_seed' } })
-    expect((await request(`/admin/${route}?dataOrigin=demo_seed&keyword=${prefix}-demo`, admin.accessToken)).data.items.some((item: any) => item.databaseId === row.id)).toBe(true)
-    const sentinel = (await request(`/admin/${route}`, admin.accessToken, 'POST', { slug: `${prefix}-sentinel-${type}`, title: '人工哨兵', summary: '不可被演示恢复重写', ...fields, coverAssetId: second.id })).data
+    const sentinel = (await request(`/admin/${route}`, admin.accessToken, 'POST', { slug: `${prefix}-sentinel-${type}`, title: `${keyword} 人工哨兵`, summary: '不可被演示恢复重写', ...fields, coverAssetId: second.id })).data
+    // keyword按既有契约搜索标题/摘要；两种来源使用同词，避免来源筛选被不同标题掩盖。
+    const demos = await request(`/admin/${route}?dataOrigin=demo_seed&keyword=${encodeURIComponent(keyword)}`, admin.accessToken)
+    expect(demos.status).toBe(200)
+    expect(demos.data.items.map((item: any) => item.databaseId)).toEqual([row.id])
+    expect(demos.data.items[0].dataOrigin).toBe('demo_seed')
+    const manual = await request(`/admin/${route}?dataOrigin=admin_created&keyword=${encodeURIComponent(keyword)}`, admin.accessToken)
+    expect(manual.status).toBe(200)
+    expect(manual.data.items.map((item: any) => item.databaseId)).toEqual([sentinel.databaseId])
+    expect(manual.data.items[0].dataOrigin).toBe('admin_created')
     const beforeSentinel = await model.findUniqueOrThrow({ where: { id: sentinel.databaseId } })
     await request(`/admin/${route}/${row.id}/publish`, admin.accessToken, 'POST')
     const versions = await versionsModel.findMany({ where: { [`${type}Id`]: row.id } })

@@ -149,6 +149,8 @@
   .page-hero > img { width: 100%; }
   .category-tabs { display: flex; overflow-x: auto; }
   .category-tabs button { flex: 0 0 auto; }
+  .learning-path .section-heading { flex-direction: column; align-items: stretch; gap: 8px; }
+  .learning-path .section-heading a { margin-left: 0; align-self: flex-start; }
   .path-steps { grid-template-columns: 1fr 1fr; }
   .filter-panel { grid-template-columns: 1fr; }
   .filter-panel .panel-title { grid-column: auto; }
