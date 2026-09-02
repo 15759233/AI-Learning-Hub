@@ -37,12 +37,48 @@
 
 ## 作者
 
-- [xiaoye1433223](https://github.com/xiaoye1433223)
-- [15759233](https://github.com/15759233)
-- [wangyun2006](https://github.com/wangyun2006)
-- [Zjw062315](https://github.com/Zjw062315)
-- [zhanglean76-gif](https://github.com/zhanglean76-gif)
-- [7nvv8hyfbn-eng](https://github.com/7nvv8hyfbn-eng)
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/xiaoye1433223">
+        <img src="https://github.com/xiaoye1433223.png?size=160" width="80" height="80" alt="xiaoye1433223 的 GitHub 头像" /><br />
+        <sub><b>xiaoye1433223</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/15759233">
+        <img src="https://github.com/15759233.png?size=160" width="80" height="80" alt="15759233 的 GitHub 头像" /><br />
+        <sub><b>15759233</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/wangyun2006">
+        <img src="https://github.com/wangyun2006.png?size=160" width="80" height="80" alt="wangyun2006 的 GitHub 头像" /><br />
+        <sub><b>wangyun2006</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/Zjw062315">
+        <img src="https://github.com/Zjw062315.png?size=160" width="80" height="80" alt="Zjw062315 的 GitHub 头像" /><br />
+        <sub><b>Zjw062315</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/zhanglean76-gif">
+        <img src="https://github.com/zhanglean76-gif.png?size=160" width="80" height="80" alt="zhanglean76-gif 的 GitHub 头像" /><br />
+        <sub><b>zhanglean76-gif</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/7nvv8hyfbn-eng">
+        <img src="https://github.com/7nvv8hyfbn-eng.png?size=160" width="80" height="80" alt="7nvv8hyfbn-eng 的 GitHub 头像" /><br />
+        <sub><b>7nvv8hyfbn-eng</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## 许可
 
