@@ -37,7 +37,12 @@
 
 ## 作者
 
-K、Rong、Wen、Xin、Yun、Qiang
+- [xiaoye1433223](https://github.com/xiaoye1433223)
+- [15759233](https://github.com/15759233)
+- [wangyun2006](https://github.com/wangyun2006)
+- [Zjw062315](https://github.com/Zjw062315)
+- [zhanglean76-gif](https://github.com/zhanglean76-gif)
+- [7nvv8hyfbn-eng](https://github.com/7nvv8hyfbn-eng)
 
 ## 许可
 
