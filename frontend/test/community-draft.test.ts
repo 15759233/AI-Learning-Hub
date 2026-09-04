@@ -363,6 +363,20 @@ describe('共享发布器与草稿账号隔离', () => {
     app.use(pinia); app.use(router); app.provide(communityScrollRoot, root)
     expect(await renderToString(app)).toContain('community-publish-feedback')
   })
+  it('首次登录从欢迎页进入社区后绑定后创建的滚动根节点', async () => {
+    const pinia = getActivePinia()!
+    const router = createRouter({ history: createMemoryHistory(), routes: ['/welcome', '/community'].map((path) => ({ path, component: { render: () => null } })) })
+    await router.push('/welcome')
+    let main: HTMLElement | null = null
+    vi.stubGlobal('document', { querySelector: vi.fn(() => main) })
+    const scrollElement = Object.assign(new EventTarget(), { scrollTop: 251, scrollHeight: 1400, clientHeight: 400, scrollTo: vi.fn() })
+    router.afterEach(() => { void nextTick(() => { main = scrollElement as unknown as HTMLElement }) })
+    const view = setupComponent<{ showBackToTop: boolean }>(CommunityComposer, {}, [pinia, router])
+    await router.push('/community'); await settle()
+    scrollElement.dispatchEvent(new Event('scroll'))
+    expect(view.state.showBackToTop).toBe(true)
+    view.unmount()
+  })
   it('清空已暂存文字不会恢复旧正文，也不额外创建空服务端草稿', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
     store.openComposer(); await settle(); editor.body = '待清空的本地正文'; await settle()

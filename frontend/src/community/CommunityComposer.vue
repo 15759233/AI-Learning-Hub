@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isNavigationFailure, NavigationFailureType, useRouter } from 'vue-router'
 import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
@@ -14,14 +14,15 @@ const scrollRoot = useCommunityScrollRoot()
 const pastQuarter = () => !!scrollRoot.value && scrollRoot.value.scrollTop > (scrollRoot.value.scrollHeight - scrollRoot.value.clientHeight) / 4
 const showBackToTop = ref(pastQuarter())
 const updateBackToTop = () => { showBackToTop.value = pastQuarter() }
+const bindScrollRoot = () => { const root = typeof document === 'undefined' ? scrollRoot.value : document.querySelector<HTMLElement>('.community-main'); scrollRoot.value?.removeEventListener('scroll', updateBackToTop); scrollRoot.value = root; root?.addEventListener('scroll', updateBackToTop, { passive: true }); updateBackToTop() }
 const backToTop = () => scrollRoot.value?.scrollTo({ top: 0, behavior: 'smooth' })
 const leave = (event: BeforeUnloadEvent) => { if (store.composerOpen && editor.dirty) { event.preventDefault(); event.returnValue = '' } }
 let continuation: (() => void) | null = null
 const removeGuard = router.beforeEach((to) => { if (!store.composerOpen || !editor.dirty) return; continuation = () => { void router.push(to.fullPath) }; editor.close(); return false })
-const removeAfter = router.afterEach((to, _from, failure) => { if (store.composerOpen && to.path === '/community/drafts' && (!failure || isNavigationFailure(failure, NavigationFailureType.duplicated))) editor.close() })
+const removeAfter = router.afterEach((to, _from, failure) => { if (store.composerOpen && to.path === '/community/drafts' && (!failure || isNavigationFailure(failure, NavigationFailureType.duplicated))) editor.close(); void nextTick(bindScrollRoot) })
 const finish = async (save: boolean) => { if (save) await editor.saveAndClose(); else editor.discard(); if (!editor.closePrompt) { const next = continuation; continuation = null; next?.() } }
 const cancel = () => { editor.closePrompt = false; continuation = null }
-onMounted(() => { window.addEventListener('beforeunload', leave); if (typeof document !== 'undefined') scrollRoot.value ||= document.querySelector<HTMLElement>('.community-main'); scrollRoot.value?.addEventListener('scroll', updateBackToTop, { passive: true }); updateBackToTop() })
+onMounted(() => { window.addEventListener('beforeunload', leave); bindScrollRoot() })
 onBeforeUnmount(() => { removeGuard(); removeAfter(); window.removeEventListener('beforeunload', leave); scrollRoot.value?.removeEventListener('scroll', updateBackToTop) })
 </script>
 <template>
