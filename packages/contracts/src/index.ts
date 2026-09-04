@@ -391,6 +391,7 @@ export interface HomepageResolvedItemDto {
   title: string
   summary: string
   data: Record<string, unknown>
+  slot?: number
 }
 
 export interface PublicHomepageModuleDto {
