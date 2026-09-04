@@ -353,6 +353,16 @@ describe('共享发布器与草稿账号隔离', () => {
     expect(html).not.toContain('关闭发布提示')
     view.unmount()
   })
+  it('普通浏览超过四分之一时显示返回顶部控件', async () => {
+    const pinia = getActivePinia()!
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/community', component: { render: () => null } }] })
+    await router.push('/community')
+    expect(useCommunityStore().publishNotice).toBeNull()
+    const root = ref({ scrollTop: 251, scrollHeight: 1400, clientHeight: 400, scrollTo: vi.fn() } as unknown as HTMLElement)
+    const app = createSSRApp(CommunityComposer)
+    app.use(pinia); app.use(router); app.provide(communityScrollRoot, root)
+    expect(await renderToString(app)).toContain('community-publish-feedback')
+  })
   it('清空已暂存文字不会恢复旧正文，也不额外创建空服务端草稿', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
     store.openComposer(); await settle(); editor.body = '待清空的本地正文'; await settle()
