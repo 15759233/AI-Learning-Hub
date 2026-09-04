@@ -25,6 +25,7 @@
   .community-account .community-menu-trigger { justify-content: center; }
   .community-publish { padding: 12px; }
   .community-floating-publish { display: grid; }
+  .community-publish-feedback { bottom: 84px; }
 }
 @media (max-height: 820px) and (min-width: 768px) {
   .community-sidebar { padding-top: 18px; padding-bottom: 18px; }
