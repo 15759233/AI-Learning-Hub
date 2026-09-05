@@ -21,13 +21,21 @@ describe('显式社区 Mock 与统一 Fixtures', () => {
   })
   it('固定规模、初始互动与通知使用同一语义，重置清除状态', async () => {
     const posts = await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')
-    expect(posts).toHaveLength(90)
+    expect(posts).toHaveLength(110)
     expect(posts[0].viewerState.bookmarked).toBe(true)
     expect(await mockCommunity<CommunityNotificationDto[]>('/notifications', 'GET')).toHaveLength(1)
     await mockCommunity(`/posts/${posts[0].id}/hide`, 'POST')
     await expect(mockCommunity(`/posts/${posts[0].id}`, 'GET')).rejects.toThrow('不可见')
     resetCommunityMock()
-    expect(await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')).toHaveLength(90)
+    expect(await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')).toHaveLength(110)
+  })
+  it('本地演示固定展示20篇外部社区精选', async () => {
+    const posts = await mockCommunity<CommunityPostDetailDto[]>('/posts?keyword=抡锤者社区', 'GET')
+    expect(posts).toHaveLength(20)
+    expect(new Set(posts.map((post) => post.id)).size).toBe(20)
+    expect(posts.every((post) => post.status === 'published' && post.visibility === 'public' && post.author.verifiedType === 'official')).toBe(true)
+    expect(posts.every((post) => post.labels.includes('外部社区精选') && post.contentBlocks.every((block) => block.type !== 'image'))).toBe(true)
+    expect(posts.every((post) => Object.values(post.stats).every((count) => count === 0))).toBe(true)
   })
   it('分页快照不重复并绑定筛选，话题关注即时生效', async () => {
     const first = await mockCommunity<CommunityFeedDto>('/feed?mode=latest&type=all', 'GET')

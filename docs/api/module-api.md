@@ -68,7 +68,7 @@
 
 注册、发帖、草稿、评论支持 `Idempotency-Key`（8～128字符，保留24小时）；同键异内容返回409。已有帖子、评论、资料及重要设置编辑必须携带读取时的 `expectedRevision`；首次引导另带 `expectedProfileRevision`。点赞、收藏和关注返回数据库最终状态与计数，不依赖浏览器自增。
 
-`/admin/community/posts|comments|topics|reports|users` 与 `/admin/users` 返回 `{ items, total, page, pageSize }`，`pageSize` 为1～100。帖子支持状态、类型、作者、学校、话题、范围、媒体、举报、日期与稳定排序；用户支持账号关键词、状态、角色、学校、来源、引导、邮箱验证及日期。详情附历史修订、处理记录和可读文件信息；私人草稿和令牌不返回。
+`/admin/community/posts|comments|topics|reports|users` 与 `/admin/users` 返回 `{ items, total, page, pageSize }`，`pageSize` 为1～100。帖子支持状态、类型、作者、学校、话题、范围、媒体、举报、日期与稳定排序；用户支持账号关键词、状态、角色、学校、来源、引导、邮箱验证及日期。详情附历史修订、处理记录和可读文件信息；普通私人草稿和令牌不返回，显式导入的官方外部精选草稿可由运营后台审核并确认发布。
 
 ## 管理端
 
