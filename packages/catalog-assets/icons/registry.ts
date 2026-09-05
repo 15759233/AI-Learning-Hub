@@ -1,6 +1,7 @@
 /** 统一可编辑SVG路径注册表；独立.svg文件由同一组路径生成，测试校验两者完全一致。 */
 export const iconRegistry: Readonly<Record<string, string>> = {
   "achievement": "<path d=\"M8 4h8v5a4 4 0 0 1-8 0zM10 13v3M14 13v3M8 20h8M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4\" />",
+  "add-folder": "<path d=\"M3 6h7l2 3h9v11H3zM3 6V4h6l2 2h10v3M13 10v6M10 13h6\" />",
   "agent": "<rect x=\"5\" y=\"7\" width=\"14\" height=\"11\" rx=\"3\" /><path d=\"M12 3v4M8.5 12h.01M15.5 12h.01M9 16h6\" />",
   "agent-builder": "<rect x=\"3\" y=\"8\" width=\"14\" height=\"11\" rx=\"3\" /><path d=\"M10 3v5M7 12h.01M13 12h.01M7 16h4M18 4v6M15 7h6\" />",
   "AI": "<path d=\"M12 5c-1-3-5-3-6 0-3 0-4 4-2 6-2 2-1 5 1 6 0 3 4 5 7 2V5ZM12 5c1-3 5-3 6 0 3 0 4 4 2 6 2 2 1 5-1 6 0 3-4 5-7 2M6 5c2 0 3 1 3 3M5 17c0-2 1-3 3-3M17 7l-3 3 3 4\" /><circle cx=\"17\" cy=\"7\" r=\"1\" /><circle cx=\"14\" cy=\"10\" r=\"1\" /><circle cx=\"17\" cy=\"14\" r=\"1\" />",
@@ -8,6 +9,7 @@ export const iconRegistry: Readonly<Record<string, string>> = {
   "arrow-left": "<path d=\"M19 12H5M10 7l-5 5 5 5\" />",
   "arrow-right": "<path d=\"M5 12h14M14 7l5 5-5 5\" />",
   "arrow-up-right": "<path d=\"M6 18 18 6M7 6h11v11\" />",
+  "arrow-up": "<path d=\"M12 19V5M7 10l5-5 5 5\" />",
   "bell": "<path d=\"M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4\" />",
   "book": "<path d=\"M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1v15\" />",
   "bookmark": "<path d=\"M6 4h12v17l-6-4-6 4z\" />",
@@ -85,7 +87,9 @@ export const iconRegistry: Readonly<Record<string, string>> = {
   "tool": "<path d=\"M14 4a5 5 0 0 0-5 7L3 17a2.8 2.8 0 0 0 4 4l6-6a5 5 0 0 0 7-6l-3 3-4-4 3-3-2-1Z\" />",
   "trophy": "<path d=\"M8 4h8v5a4 4 0 0 1-8 0zM10 13v3M14 13v3M8 20h8M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4\" />",
   "users": "<circle cx=\"9\" cy=\"9\" r=\"3\" /><circle cx=\"17\" cy=\"10\" r=\"2\" /><path d=\"M3 20c0-4 2-6 6-6s6 2 6 6M15 15c3 0 5 2 5 5\" />",
-  "workflow": "<rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1.5\" /><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1.5\" /><path d=\"M9 6h6a3 3 0 0 1 3 3v6M3 18h6M6 15v6\" />"
+  "workflow": "<rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1.5\" /><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1.5\" /><path d=\"M9 6h6a3 3 0 0 1 3 3v6M3 18h6M6 15v6\" />",
+
+
 }
 
 export function getIconSvg(name: string): string {

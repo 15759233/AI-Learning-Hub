@@ -124,6 +124,7 @@ model User {
   communityNotifications    UserNotification[]
   communitySignalSnapshot   UserFeedSignalSnapshot?
   communityFeedSessions     CommunityFeedSession[]
+  portfolios                Portfolio[]
 
   @@index([status, createdAt])
   @@index([schoolId, status])
@@ -1993,4 +1994,22 @@ model CommunityFeedSession {
 
   @@index([expiresAt])
   @@map("community_feed_sessions")
+}
+
+model Portfolio {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  title         String
+  summary       String    @default("")
+  body          String
+  contentBlocks Json      @map("content_blocks")
+  sourcePostId  String?   @map("source_post_id")
+  sourcePostType String?  @map("source_post_type")
+  visibility    String    @default("public")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("portfolios")
 }

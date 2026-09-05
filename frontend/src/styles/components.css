@@ -1,4 +1,4 @@
-.brand { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+﻿.brand { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .brand-mark { display: grid; place-items: center; width: 38px; height: 38px; color: white; background: var(--brand); border-radius: var(--amc-radius-control); font-weight: 900; font-size: 1.25rem; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); }
 .brand strong, .brand small { display: block; }
 .brand strong { font-size: .94rem; letter-spacing: -.02em; }

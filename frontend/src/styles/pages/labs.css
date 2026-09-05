@@ -1,3 +1,15 @@
+/* ===== labs 页面红色调变量覆盖（仅影响 labs 页面） ===== */
+.labs-page {
+  --brand: #dc2626;
+  --brand-hover: #b91c1c;
+  --brand-soft: #fef2f2;
+  --amc-orange: #dc2626;
+  --amc-orange-hover: #b91c1c;
+  --amc-orange-soft: #fef2f2;
+  --amc-orange-border: #fecaca;
+  --purple: #dc2626;
+}
+
 .value-pills { display: flex; flex-wrap: wrap; gap: 8px; }
 .value-pills span { padding: 8px 10px; border: 1px solid var(--border); border-radius: 99px; background: white; font-size: .76rem; }
 .featured-lab { display: grid; grid-template-columns: 300px minmax(0, 1fr) 190px; align-items: center; gap: 26px; margin: 20px 0; padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-hero); background: white; box-shadow: var(--shadow); }
@@ -14,8 +26,8 @@
 .path-cards article, .practice-grid article { padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; }
 .path-cards article > span, .practice-grid article > span { color: var(--purple); font-size: var(--amc-font-meta); font-weight: 800; }
 .path-node-icons { display: flex; align-items: center; gap: 3px; margin: 18px 0; }
-.path-node-icons i { width: 13px; height: 13px; border: 3px solid #dcd5ff; border-radius: 50%; background: var(--purple); }
-.path-node-icons i:not(:last-child)::after { content: ""; display: block; width: 24px; height: 2px; margin: 3px 0 0 10px; background: #dcd5ff; }
+.path-node-icons i { width: 13px; height: 13px; border: 3px solid #fecaca; border-radius: 50%; background: var(--purple); }
+.path-node-icons i:not(:last-child)::after { content: ""; display: block; width: 24px; height: 2px; margin: 3px 0 0 10px; background: #fecaca; }
 .hot-lab-ranking { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .hot-lab-ranking a { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 10px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; box-shadow: var(--shadow); }
 .hot-lab-ranking > a > strong { position: absolute; z-index: 1; top: 9px; left: 9px; padding: 5px 7px; color: white; border-radius: 6px; background: var(--brand); }

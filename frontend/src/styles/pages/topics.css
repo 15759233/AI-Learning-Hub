@@ -1,4 +1,4 @@
-.learning-path { padding: 25px; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; }
+﻿.learning-path { padding: 25px; border: 1px solid var(--border); border-radius: var(--radius-card); background: white; }
 .learning-path .section-heading { align-items: baseline; justify-content: flex-start; margin: 0 0 24px; }
 .learning-path .section-heading h2 { font-size: 1.1rem; }
 .learning-path .section-heading span { color: var(--secondary); font-size: .82rem; }

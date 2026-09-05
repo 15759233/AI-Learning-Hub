@@ -8,6 +8,7 @@ import { api } from '../services/api'
 import { mediaCategories, mediaKindLabels, mediaSourceLabels, mediaTypeLabels } from '../services/media'
 import AdminPagination from './AdminPagination.vue'
 import MediaAssetPreview from './MediaAssetPreview.vue'
+import selectedTile from '../assets/selected-tile.png'
 
 const props = withDefaults(defineProps<{ selectable?: boolean; kind?: 'cover' | 'hero'; contentType?: MediaContentType; categoryKey?: string }>(), { selectable: false })
 const emit = defineEmits<{ select: [asset: MediaAssetDto] }>()
@@ -139,7 +140,8 @@ onBeforeUnmount(() => { loadEpoch++; detailEpoch++ })
     <p v-if="loading" role="status">正在读取素材…</p>
     <div class="media-grid">
       <button v-for="asset in result.items" :key="asset.id" type="button" class="media-tile" :disabled="busy" :class="{ selected: selected?.id === asset.id }" :aria-pressed="selected?.id === asset.id" @click="choose(asset)">
-        <MediaAssetPreview :asset-id="asset.id" :alt="asset.altText || asset.name" :focal-x="asset.focalX" :focal-y="asset.focalY" :revision="asset.revision" />
+        <MediaAssetPreview v-if="selected?.id !== asset.id" :asset-id="asset.id" :alt="asset.altText || asset.name" :focal-x="asset.focalX" :focal-y="asset.focalY" :revision="asset.revision" />
+        <div v-else class="media-preview"><img :src="selectedTile" alt="" /></div>
         <strong>{{ asset.name }}</strong><small>{{ mediaTypeLabels[asset.contentType] }} · {{ asset.width }}×{{ asset.height }} · {{ (asset.file.size / 1024).toFixed(1) }}KB</small>
         <small>{{ mediaSourceLabels[asset.source] }} · {{ asset.status === 'active' ? '可用' : '已归档' }}</small>
       </button>

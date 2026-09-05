@@ -36,9 +36,10 @@
   --amc-radius-card: 17px;
   --amc-radius-large: 22px;
   --amc-radius-pill: 999px;
-  --amc-shadow-card: 0 8px 28px rgba(55, 39, 28, .045);
-  --amc-shadow-hover: 0 14px 38px rgba(55, 39, 28, .075);
-  --amc-shadow-float: 0 16px 42px rgba(55, 39, 28, .11);
+  --amc-shadow-card: 0 2px 8px rgba(55, 39, 28, .04), 0 8px 24px rgba(55, 39, 28, .05);
+  --amc-shadow-hover: 0 6px 16px rgba(55, 39, 28, .06), 0 16px 40px rgba(55, 39, 28, .09);
+  --amc-shadow-float: 0 8px 20px rgba(55, 39, 28, .08), 0 20px 48px rgba(55, 39, 28, .12);
+  --amc-shadow-orange: 0 4px 14px rgba(255, 77, 31, .25), 0 8px 24px rgba(255, 77, 31, .15);
   --amc-shell-max: 1480px;
   --amc-shell-viewport-inset: clamp(64px, 7vw, 144px);
   --amc-sidebar-width: 288px;

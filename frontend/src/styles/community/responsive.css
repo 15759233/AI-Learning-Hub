@@ -68,7 +68,7 @@
   .binding-art { width: 70px; height: 55px; }
   .community-binding { gap: 9px; padding: 12px; }
   .binding-icon { width: 32px; height: 36px; }
-  .community-floating-publish, .sidebar-collapsed .community-floating-publish { display: none; }
+  .community-floating-publish, .sidebar-collapsed .community-floating-publish, .community-floating-back { display: none; }
   .community-publish-feedback { bottom: calc(82px + env(safe-area-inset-bottom)); }
   .community-more { display: grid; gap: 5px; }
   .community-more a { padding: 13px; border-bottom: 1px solid var(--amc-border); }

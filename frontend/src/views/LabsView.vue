@@ -41,7 +41,7 @@ onMounted(() => { void labsStore.load() })
 </script>
 
 <template>
-  <div class="page-container">
+  <div class="page-container labs-page">
     <PageHero eyebrow="实践你的 AI 能力" title="模拟实训中心" description="在真实感云环境中动手实践，通过受控步骤、即时反馈与结果验证掌握 AI 工程技能。" visual-key="labsHeroAssetId">
       <div class="value-pills"><span><AppIcon name="container" :size="16" />真实感环境</span><span><AppIcon name="growth" :size="16" />循序渐进</span><span><AppIcon name="check" :size="16" />即时反馈</span><span><AppIcon name="achievement" :size="16" />学以致用</span></div>
     </PageHero>
