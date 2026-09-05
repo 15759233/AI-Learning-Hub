@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { CommunityFeedMode, CommunityPostType } from '@ai-learning-hub/contracts'
 import AppIcon from '../components/base/AppIcon.vue'
 defineProps<{ mode: CommunityFeedMode; type: CommunityPostType | 'all'; newCount: number; loading: boolean }>()
 defineEmits<{ change: [mode: CommunityFeedMode, type: CommunityPostType | 'all']; refresh: [] }>()
 const router = useRouter()
+const keyword = ref('')
 const search = () => router.push('/community/search')
+const submitSearch = () => {
+  const q = keyword.value.trim()
+  void router.push({ path: '/community/search', query: q ? { q } : {} })
+}
 const shortcut = (event: KeyboardEvent) => {
   const target = event.target as HTMLElement | null
   if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || target?.closest('input, textarea, select, [contenteditable="true"], dialog[open]')) return
@@ -24,6 +29,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', shortcut))
       <button class="icon-button" aria-label="搜索社区学习内容" title="搜索（/）" @click="search"><AppIcon name="search" :size="19" /></button>
     </div>
     <div class="community-filters" aria-label="内容类型"><button v-for="[value, label] in [['all', '全部'], ['question', '学习问答'], ['note', '学习笔记'], ['lab_result', '实训成果'], ['project', '创客项目'], ['frontier_discussion', '前沿讨论']]" :key="value" :class="{ active: type === value }" :aria-pressed="type === value" @click="$emit('change', mode, value as CommunityPostType | 'all')">{{ label }}</button></div>
+    <form class="community-search feed-search" @submit.prevent="submitSearch"><input v-model="keyword" placeholder="搜索动态、用户、话题与学习内容" aria-label="搜索关键词" maxlength="120" /><button class="icon-button" type="submit" aria-label="搜索"><AppIcon name="search" :size="17" /></button></form>
     <button v-if="newCount" class="community-new-content" :disabled="loading" @click="$emit('refresh')">有 {{ newCount }} 条新内容，点击加载</button>
   </div>
 </template>

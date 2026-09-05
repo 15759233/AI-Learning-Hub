@@ -1,0 +1,194 @@
+/* ============================================
+   AI 创客社区 - 全局美化增强层
+   仅提升视觉质感，不改变布局结构和功能
+   ============================================ */
+
+/* ---------- 全局过渡动画 ---------- */
+.community-post,
+.community-rail-card,
+.community-filters button,
+.community-feed-tabs button,
+.community-sidebar nav a,
+.button,
+.icon-button,
+.community-interactions button,
+.community-interactions a {
+  transition-property: transform, box-shadow, background, border-color, color;
+  transition-duration: var(--amc-duration-control, 0.25s);
+  transition-timing-function: var(--amc-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* ---------- 主按钮美化 ---------- */
+.button.primary {
+  background: linear-gradient(135deg, #ff4d1f 0%, #ff6b35 100%);
+  box-shadow: 0 4px 14px rgba(255, 77, 31, 0.28), 0 2px 6px rgba(255, 77, 31, 0.15);
+  border: none;
+}
+.button.primary:hover {
+  background: linear-gradient(135deg, #ed3f14 0%, #ff5a2b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(255, 77, 31, 0.38), 0 4px 10px rgba(255, 77, 31, 0.2);
+}
+.button.primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(255, 77, 31, 0.25);
+}
+
+/* ---------- 次按钮美化 ---------- */
+.button.secondary {
+  background: var(--amc-surface);
+  border-color: var(--amc-border);
+  box-shadow: 0 1px 3px rgba(55, 39, 28, 0.04);
+}
+.button.secondary:hover {
+  border-color: var(--amc-orange-border);
+  background: var(--amc-orange-soft);
+  color: var(--amc-orange);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 77, 31, 0.1);
+}
+
+/* ---------- 图标按钮美化 ---------- */
+.icon-button {
+  background: var(--amc-surface);
+  border-color: var(--amc-border);
+  box-shadow: 0 1px 3px rgba(55, 39, 28, 0.04);
+}
+.icon-button:hover {
+  border-color: var(--amc-orange-border);
+  background: var(--amc-orange-soft);
+  color: var(--amc-orange);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(255, 77, 31, 0.12);
+}
+
+/* ---------- 图片样式美化 ---------- */
+.community-post img,
+.community-rail-card img,
+.post-content img,
+.article-content img {
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(55, 39, 28, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.community-post img:hover,
+.post-content img:hover {
+  transform: scale(1.01);
+  box-shadow: 0 6px 20px rgba(55, 39, 28, 0.12);
+}
+
+/* 头像保持圆形，不应用卡片圆角 */
+.community-avatar,
+.community-avatar img,
+.author-avatar img,
+.rail-person img {
+  border-radius: 50% !important;
+  box-shadow: 0 2px 8px rgba(55, 39, 28, 0.1) !important;
+}
+
+/* ---------- 输入框美化 ---------- */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+textarea,
+select {
+  border-radius: var(--amc-radius-control, 11px);
+  border: 1px solid var(--amc-border);
+  background: var(--amc-surface);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--amc-orange);
+  box-shadow: 0 0 0 3px rgba(255, 77, 31, 0.12);
+  outline: none;
+}
+
+/* ---------- 滚动条美化 ---------- */
+.community-main::-webkit-scrollbar,
+.community-sidebar-nav::-webkit-scrollbar,
+.community-right-rail::-webkit-scrollbar {
+  width: 6px;
+}
+.community-main::-webkit-scrollbar-track,
+.community-sidebar-nav::-webkit-scrollbar-track,
+.community-right-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+.community-main::-webkit-scrollbar-thumb,
+.community-sidebar-nav::-webkit-scrollbar-thumb,
+.community-right-rail::-webkit-scrollbar-thumb {
+  background: rgba(255, 77, 31, 0.15);
+  border-radius: 3px;
+}
+.community-main::-webkit-scrollbar-thumb:hover,
+.community-sidebar-nav::-webkit-scrollbar-thumb:hover,
+.community-right-rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 77, 31, 0.3);
+}
+
+/* ---------- 标签/徽章美化 ---------- */
+.community-badge,
+.community-type {
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(55, 39, 28, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.community-badge:hover,
+.community-type:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(55, 39, 28, 0.1);
+}
+
+/* ---------- 发布按钮特殊美化 ---------- */
+.community-publish {
+  background: linear-gradient(135deg, #ff4d1f 0%, #ff6b35 100%);
+  color: #fff;
+  border: none;
+  border-radius: var(--amc-radius-control, 11px);
+  box-shadow: 0 4px 14px rgba(255, 77, 31, 0.3);
+  font-weight: 600;
+}
+.community-publish:hover {
+  background: linear-gradient(135deg, #ed3f14 0%, #ff5a2b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(255, 77, 31, 0.4);
+}
+
+/* ---------- 学习单元卡片美化 ---------- */
+.community-learning-unit {
+  background: linear-gradient(135deg, var(--amc-surface-purple) 0%, #f8f5ff 100%);
+  border-color: var(--amc-purple);
+  box-shadow: 0 4px 16px rgba(118, 92, 255, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.community-learning-unit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(118, 92, 255, 0.12);
+}
+
+/* ---------- 通知/提示条美化 ---------- */
+.community-notice {
+  border-left: 3px solid var(--amc-yellow);
+  box-shadow: 0 2px 8px rgba(255, 173, 32, 0.1);
+}
+.community-error {
+  border-left: 3px solid var(--amc-error);
+  box-shadow: 0 2px 8px rgba(185, 67, 41, 0.1);
+}
+
+/* ---------- 加载更多按钮 ---------- */
+.community-load-more {
+  color: var(--amc-orange);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+.community-load-more:hover {
+  color: var(--amc-orange-hover);
+}

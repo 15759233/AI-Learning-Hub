@@ -2,7 +2,7 @@ import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContext
 import { dataMode, request, writeRequest } from './client'
 import { mockCommunity } from './community.mock'
 import { randomId } from './random-id'
-import type { AuthUser, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
+import type { AuthUser, CommunityDraftDto, CommunityExportDto, CommunityExportFormat, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
 const demoImages = new Map<string, File>()
 const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
   ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
@@ -40,6 +40,7 @@ export const communityApi = {
   notifications: () => call<CommunityNotificationDto[]>('/notifications'),
   unread: () => call<{ count: number }>('/notifications/unread-count'),
   read: (id?: string) => call(id ? `/notifications/${id}/read` : '/notifications/read-all', 'POST'),
+  exportPost: (id: string, format: CommunityExportFormat = 'json') => call<CommunityExportDto>(`/export/posts/${encodeURIComponent(id)}?format=${format}`),
   signals: (input: CommunitySignalInput) => call('/signals', 'POST', input),
   impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
   async upload(file: File) {

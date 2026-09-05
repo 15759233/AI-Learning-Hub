@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/base/AppIcon.vue'
 import AppDialog from '../components/base/AppDialog.vue'
 import CommunityAvatar from '../components/base/CommunityAvatar.vue'
-import { communityArt } from '../assets/community/manifest'
+import { communityArt, communityAvatars } from '../assets/community/manifest'
 import { useAuthStore } from '../stores/auth'
 import { useCommunityStore } from '../stores/community'
 import { communityApi } from '../services/api/community'
@@ -15,6 +15,7 @@ import { provideCommunityScrollRoot } from '../community/composables/useCommunit
 const auth = useAuthStore(), store = useCommunityStore(), router = useRouter(), route = useRoute()
 const collapsed = ref(false), menuOpen = ref(false)
 const mainScroll = provideCommunityScrollRoot()
+const backToTop = () => mainScroll.value?.scrollTo({ top: 0, behavior: 'smooth' })
 const wide = computed(() => route.meta.communityMode === 'wide')
 const profileRoute = computed(() => `/community/user/${auth.user?.username}`)
 const groups = [
@@ -44,6 +45,7 @@ onBeforeUnmount(() => window.clearInterval(polling))
     </aside>
     <header class="community-mobile-header"><RouterLink class="brand" to="/community"><span class="brand-mark">A</span><strong>AI MAKER CAMPUS</strong></RouterLink><button class="icon-button" aria-label="更多功能" @click="menuOpen = true"><AppIcon name="menu" /></button></header>
     <main id="main-content" ref="mainScroll" class="community-main" tabindex="-1"><slot /></main>
+    <button class="community-floating-back" type="button" title="回到顶部" aria-label="回到顶部" @click="backToTop"><span class="back-arrow"><AppIcon name="arrow-up" :size="17" /></span><span class="back-avatars"><img :src="communityAvatars['student-male-01']" alt="" width="26" height="26" /><img :src="communityAvatars['student-female-01']" alt="" width="26" height="26" /><img :src="communityAvatars['student-male-02']" alt="" width="26" height="26" /></span><span class="back-label">已发布</span></button>
     <CommunityRightRail v-if="!wide" />
     <nav class="community-bottom-nav" aria-label="移动主导航"><RouterLink v-for="item in communityNavigation.filter((item) => item.mobile).sort((a, b) => a.mobileOrder - b.mobileOrder)" :key="item.path" :to="item.path" :class="{ active: communityNavActive(route.path, item.path) }" :style="{ order: item.mobileOrder }"><AppIcon :name="item.icon" :size="21" /><span>{{ item.label.replace('首页', '').replace('主题', '').replace('项目', '').replace('消息', '').replace('成长', '') }}</span></RouterLink><button class="mobile-publish-button" @click="store.openComposer()"><AppIcon name="plus" :size="24" /><span>发布</span></button></nav>
     <AppDialog v-model="menuOpen" title="学习社区"><nav class="community-more"><RouterLink v-for="item in communityNavigation" :key="item.path" :to="item.path" @click="menuOpen = false">{{ item.label }}</RouterLink><RouterLink to="/welcome" @click="menuOpen = false">品牌门户</RouterLink><button class="text-link" @click="logout">退出登录</button></nav></AppDialog>

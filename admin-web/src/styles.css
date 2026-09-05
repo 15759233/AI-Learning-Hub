@@ -74,7 +74,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shad
 }
 .admin-brand strong { font-size: 13px; line-height: 1.2; letter-spacing: -.02em; white-space: nowrap; }
 .admin-brand small { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.admin-sidebar nav { display: grid; gap: 5px; padding: 18px 10px; }
+.admin-sidebar nav { display: grid; align-content: start; gap: 5px; flex: 1; min-height: 0; padding: 18px 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #ffc1b0 #f5f2ee; }
+.admin-sidebar nav::-webkit-scrollbar { width: 8px; }
+.admin-sidebar nav::-webkit-scrollbar-track { background: #f5f2ee; }
+.admin-sidebar nav::-webkit-scrollbar-thumb { background: #ffc1b0; border-radius: 4px; }
+.admin-sidebar nav::-webkit-scrollbar-thumb:hover { background: #ff8b68; }
 .admin-sidebar nav a {
   display: flex;
   align-items: center;
@@ -307,7 +311,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shad
   height: max(610px, calc(100vh - 312px));
   overflow: hidden;
 }
-.catalog-main { min-width: 0; overflow: auto; border-right: 1px solid var(--line); }
+.catalog-main { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: #ffb7a3 #f5f2ee; }
+.catalog-main::-webkit-scrollbar { width: 8px; }
+.catalog-main::-webkit-scrollbar-track { background: #f5f2ee; }
+.catalog-main::-webkit-scrollbar-thumb { background: #ffc1b0; border-radius: 4px; }
+.catalog-main::-webkit-scrollbar-thumb:hover { background: #ff8b68; }
 .catalog-tabs { display: flex; align-items: center; gap: 28px; min-height: 55px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .catalog-tabs button { align-self: stretch; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #454950; background: transparent; font-size: 12px; font-weight: 700; }
 .catalog-tabs button.active { color: var(--brand); border-color: var(--brand); }

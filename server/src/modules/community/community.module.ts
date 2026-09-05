@@ -6,6 +6,8 @@ import { ContentReferenceModule } from '../../common/content-reference/content-r
 import { CommunityVisibilityModule } from './visibility.module'
 import { CommunityController } from './community.controller'
 import { CommunityAdminController } from './admin.controller'
+import { CommunityExportController } from './export.controller'
+import { CommunityExportService } from './export.service'
 import { CommunityPostService } from './post.service'
 import { CommunityCommentService } from './comment.service'
 import { CommunityInteractionService } from './interaction.service'
@@ -17,7 +19,8 @@ import { ContentSupportModule } from '../../common/content/content-support.modul
 import { CommunityAdminService } from './admin.service'
 @Module({
   imports: [AuthModule, StorageModule, SignalsModule, ContentReferenceModule, CommunityVisibilityModule, ContentSupportModule],
-  controllers: [CommunityController, CommunityAdminController],
-  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline, CommunitySearchService, CommunityAdminService],
+  controllers: [CommunityController, CommunityAdminController, CommunityExportController],
+  providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityNotificationService, CommunityContextService, LearningFeedPipeline, CommunitySearchService, CommunityAdminService, CommunityExportService],
+  exports: [CommunityPostService],
 })
 export class CommunityModule {}

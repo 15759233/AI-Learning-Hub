@@ -1,4 +1,4 @@
-.community-sidebar { position: relative; isolation: isolate; height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 27px 10px 88px; overflow: hidden; }
+﻿.community-sidebar { position: relative; isolation: isolate; height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 27px 10px 88px; overflow: hidden; }
 .community-sidebar > :not(nav) { flex-shrink: 0; }
 .community-brand { gap: 12px; margin-bottom: 18px; }
 .community-brand .brand-mark { width: 42px; height: 42px; border-radius: var(--amc-radius-control); font-size: 25px; }
@@ -9,9 +9,10 @@
 .community-nav-group { display: grid; gap: 4px; }
 .community-nav-group + .community-nav-group { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--amc-divider); }
 .community-nav-group h2 { font-size: 12px; color: var(--amc-text-secondary); padding: 0 16px; margin: 0 0 8px; font-weight: 400; }
-.community-sidebar nav a { display: flex; align-items: center; gap: 13px; min-height: 48px; padding: 0 16px; border-radius: 12px; color: var(--amc-text-secondary); font-weight: 600; font-size: 15px; transition: background var(--amc-duration-nav) var(--amc-ease), color var(--amc-duration-nav) var(--amc-ease); }
-.community-sidebar nav a:hover { background: var(--amc-bg-soft); }
-.community-sidebar nav a.active { color: var(--amc-orange); background: var(--amc-orange-soft); }
+.community-sidebar nav a { display: flex; align-items: center; gap: 13px; min-height: 48px; padding: 0 16px; border-radius: 12px; color: var(--amc-text-secondary); font-weight: 600; font-size: 15px; transition: background var(--amc-duration-nav) var(--amc-ease), color var(--amc-duration-nav) var(--amc-ease), transform var(--amc-duration-nav) var(--amc-ease), box-shadow var(--amc-duration-nav) var(--amc-ease); position: relative; }
+.community-sidebar nav a:hover { background: var(--amc-bg-soft); color: var(--amc-text-primary); transform: translateX(2px); }
+.community-sidebar nav a.active { color: var(--amc-orange); background: linear-gradient(135deg, var(--amc-orange-soft), #fff5ef); box-shadow: 0 2px 10px rgba(255, 77, 31, .08); }
+.community-sidebar nav a.active::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 22px; background: var(--amc-orange); border-radius: 0 3px 3px 0; }
 .community-publish { margin: 14px 10px; min-height: 48px; gap: 10px; }
 .community-account { margin: auto 10px 0; padding: 13px; min-width: 0; border: 1px solid var(--amc-border); border-radius: 15px; background: var(--amc-surface); box-shadow: var(--amc-shadow-card); }
 .community-account strong, .community-account small { display: block; margin: 3px 0; }
@@ -33,4 +34,12 @@
 .sidebar-collapsed .notification-count { position: absolute; right: 0; }
 .community-floating-publish { position: fixed; right: 28px; bottom: 28px; z-index: 25; width: 44px; height: 44px; display: none; place-items: center; border: 0; border-radius: 50%; background: var(--amc-orange); color: var(--amc-surface); box-shadow: var(--amc-shadow-float); }
 .sidebar-collapsed .community-floating-publish { display: grid; }
+.community-floating-back { position: fixed; right: 28px; bottom: 90px; z-index: 24; display: flex; align-items: center; gap: 9px; border: 0; border-radius: var(--amc-radius-pill); padding: 7px 15px 7px 10px; background: var(--amc-orange); color: var(--amc-surface); box-shadow: var(--amc-shadow-float); cursor: pointer; animation: community-floating-glow 2.4s ease-in-out infinite; }
+.community-floating-back .back-arrow { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: rgba(255, 255, 255, .16); }
+.community-floating-back .back-avatars { display: flex; align-items: center; flex: 0 0 auto; }
+.community-floating-back .back-avatars img { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--amc-orange); object-fit: cover; }
+.community-floating-back .back-avatars img + img { margin-left: -8px; }
+.community-floating-back .back-label { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; }
+@keyframes community-floating-glow { 0%, 100% { box-shadow: 0 6px 18px rgba(255, 77, 31, .18); } 50% { box-shadow: 0 6px 22px rgba(255, 77, 31, .5); } }
+@media (prefers-reduced-motion: reduce) { .community-floating-back { animation: none; } }
 .mobile-publish-button { order: 3; flex: 1; display: grid; place-items: center; color: var(--amc-orange); border: 0; background: none; font-size: 12px; }

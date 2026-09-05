@@ -117,3 +117,5 @@ export interface CommunitySearchResultDto {
   nextCursor: string | null
 }
 export interface CommunityDraftDto { id: string; input: CommunityPostInput; updatedAt: string; revision?: number }
+export type CommunityExportFormat = 'json' | 'markdown' | 'csv'
+export interface CommunityExportDto { format: CommunityExportFormat; mimeType: string; extension: string; filename: string; content: string }

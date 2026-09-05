@@ -5,6 +5,7 @@ import AdminKpiCard from '../components/AdminKpiCard.vue'
 import AdminIcon from '../components/AdminIcon.vue'
 import AdminPageHeader from '../components/AdminPageHeader.vue'
 import TrendChart from '../components/TrendChart.vue'
+import gymIcon from '../assets/gym.svg'
 import { api } from '../services/api'
 import { useSessionStore } from '../stores/session'
 import { visibleAdminNavigation } from '../navigation'
@@ -30,7 +31,7 @@ onMounted(async () => {
     <AdminKpiCard icon="article" label="待处理举报" :value="data?.community.pendingReports ?? '—'" color="#3478f6" />
   </div>
   <div class="kpi-grid"><AdminKpiCard icon="course" label="已发布课程" :value="data?.learning.publishedCourses ?? '—'" color="#7c4dff" /><AdminKpiCard icon="lab" label="已发布实训" :value="data?.learning.publishedLabs ?? '—'" color="#3478f6" /><AdminKpiCard icon="resource" label="已发布资源" :value="data?.learning.publishedResources ?? '—'" color="#f2a500" /><AdminKpiCard icon="challenge" label="进行中挑战" :value="data?.learning.activeChallenges ?? '—'" color="#22b66c" /></div>
-  <section class="panel module-overview"><h2>模块运营概览</h2><div><RouterLink v-for="[icon, title, path] in modules" :key="path" :to="path"><i style="background: #fff0e9; color: #ff4d1f"><AdminIcon :name="icon" :size="21" /></i><strong>{{ title }}</strong><small>内容管理与运营</small><span>进入管理 <AdminIcon name="arrow-right" :size="14" /></span></RouterLink></div></section>
+  <section class="panel module-overview"><h2>模块运营概览</h2><div><RouterLink v-for="[icon, title, path] in modules" :key="path" :to="path"><i style="background: #fff0e9; color: #ff4d1f"><img v-if="path === '/growth'" :src="gymIcon" alt="" width="24" height="24" style="object-fit: contain" /><AdminIcon v-else :name="icon" :size="21" /></i><strong>{{ title }}</strong><small>内容管理与运营</small><span>进入管理 <AdminIcon name="arrow-right" :size="14" /></span></RouterLink></div></section>
   <div class="dashboard-bottom">
     <section class="panel trend-panel"><div class="panel-heading"><h2>平台活跃趋势</h2><span>近 7 天</span></div><div class="chart-legend"><span>— 活跃用户数</span><span>— 学习分钟</span></div><TrendChart :data="data?.trend || []" /><div class="trend-summary"><span>最近一天活跃用户<b>{{ data?.trend.at(-1)?.activeUsers ?? '—' }}</b></span><span>最近一天学习分钟<b>{{ data?.trend.at(-1)?.learningMinutes ?? '—' }}</b></span></div></section>
     <div class="dashboard-side-stack">
