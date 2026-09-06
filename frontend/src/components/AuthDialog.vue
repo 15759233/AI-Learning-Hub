@@ -37,7 +37,7 @@ const submit = async () => {
   } catch (error) { localError.value = error instanceof Error ? error.message : '认证失败' }
 }
 </script>
-<template><AppDialog :model-value="ui.visible" title="统一学习账号" @update:model-value="ui.close()">
+<template><AppDialog :model-value="ui.visible" title="统一学习账号" :close-on-backdrop="false" @update:model-value="ui.close()">
   <p v-if="ui.reason" class="community-notice">{{ ui.reason }}</p>
   <div class="community-feed-tabs"><button :aria-selected="ui.mode === 'login'" @click="ui.mode = 'login'; forgot = false">登录</button><button v-if="auth.registrationConfig?.mode !== 'closed'" :aria-selected="ui.mode === 'register'" @click="ui.mode = 'register'; forgot = false">注册</button></div>
   <p v-if="auth.dataMode === 'mock'" class="community-notice">这是本地演示账号，不会创建真实服务端账号。</p>

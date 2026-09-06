@@ -7,19 +7,24 @@ import { useAuthUiStore } from '../src/stores/authUi'
 import { authApi } from '../src/services/api/auth'
 import AuthDialog from '../src/components/AuthDialog.vue'
 const mode = vi.hoisted(() => ({ value: 'mock' }))
+const dialogState = vi.hoisted(() => ({ closeOnBackdrop: undefined as boolean | undefined }))
 vi.mock('../src/services/api/client', () => ({ get dataMode() { return mode.value }, restoreRefresh: vi.fn().mockResolvedValue(true), ApiError: class extends Error { constructor(message: string, public status: number) { super(message) } } }))
 vi.mock('../src/services/api/auth', () => ({ authApi: { me: vi.fn(), login: vi.fn(), logout: vi.fn(), registrationConfig: vi.fn() } }))
 vi.mock('../src/stores/community', () => ({ useCommunityStore: () => ({ clear: vi.fn() }) }))
 vi.mock('../src/stores/learning', () => ({ useLearningStore: () => ({ clearAccountState: vi.fn(), syncFromApi: vi.fn().mockResolvedValue(undefined) }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
-vi.mock('../src/components/base/AppDialog.vue', () => ({ default: { setup: (_props: unknown, { slots }: { slots: Slots }) => () => h('section', slots.default?.()) } }))
+vi.mock('../src/components/base/AppDialog.vue', () => ({ default: { props: ['closeOnBackdrop'], setup: (props: { closeOnBackdrop?: boolean }, { slots }: { slots: Slots }) => { dialogState.closeOnBackdrop = props.closeOnBackdrop; return () => h('section', slots.default?.()) } } }))
 const values = new Map<string, string>()
 beforeEach(() => {
-  vi.resetAllMocks(); values.clear(); mode.value = 'mock'; setActivePinia(createPinia())
+  vi.resetAllMocks(); values.clear(); mode.value = 'mock'; dialogState.closeOnBackdrop = undefined; setActivePinia(createPinia())
   const storage = { getItem: (key: string) => values.get(key) || null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) }
   vi.stubGlobal('sessionStorage', storage); vi.stubGlobal('localStorage', storage)
 })
 describe('统一登录恢复', () => {
+  it('登录注册框只能通过明确关闭操作退出', async () => {
+    await renderToString(createSSRApp(AuthDialog).use(createPinia()))
+    expect(dialogState.closeOnBackdrop).toBe(false)
+  })
   it('Mock force恢复可再次执行且单次并发复用Promise', async () => {
     const auth = useAuthStore()
     const first = auth.restore(), pending = auth.restorePromise, second = auth.restore()
