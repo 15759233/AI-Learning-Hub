@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import { CommunityPostType as DatabasePostType } from '@prisma/client'
-import type { CommunityPostInput, CommunityCommentInput, CommunityPostType, CommunityVisibility, CommunityContentBlock, CommunityBindingInput, LearningContentType, CommunityFeedMode, CommunitySignalInput } from '@ai-learning-hub/contracts'
+import type { CommunityPostInput, CommunityCommentInput, CommunityPostType, CommunityVisibility, CommunityContentBlock, CommunityBindingInput, LearningContentType, CommunityFeedMode, CommunitySignalInput, ResourceContributionInput } from '@ai-learning-hub/contracts'
 import type { CommunityProfileInput, CommunityProfileTab, OnboardingInput, UsernameInput, CommunitySearchType } from '@ai-learning-hub/contracts'
 const communityPostTypes = Object.values(DatabasePostType)
 
@@ -17,6 +17,17 @@ export class BindingDto implements CommunityBindingInput {
   @IsIn(['theme', 'course', 'lesson', 'lab', 'resource', 'article', 'challenge', 'lab_run']) type!: LearningContentType
   @IsString() @Length(1, 100) id!: string
 }
+export class ContributionDto implements ResourceContributionInput {
+  @IsIn(['video', 'article', 'document']) kind!: ResourceContributionInput['kind']
+  @IsOptional() @IsString() @Length(1, 100) categoryId?: string
+  @IsArray() @ArrayMaxSize(8) @ArrayUnique() @IsString({ each: true }) @MaxLength(30, { each: true }) tags!: string[]
+  @IsBoolean() teachingReuseConsent!: boolean
+  @IsOptional() @IsString() @MaxLength(120) sourceName?: string
+  @ValidateIf((input: ContributionDto) => !!input.sourceUrl) @IsUrl({ protocols: ['http', 'https'], require_protocol: true }) @MaxLength(500) sourceUrl?: string
+  @IsOptional() @IsString() @Length(1, 100) videoAssetId?: string
+  @IsOptional() @IsString() @Length(1, 100) attachmentFileId?: string
+  @IsOptional() @IsString() @Length(1, 100) coverFileId?: string
+}
 export class PostDto implements CommunityPostInput {
   @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(communityPostTypes) type!: CommunityPostType
@@ -28,6 +39,7 @@ export class PostDto implements CommunityPostInput {
   @IsIn(['draft', 'published']) status!: 'draft' | 'published'
   @IsOptional() @IsIn(['note', 'lab_run', 'challenge', 'article']) sourceType?: CommunityPostInput['sourceType']
   @IsOptional() @IsString() @Length(1, 100) sourceId?: string
+  @IsOptional() @ValidateNested() @Type(() => ContributionDto) contribution?: ContributionDto
 }
 export class CommentDto implements CommunityCommentInput {
   @IsOptional() @IsInt() @Min(1) expectedRevision?: number

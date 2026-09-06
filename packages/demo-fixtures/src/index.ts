@@ -454,3 +454,4 @@ export const fixtureMinimums = {
 
 export { createCommunityFixtures } from './community'
 export { lczCuratedPosts, type LczCuratedPost } from './community/lcz-curated-posts'
+export { demoResourceHubCategories, demoResourceHubContributions, type DemoResourceHubContribution } from './resource-hub'

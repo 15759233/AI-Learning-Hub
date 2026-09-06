@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationDto, CommunityProfileTab, CommunityReplySummaryDto } from '@ai-learning-hub/contracts'
+import type { CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationDto, CommunityProfileTab, CommunityReplySummaryDto, LearningCollectionSummaryDto, ResourceHubItemDto } from '@ai-learning-hub/contracts'
 import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import CommunityAvatar from '../components/base/CommunityAvatar.vue'
@@ -14,13 +14,19 @@ import CommunityPostCard from './CommunityPostCard.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
 import CommunitySkeleton from './CommunitySkeleton.vue'
 import { badgeLabels } from './labels'
+import { resourceHubApi } from '../services/api/resourceHub'
+import ResourceHubCard from '../components/ResourceHubCard.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), store = useCommunityStore()
 const profile = ref<CommunityProfileDto | null>(null)
 const posts = ref<NonNullable<CommunityProfileDto['pinnedPost']>[]>([])
 const replies = ref<CommunityReplySummaryDto[]>([])
 const cursor = ref<string | null>(null)
-const tab = ref<CommunityProfileTab>('posts')
+type ProfileTab = CommunityProfileTab | 'resources' | 'collections'
+const tab = ref<ProfileTab>('posts')
+const resourceItems = ref<ResourceHubItemDto[]>([])
+const resourceCollections = ref<LearningCollectionSummaryDto[]>([])
+const resourceKind = ref<'all' | ResourceHubItemDto['kind']>('all')
 const legacyPanel = ref<'topics' | 'following' | null>(null)
 const loading = ref(false), moreLoading = ref(false), error = ref(''), notice = ref(''), editOpen = ref(false), saving = ref(false)
 const relationOpen = ref<'followers' | 'following' | null>(null), relationPeople = ref<CommunityProfileRelationDto[]>([]), relationCursor = ref<string | null>(null)
@@ -33,7 +39,7 @@ let loadEpoch = 0
 const requestedTab = () => {
   const value = String(route.query.tab || 'posts')
   legacyPanel.value = value === 'topics' || value === 'following' ? value : null
-  return value === 'answers' ? 'replies' : ['posts', 'replies', 'media', 'liked'].includes(value) ? value as CommunityProfileTab : 'posts'
+  return value === 'answers' ? 'replies' : ['posts', 'replies', 'media', 'liked', 'resources', 'collections'].includes(value) ? value as ProfileTab : 'posts'
 }
 const syncResult = (result: Awaited<ReturnType<typeof communityApi.updateProfile>>) => {
   auth.user = result.user
@@ -47,6 +53,13 @@ const syncResult = (result: Awaited<ReturnType<typeof communityApi.updateProfile
 }
 const loadTimeline = async (append = false) => {
   if (!profile.value || legacyPanel.value) return
+  if (tab.value === 'resources' || tab.value === 'collections') {
+    const result = await resourceHubApi.creator(profile.value.id)
+    resourceItems.value = result.items
+    resourceCollections.value = result.collections
+    posts.value = []; replies.value = []; cursor.value = null
+    return
+  }
   const result = await communityApi.timeline(profile.value.id, tab.value, append ? cursor.value || undefined : undefined)
   posts.value = append ? [...posts.value, ...result.posts] : result.posts
   replies.value = append ? [...replies.value, ...result.replies] : result.replies
@@ -68,7 +81,7 @@ const load = async () => {
   } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '个人主页读取失败' }
   finally { if (epoch === loadEpoch) loading.value = false }
 }
-const selectTab = (value: CommunityProfileTab) => {
+const selectTab = (value: ProfileTab) => {
   void router.replace({ query: value === 'posts' ? {} : { tab: value } })
 }
 const loadMore = async () => {
@@ -193,6 +206,7 @@ const pin = async (id: string | null) => {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '置顶设置失败' }
 }
 const joined = computed(() => profile.value ? new Date(profile.value.joinedAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }) : '')
+const filteredResourceItems = computed(() => resourceKind.value === 'all' ? resourceItems.value : resourceItems.value.filter((item) => item.kind === resourceKind.value))
 watch(() => route.fullPath, load, { immediate: true })
 onBeforeUnmount(() => { loadEpoch++ })
 </script>
@@ -240,7 +254,7 @@ onBeforeUnmount(() => { loadEpoch++ })
       </article>
 
       <nav class="community-feed-tabs community-profile-tabs" aria-label="个人主页内容">
-        <button v-for="item in ([['posts', '动态'], ['replies', '回复'], ['media', '媒体'], ...(profile.isSelf ? [['liked', '赞过']] : [])] as Array<[CommunityProfileTab, string]>)" :key="item[0]" :aria-selected="!legacyPanel && tab === item[0]" @click="selectTab(item[0])">{{ item[1] }}</button>
+        <button v-for="item in ([['posts', '动态'], ['resources', '作品'], ['collections', '合集'], ['replies', '回复'], ['media', '媒体'], ...(profile.isSelf ? [['liked', '赞过']] : [])] as Array<[ProfileTab, string]>)" :key="item[0]" :aria-selected="!legacyPanel && tab === item[0]" @click="selectTab(item[0])">{{ item[1] }}</button>
       </nav>
 
       <section v-if="legacyPanel === 'topics'" class="community-collection">
@@ -252,6 +266,14 @@ onBeforeUnmount(() => { loadEpoch++ })
         <CommunityEmptyState v-if="!relationPeople.length" title="还没有关注其他学习者" description="从社区发现值得关注的学习伙伴。"><RouterLink class="button secondary" to="/community">探索社区</RouterLink></CommunityEmptyState>
       </section>
       <template v-else>
+        <section v-if="tab === 'resources'">
+          <nav class="resource-kind-tabs community-profile-resource-kinds" aria-label="资源作品类型">
+            <button v-for="item in ([['all', '全部'], ['video', '视频'], ['article', '图文'], ['document', '资料']] as const)" :key="item[0]" type="button" :class="{ active: resourceKind === item[0] }" @click="resourceKind = item[0]">{{ item[1] }}</button>
+          </nav>
+          <div class="resource-hub-grid three community-profile-resources"><ResourceHubCard v-for="item in filteredResourceItems" :key="item.id" :item="item" /><CommunityEmptyState v-if="!filteredResourceItems.length" :title="resourceItems.length ? '没有该类型的资源作品' : '还没有资源作品'" description="视频、图文和资料投稿会集中显示在这里。" /></div>
+        </section>
+        <div v-else-if="tab === 'collections'" class="resource-studio-collections community-profile-resources"><RouterLink v-for="item in resourceCollections" :key="item.id" :to="`/resources/collections/${item.systemKind === 'watch_later' ? 'watch-later' : item.id}`"><AppIcon name="folder" /><span><strong>{{ item.name }}</strong><small>{{ item.itemCount }} 项 · {{ item.visibility === 'private' ? '私有' : '社区可见' }}</small></span></RouterLink><CommunityEmptyState v-if="!resourceCollections.length" title="还没有公开学习合集" description="将作品整理成有顺序的学习清单。" /></div>
+        <template v-else>
         <section v-if="profile.pinnedPost && tab === 'posts'" class="community-profile-pinned"><h2><AppIcon name="bookmark" :size="17" />置顶动态</h2><CommunityPostCard :post="profile.pinnedPost" :show-pin="profile.isSelf" pinned @pin="pin" @changed="load" @hidden="load" /></section>
         <div v-if="tab === 'replies'" class="community-profile-replies">
           <article v-for="reply in replies" :key="reply.id"><RouterLink :to="`/community/post/${reply.postId}#comment-${reply.id}`"><small>回复了 {{ reply.postTitle || '一条社区动态' }}</small><p>{{ reply.bodyPreview }}</p><span>{{ new Date(reply.createdAt).toLocaleString('zh-CN') }} · {{ reply.likes }} 赞<span v-if="reply.accepted"> · 已采纳</span></span></RouterLink></article>
@@ -259,6 +281,7 @@ onBeforeUnmount(() => { loadEpoch++ })
         <CommunityPostCard v-for="post in posts" v-else :key="post.id" :post="post" :show-pin="profile.isSelf && post.author.id === profile.id" @pin="pin" @changed="load" @hidden="load" />
         <CommunityEmptyState v-if="!loading && !posts.length && !replies.length" :title="tab === 'liked' ? '还没有赞过的动态' : tab === 'media' ? '还没有发布媒体动态' : tab === 'replies' ? '还没有参与回复' : '还没有公开动态'" description="这里仅展示当前有权查看的公开社区内容。"><RouterLink class="button secondary" to="/community">探索社区</RouterLink></CommunityEmptyState>
         <div v-if="cursor" class="community-load-more"><button class="button secondary small" :disabled="moreLoading" @click="loadMore">{{ moreLoading ? '加载中…' : '加载更多' }}</button></div>
+        </template>
       </template>
     </template>
 

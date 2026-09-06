@@ -14,6 +14,7 @@ export const communityApi = {
   bindingContext: (binding: CommunityBindingInput) => call<CommunityBindingContextDto>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`),
   post: (id: string) => call<CommunityPostDetailDto>(`/posts/${id}`),
   save: (input: CommunityPostInput, id?: string, key?: string) => call<CommunityPostDetailDto>(id ? `/posts/${id}` : '/posts', id ? 'PATCH' : 'POST', input, key),
+  unpublish: (id: string) => call<{ unpublished: boolean }>(`/posts/${id}/unpublish`, 'POST'),
   remove: (id: string) => call(`/posts/${id}`, 'DELETE'),
   list: (kind: 'posts' | 'bookmarks' | 'user' | 'answers' | 'topic', id = '', query = '') => call<CommunityPostDetailDto[]>(kind === 'user' || kind === 'answers' ? `/users/${encodeURIComponent(id)}/${kind === 'answers' ? 'answers' : 'posts'}` : kind === 'topic' ? `/topics/${encodeURIComponent(id)}/posts` : `/${kind}${query ? `?${query}` : ''}`),
   comments: (id: string) => call<CommunityCommentDto[]>(`/posts/${id}/comments`),

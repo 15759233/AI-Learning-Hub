@@ -1,3 +1,5 @@
+import type { ResourceContributionDto, ResourceContributionInput } from '../resource-hub'
+
 export const communityPostTypes = ['question', 'note', 'lab_result', 'project', 'frontier_discussion', 'achievement', 'general'] as const
 export type CommunityPostType = typeof communityPostTypes[number]
 export type CommunityPostStatus = 'draft' | 'published' | 'limited' | 'hidden' | 'removed'
@@ -67,6 +69,7 @@ export interface CommunityPostSummaryDto {
   viewerState: CommunityViewerStateDto; recommendationReasons: string[]; labels: string[]
   question: { status: 'open' | 'solved' | 'closed'; acceptedCommentId: string | null; teacherAnswered: boolean } | null
   publishedAt: string; editedAt: string | null
+  contribution?: ResourceContributionDto | null
 }
 export interface CommunityPostDetailDto extends CommunityPostSummaryDto { body: string }
 export interface CommunityPostInput {
@@ -74,6 +77,7 @@ export interface CommunityPostInput {
   type: CommunityPostType; title?: string; contentBlocks: CommunityContentBlock[]
   bindings: CommunityBindingInput[]; topicIds: string[]; visibility: CommunityVisibility
   status: 'draft' | 'published'; sourceType?: 'note' | 'lab_run' | 'challenge' | 'article'; sourceId?: string
+  contribution?: ResourceContributionInput
 }
 export interface CommunityCommentDto {
   revision?: number

@@ -21,13 +21,13 @@ describe('显式社区 Mock 与统一 Fixtures', () => {
   })
   it('固定规模、初始互动与通知使用同一语义，重置清除状态', async () => {
     const posts = await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')
-    expect(posts).toHaveLength(110)
+    expect(posts).toHaveLength(134)
     expect(posts[0].viewerState.bookmarked).toBe(true)
     expect(await mockCommunity<CommunityNotificationDto[]>('/notifications', 'GET')).toHaveLength(1)
     await mockCommunity(`/posts/${posts[0].id}/hide`, 'POST')
     await expect(mockCommunity(`/posts/${posts[0].id}`, 'GET')).rejects.toThrow('不可见')
     resetCommunityMock()
-    expect(await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')).toHaveLength(110)
+    expect(await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')).toHaveLength(134)
   })
   it('本地演示固定展示20篇外部社区精选', async () => {
     const posts = await mockCommunity<CommunityPostDetailDto[]>('/posts?keyword=抡锤者社区', 'GET')

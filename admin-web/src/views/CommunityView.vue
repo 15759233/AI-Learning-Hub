@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import type { CommunityAdminInspectionDto, CommunityAdminReportDto, CommunityAdminSummaryDto, CommunityAuthorDto, CommunityFeedPolicyDto, CommunityModerationInput, CommunityPostDetailDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { communityAdminApi, type AdminCommunityComment } from '../services/community'
 import { useSessionStore } from '../stores/session'
@@ -9,6 +10,7 @@ import AdminIcon from '../components/AdminIcon.vue'
 import AdminDialog from '../components/AdminDialog.vue'
 import AdminPagination from '../components/AdminPagination.vue'
 const session = useSessionStore(), can = (permission: string) => !!session.user?.permissions.includes(permission)
+const route = useRoute()
 const tabs = [{ key: 'posts', label: '动态内容', permission: 'community.read' }, { key: 'questions', label: '学习问答', permission: 'community.read' }, { key: 'comments', label: '评论管理', permission: 'community.read' }, { key: 'topics', label: '话题管理', permission: 'community.topic.manage' }, { key: 'reports', label: '举报处理', permission: 'community.report.manage' }, { key: 'official', label: '官方账号', permission: 'community.official.publish' }, { key: 'policy', label: '推荐策略', permission: 'community.feed.manage' }]
 const tab = ref('posts'), keyword = ref(''), page = ref(1), loading = ref(false), error = ref(''), selected = ref<CommunityAdminInspectionDto | null>(null)
 const total = ref(0)
@@ -81,7 +83,10 @@ watch(selected, async (value) => {
 onUnmounted(() => { detailEpoch++; clearImages() })
 watch(tab, () => { detailEpoch++; postOpen.value = false; editingSnapshot.value = null; page.value = 1; filters.status = ''; selected.value = null; void load() })
 watch(page, () => { void load() })
-onMounted(load)
+onMounted(async () => {
+  await load()
+  if (typeof route?.query?.postId === 'string') await inspect(route.query.postId)
+})
 </script>
 <template><div class="community-admin-page">
   <AdminPageHeader title="社区运营" description="围绕真实学习内容，维护有帮助、可追溯的校园交流。"><template #actions><button v-if="selected && can('community.write') && ['draft', 'published'].includes(selected.post.status)" class="admin-secondary" @click="openPost()">编辑所选内容</button><template v-if="tab === 'official' && can('community.official.publish')"><select v-model="postTarget" aria-label="选择发布账号"><option value="">选择认证账号</option><option v-for="user in officials.filter((u) => u.verifiedType !== 'none')" :key="user.id" :value="user.id">{{ user.displayName }}</option></select><button class="admin-primary" :disabled="!postTarget" @click="openPost(postTarget)">发布官方学习指导</button></template><button class="admin-secondary" :disabled="loading" @click="load"><AdminIcon name="refresh" :size="16" />刷新数据</button></template></AdminPageHeader>
