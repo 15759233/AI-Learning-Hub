@@ -50,6 +50,7 @@ export class CommunityPostService {
     return { clean, plainText }
   }
   async save(userId: string, input: PostDto, id?: string, audit?: { actorId: string; action: string; reason: string }, key?: string) {
+    if (!audit) await this.visibility.assertCommunityWrite(userId)
     const viewer = await this.visibility.viewer(userId)
     const current = id ? await this.prisma.communityPost.findUnique({ where: { id }, include: { contribution: true } }) : null
     if (id && (!current || current.authorId !== userId || current.deletedAt)) throw new ForbiddenException('只有作者可以编辑自己的内容')
@@ -182,6 +183,7 @@ export class CommunityPostService {
     return this.detail(userId, post.id)
   }
   async remove(userId: string, id: string) {
+    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     const post = await this.prisma.communityPost.findUnique({ where: { id } })
     if (!post || post.authorId !== userId) throw new ForbiddenException('只有作者可以删除自己的动态')
@@ -197,6 +199,7 @@ export class CommunityPostService {
     return { deleted: true }
   }
   async unpublish(userId: string, id: string) {
+    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     const post = await this.prisma.communityPost.findUnique({ where: { id } })
     if (!post || post.authorId !== userId) throw new ForbiddenException('只有作者可以下架自己的动态')

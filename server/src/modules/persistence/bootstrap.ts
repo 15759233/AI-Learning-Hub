@@ -10,6 +10,7 @@ export const requiredPermissions = [
   'community.read', 'community.write', 'community.moderate', 'community.topic.manage',
   'community.report.manage', 'community.official.publish', 'community.feed.manage',
   'user.read', 'user.write', 'user.session.revoke', 'user.export',
+  'user.identity.read', 'user.identity.review',
   'media.read', 'media.write', 'media.delete', 'media.default.manage',
 ]
 const roles: Record<string, string> = {
@@ -32,7 +33,7 @@ export async function bootstrapDatabase(prisma: PrismaClient) {
         : []
       await tx.rolePermission.createMany({ data: allPermissions.filter((p) => grants.includes(p.code) && (!oldRoles.has(role.code) || !oldPermissions.has(p.code))).map((p) => ({ roleId: role.id, permissionId: p.id })), skipDuplicates: true })
     }
-    for (const [key, value] of Object.entries({ platform_name: 'AI数智化学习平台', registration: { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false } })) {
+    for (const [key, value] of Object.entries({ platform_name: 'AI数智化学习平台', registration: { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false, registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30 } })) {
       await tx.systemSetting.upsert({ where: { key }, update: {}, create: { key, value } })
     }
     if (!await tx.userRole.count({ where: { role: { code: { in: ['admin', 'super_admin'] } } } })) {

@@ -6,8 +6,10 @@ import AppIcon from '../components/base/AppIcon.vue'
 import ResourceHubCard from '../components/ResourceHubCard.vue'
 import { resourceHubApi } from '../services/api/resourceHub'
 import { useCommunityStore } from '../stores/community'
+import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const community = useCommunityStore()
+const { requireWrite } = useCommunityAccess()
 const studio = ref<CreatorContentSummaryDto | null>(null)
 const collections = ref<LearningCollectionSummaryDto[]>([])
 const error = ref('')
@@ -22,6 +24,7 @@ const load = async () => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '创作中心读取失败' }
 }
 const publish = (kind: ResourceContributionKind) => {
+  if (!requireWrite()) return
   community.openComposer({
     type: kind === 'video' ? 'lab_result' : kind === 'article' ? 'frontier_discussion' : 'note',
     title: '',
@@ -36,12 +39,14 @@ const publish = (kind: ResourceContributionKind) => {
   community.composerInline = false
 }
 const editCollection = (item?: LearningCollectionSummaryDto) => {
+  if (item?.visibility === 'community' && !requireWrite()) return
   Object.assign(collectionForm, item
     ? { id: item.id, name: item.name, description: item.description, learningGoal: item.learningGoal, visibility: item.visibility, expectedRevision: item.revision }
     : { id: '', name: '', description: '', learningGoal: '', visibility: 'private', expectedRevision: undefined })
   collectionOpen.value = true
 }
 const saveCollection = async () => {
+  if (collectionForm.visibility === 'community' && !requireWrite()) return
   try {
     const input = { name: collectionForm.name, description: collectionForm.description, learningGoal: collectionForm.learningGoal, visibility: collectionForm.visibility, expectedRevision: collectionForm.expectedRevision }
     if (collectionForm.id) await resourceHubApi.updateCollection(collectionForm.id, input)
@@ -52,6 +57,7 @@ const saveCollection = async () => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '合集保存失败' }
 }
 const retry = async (assetId: string) => {
+  if (!requireWrite()) return
   try { await resourceHubApi.retryVideo(assetId); notice.value = '已重新进入处理队列'; await load() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '视频重试失败' }
 }

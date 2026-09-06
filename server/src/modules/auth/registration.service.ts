@@ -10,9 +10,13 @@ import { AuthService } from './auth.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import type { RegisterDto } from './auth.dto'
 import { actionEvent, idempotency, lockUser } from '../../common/persistence'
+import { normalizeUsername } from './username'
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
-const defaults: RegistrationSettingsDto = { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false }
+const defaults: RegistrationSettingsDto = {
+  mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false,
+  registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30,
+}
 @Injectable()
 export class RegistrationService {
   private readonly logger = new Logger(RegistrationService.name)
@@ -29,6 +33,10 @@ export class RegistrationService {
       agreementVersion: typeof value.agreementVersion === 'string' && value.agreementVersion.length >= 1 && value.agreementVersion.length <= 60 ? value.agreementVersion : defaults.agreementVersion,
       passwordMinLength: Number.isInteger(value.passwordMinLength) && value.passwordMinLength! >= 8 && value.passwordMinLength! <= 72 ? value.passwordMinLength! : defaults.passwordMinLength,
       schoolRequired: value.schoolRequired === true,
+      registrationRateWindowMinutes: Number.isInteger(value.registrationRateWindowMinutes) && value.registrationRateWindowMinutes! >= 1 && value.registrationRateWindowMinutes! <= 1440 ? value.registrationRateWindowMinutes! : defaults.registrationRateWindowMinutes,
+      registrationMaxAttemptsPerIp: Number.isInteger(value.registrationMaxAttemptsPerIp) && value.registrationMaxAttemptsPerIp! >= 10 && value.registrationMaxAttemptsPerIp! <= 10000 ? value.registrationMaxAttemptsPerIp! : defaults.registrationMaxAttemptsPerIp,
+      registrationMaxAttemptsPerIdentifier: Number.isInteger(value.registrationMaxAttemptsPerIdentifier) && value.registrationMaxAttemptsPerIdentifier! >= 2 && value.registrationMaxAttemptsPerIdentifier! <= 100 ? value.registrationMaxAttemptsPerIdentifier! : defaults.registrationMaxAttemptsPerIdentifier,
+      registrationMaxSuccessPerIp: Number.isInteger(value.registrationMaxSuccessPerIp) && value.registrationMaxSuccessPerIp! >= 5 && value.registrationMaxSuccessPerIp! <= 1000 ? value.registrationMaxSuccessPerIp! : defaults.registrationMaxSuccessPerIp,
     }
   }
   async configuration(): Promise<RegistrationConfigDto> {
@@ -37,6 +45,7 @@ export class RegistrationService {
   async updateSettings(input: RegistrationSettingsDto) {
     if (input.emailVerification && !this.mailAvailable()) throw new ServiceUnavailableException('尚未配置邮件通道，不能启用邮箱验证')
     if (input.mode === 'invite' && !this.inviteHashes().length) throw new ServiceUnavailableException('请先配置邀请码哈希')
+    if (input.registrationMaxAttemptsPerIp < input.registrationMaxAttemptsPerIdentifier || input.registrationMaxSuccessPerIp > input.registrationMaxAttemptsPerIp) throw new BadRequestException('单 IP 尝试上限须不低于账号标识和成功注册上限')
     const { expectedRevision, revision: _revision, ...value } = input
     void _revision
     await this.prisma.$transaction(async (tx) => {
@@ -60,6 +69,28 @@ export class RegistrationService {
       if (rows[0].attempts > limit) throw new HttpException('操作过于频繁，请稍后再试', 429)
     }
   }
+  private throttleKey(scope: string, value: string) {
+    return createHmac('sha256', this.config.getOrThrow<string>('JWT_SECRET')).update(`${scope}:${value}`).digest('hex')
+  }
+  private async consumeRegistrationLimit(tx: Prisma.TransactionClient | PrismaService, scope: string, value: string, limit: number, windowMinutes: number) {
+    const key = this.throttleKey(scope, value), expiresAt = new Date(Date.now() + windowMinutes * 60_000)
+    const rows = await tx.$queryRaw<Array<{ attempts: number; expires_at: Date }>>`
+      INSERT INTO registration_throttles (identity_key, attempts, expires_at) VALUES (${key}, 1, ${expiresAt})
+      ON CONFLICT (identity_key) DO UPDATE SET
+        attempts = CASE WHEN registration_throttles.expires_at < NOW() THEN 1 ELSE registration_throttles.attempts + 1 END,
+        expires_at = CASE WHEN registration_throttles.expires_at < NOW() THEN ${expiresAt} ELSE registration_throttles.expires_at END
+      RETURNING attempts, expires_at`
+    if (rows[0].attempts > limit) {
+      const retryAfter = Math.max(1, Math.ceil((new Date(rows[0].expires_at).getTime() - Date.now()) / 1000))
+      throw new HttpException({ message: '注册请求过于频繁，请稍后再试', errorCode: 'REGISTRATION_RATE_LIMITED', retryAfter }, 429)
+    }
+  }
+  private async registrationAttempt(settings: RegistrationSettingsDto, username: string, email: string, ip: string) {
+    const window = settings.registrationRateWindowMinutes
+    await this.consumeRegistrationLimit(this.prisma, 'register:attempt:ip', ip, settings.registrationMaxAttemptsPerIp, window)
+    await this.consumeRegistrationLimit(this.prisma, 'register:attempt:username', username, settings.registrationMaxAttemptsPerIdentifier, window)
+    await this.consumeRegistrationLimit(this.prisma, 'register:attempt:email', email, settings.registrationMaxAttemptsPerIdentifier, window)
+  }
   private async send(email: string, token: string, verify: boolean) {
     if (!this.mailAvailable()) throw new ServiceUnavailableException('邮件服务尚未配置，请联系管理员')
     const url = new URL(verify ? '/verify-email' : '/reset-password', this.config.getOrThrow<string>('FRONTEND_URL'))
@@ -78,8 +109,9 @@ export class RegistrationService {
   }
   async register(input: RegisterDto, ip: string, key?: string) {
     if (Buffer.byteLength(input.password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
-    const email = input.email.trim().toLowerCase()
-    await this.throttle('register', email, ip)
+    const email = input.email.trim().toLowerCase(), username = normalizeUsername(input.username)
+    const requestSettings = await this.settings()
+    await this.registrationAttempt(requestSettings, username, email, ip)
     const passwordHash = await hash(input.password, 12)
     try {
       let mail: { token: string; email: string } | undefined
@@ -96,13 +128,14 @@ export class RegistrationService {
         if (input.password.length < settings.passwordMinLength) throw new BadRequestException(`密码至少${settings.passwordMinLength}位`)
         if (input.agreementVersion !== settings.agreementVersion) throw new BadRequestException('请阅读并同意当前用户协议和隐私政策')
         if (settings.mode === 'invite' && !this.inviteHashes().some((value) => timingSafeEqual(Buffer.from(value, 'hex'), Buffer.from(digest(input.inviteCode || ''), 'hex')))) throw new BadRequestException('邀请码无效')
-        const existing = await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
-        if (existing) throw new ConflictException('该邮箱已注册，请登录或找回密码')
+        const existing = await tx.user.findFirst({ where: { OR: [{ email: { equals: email, mode: 'insensitive' } }, { username: { equals: username, mode: 'insensitive' } }] } })
+        if (existing) throw new ConflictException('邮箱或账号已被使用')
         const role = await tx.role.findUnique({ where: { code: 'student' } })
         if (!role) throw new ServiceUnavailableException('学生角色尚未初始化')
+        await this.consumeRegistrationLimit(tx, 'register:success:ip', ip, settings.registrationMaxSuccessPerIp, settings.registrationRateWindowMinutes)
         const user = await tx.user.create({
           data: {
-            email, passwordHash, username: `user_${randomBytes(8).toString('hex')}`, displayName: input.displayName.trim(),
+            email, passwordHash, username, displayName: input.displayName.trim(),
             userType: 'student', agreementVersion: settings.agreementVersion, agreementAcceptedAt: new Date(),
             registrationSource: settings.mode === 'invite' ? 'email_invite' : 'email',
             profile: { emailVerificationRequired: settings.emailVerification },

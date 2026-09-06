@@ -7,6 +7,7 @@ import { CommunityInteractionService } from './interaction.service'
 import { authorDto, authorInclude, profileMediaUrl } from './community.mapper'
 import type { OnboardingDto, ProfileDto, ProfileMediaDto, ProfileRelationQueryDto, ProfileTimelineQueryDto } from './community.dto'
 import { RegistrationService } from '../auth/registration.service'
+import { normalizeUsername } from '../auth/username'
 import { authUserDto, authUserInclude } from '../auth/auth.mapper'
 import { Prisma } from '@prisma/client'
 import { actionEvent } from '../../common/persistence'
@@ -43,9 +44,11 @@ export class CommunityContextService {
     return this.profile(userId, user.id)
   }
   async changeUsername(userId: string, username: string) {
+    await this.visibility.assertCommunityWrite(userId)
+    const normalized = normalizeUsername(username)
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username, usernameChangedAt: new Date(), revision: { increment: 1 } } })
+        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username: normalized, usernameChangedAt: new Date(), revision: { increment: 1 } } })
         if (!changed.count) throw new BadRequestException('公开用户名只能修改一次')
         await actionEvent(tx, userId, 'profile_updated', 'user', userId)
         return authUserDto(await tx.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
@@ -56,14 +59,19 @@ export class CommunityContextService {
     }
   }
   async onboarding(userId: string, input: OnboardingDto) {
-    const user = await this.visibility.viewer(userId), settings = await this.registration.settings()
-    if (!user.emailVerifiedAt && (user.profile as Record<string, unknown>).emailVerificationRequired) throw new BadRequestException('请先打开邮件完成邮箱验证')
-    if (settings.schoolRequired && !input.schoolId) throw new BadRequestException('请选择学校')
-    if (input.schoolId && !await this.prisma.school.count({ where: { id: input.schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
-    if (input.departmentId && !await this.prisma.department.count({ where: { id: input.departmentId, schoolId: input.schoolId } })) throw new BadRequestException('院系不属于所选学校')
+    await this.visibility.assertCommunityWrite(userId)
+    await this.visibility.viewer(userId)
+    const settings = await this.registration.settings()
+    const schoolSetting = await this.prisma.systemSetting.findUnique({ where: { key: 'campus_school_id' } })
+    const campusSchoolId = typeof schoolSetting?.value === 'string' && await this.prisma.school.count({ where: { id: schoolSetting.value, status: 'active' } }) ? schoolSetting.value : null
+    if (campusSchoolId && input.schoolId && input.schoolId !== campusSchoolId) throw new BadRequestException('学校由当前校园部署统一配置')
+    const schoolId = campusSchoolId || input.schoolId || null
+    if (settings.schoolRequired && !schoolId) throw new BadRequestException('请选择学校')
+    if (schoolId && !await this.prisma.school.count({ where: { id: schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
+    if (input.departmentId && (!schoolId || !await this.prisma.department.count({ where: { id: input.departmentId, schoolId } }))) throw new BadRequestException('院系不属于所选学校')
     await this.prisma.$transaction(async (tx) => {
       if (!input.expectedRevision || !input.expectedProfileRevision) throw new BadRequestException('请携带账号与社区资料版本')
-      if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedRevision }, data: { schoolId: input.schoolId || null, departmentId: input.departmentId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date(), revision: { increment: 1 } } })).count) throw new ConflictException('资料已更新，请重新读取')
+      if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedRevision }, data: { schoolId, departmentId: input.departmentId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date(), revision: { increment: 1 } } })).count) throw new ConflictException('资料已更新，请重新读取')
       await this.saveInterests(tx, userId, input.themeIds)
       await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
       if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { headline: input.headline, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已变化，请重新读取')
@@ -139,7 +147,7 @@ export class CommunityContextService {
     }
   }
   async updateProfile(userId: string, input: ProfileDto) {
-    await this.visibility.viewer(userId)
+    await this.visibility.assertCommunityWrite(userId)
     const displayName = input.displayName.trim()
     if (!displayName) throw new BadRequestException('显示名不能为空')
     const data = {
@@ -168,6 +176,7 @@ export class CommunityContextService {
     return { user: authUserDto(user), profile }
   }
   async uploadProfileImage(userId: string, kind: 'avatar' | 'banner', file: Express.Multer.File, input: ProfileMediaDto) {
+    await this.visibility.assertCommunityWrite(userId)
     if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) throw new BadRequestException('仅支持 PNG、JPEG、WebP 图片')
     const dimensions = kind === 'avatar' ? { width: 512, height: 512, limit: 5 * 1024 * 1024 } : { width: 1500, height: 500, limit: 8 * 1024 * 1024 }
     if (file.size < 1 || file.size > dimensions.limit || file.buffer.length !== file.size) throw new BadRequestException(`${kind === 'avatar' ? '头像' : '主页封面'}图片大小不合法`)
@@ -201,6 +210,7 @@ export class CommunityContextService {
     return this.profileUpdateResult(userId)
   }
   async removeProfileImage(userId: string, kind: 'avatar' | 'banner', input: ProfileMediaDto) {
+    await this.visibility.assertCommunityWrite(userId)
     await this.prisma.$transaction(async (tx) => {
       const profile = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
       const previous = kind === 'avatar' ? profile.avatarFileId : profile.bannerFileId
@@ -213,6 +223,7 @@ export class CommunityContextService {
     return this.profileUpdateResult(userId)
   }
   async pinPost(userId: string, postId: string | null, expectedProfileRevision: number) {
+    await this.visibility.assertCommunityWrite(userId)
     if (postId && !await this.prisma.communityPost.count({ where: { id: postId, authorId: userId, status: 'published', visibility: 'public', deletedAt: null } })) throw new NotFoundException('只能置顶自己的公开动态')
     await this.prisma.$transaction(async (tx) => {
       await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
@@ -289,6 +300,7 @@ export class CommunityContextService {
     }
   }
   async interests(userId: string, themeIds: string[]) {
+    await this.visibility.assertCommunityWrite(userId)
     await this.prisma.$transaction((tx) => this.saveInterests(tx, userId, themeIds))
     return this.context(userId)
   }

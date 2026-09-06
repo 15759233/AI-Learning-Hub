@@ -48,12 +48,19 @@ describe('统一登录恢复', () => {
   })
   it('注册最低长度提高到12后，登录表单仍允许原8位密码', async () => {
     const pinia = createPinia(), auth = useAuthStore(pinia), ui = useAuthUiStore(pinia)
-    auth.registrationConfig = { mode: 'open', emailVerification: false, schoolRequired: false, agreementVersion: 'v1', passwordMinLength: 12, mailAvailable: false, inviteAvailable: false }
+    auth.registrationConfig = { mode: 'open', emailVerification: false, schoolRequired: false, agreementVersion: 'v1', passwordMinLength: 12, registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30, mailAvailable: false, inviteAvailable: false }
     ui.mode = 'login'
     const login = await renderToString(createSSRApp(AuthDialog).use(pinia))
     expect(login).toMatch(/type="password"[^>]*minlength="8"/)
     ui.mode = 'register'
     const registration = await renderToString(createSSRApp(AuthDialog).use(pinia))
     expect(registration).toMatch(/type="password"[^>]*minlength="12"/)
+  })
+  it('Mock 注册保留用户选择的规范化账号并进入未认证只读态', async () => {
+    const auth = useAuthStore()
+    await auth.register({ username: ' Student_2026 ', displayName: '演示同学', email: 'DEMO@EXAMPLE.INVALID', password: 'ValidPass8', agreementVersion: 'v1' })
+    expect(auth.user).toMatchObject({ username: 'student_2026', email: 'demo@example.invalid', identityVerificationStatus: 'unsubmitted', communityWriteEnabled: false })
+    expect(values.get('community-demo-user')).not.toContain('idNumber')
+    await expect(auth.register({ username: 'admin', displayName: '演示同学', email: 'demo@example.invalid', password: 'ValidPass8', agreementVersion: 'v1' })).rejects.toThrow('账号不可用')
   })
 })

@@ -76,7 +76,7 @@ export class ResourceHubService {
   }
 
   async uploadVideo(userId: string, file: UploadedPathFile) {
-    await this.visibility.viewer(userId)
+    await this.visibility.assertCommunityWrite(userId)
     if (!['video/mp4', 'video/quicktime', 'video/webm'].includes(file.mimetype)) throw new BadRequestException('仅支持 MP4、MOV、WebM 视频')
     const maxBytes = Math.max(1, Math.min(1024, Number(this.config.get('VIDEO_UPLOAD_MAX_MB') || 1024))) * 1024 * 1024
     const stored = await this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
@@ -128,12 +128,13 @@ export class ResourceHubService {
   }
 
   async uploadDocument(userId: string, file: UploadedPathFile) {
-    await this.visibility.viewer(userId)
+    await this.visibility.assertCommunityWrite(userId)
     const maxBytes = Math.max(1, Math.min(500, Number(this.config.get('RESOURCE_ATTACHMENT_MAX_MB') || 100))) * 1024 * 1024
     return this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
   }
 
-  retryVideo(userId: string, id: string, administrative = false) {
+  async retryVideo(userId: string, id: string, administrative = false) {
+    if (!administrative) await this.visibility.assertCommunityWrite(userId)
     return this.videoProcessing.retry(userId, id, administrative)
   }
 
@@ -326,11 +327,16 @@ export class ResourceHubService {
 
   async createCollection(userId: string, input: CollectionInputDto) {
     await this.visibility.viewer(userId)
+    if (input.visibility === 'community') await this.visibility.assertCommunityWrite(userId)
     const row = await this.prisma.learningCollection.create({ data: { ownerId: userId, name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal.trim() } })
     return this.collection(userId, row.id)
   }
 
   async updateCollection(userId: string, id: string, input: LearningCollectionInput) {
+    await this.visibility.viewer(userId)
+    const current = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId, systemKind: null }, select: { visibility: true } })
+    if (!current) throw new ConflictException('合集已变化、不可编辑或不存在')
+    if (current.visibility === 'community' || input.visibility === 'community') await this.visibility.assertCommunityWrite(userId)
     const changed = await this.prisma.learningCollection.updateMany({
       where: { id, ownerId: userId, systemKind: null, revision: input.expectedRevision },
       data: { name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal?.trim() || '', revision: { increment: 1 } },
@@ -350,6 +356,7 @@ export class ResourceHubService {
       })
       : await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId } })
     if (!collection) throw new ForbiddenException('只能修改自己的合集')
+    if (collection.visibility === 'community') await this.visibility.assertCommunityWrite(userId)
     const max = await this.prisma.learningCollectionItem.aggregate({ where: { collectionId: collection.id }, _max: { sortOrder: true } })
     await this.prisma.learningCollectionItem.createMany({ data: [{ collectionId: collection.id, contributionPostId: postId, sortOrder: (max._max.sortOrder || 0) + 1 }], skipDuplicates: true })
     await this.prisma.learningCollection.update({ where: { id: collection.id }, data: { revision: { increment: 1 } } })
@@ -357,6 +364,9 @@ export class ResourceHubService {
   }
 
   async removeFromCollection(userId: string, id: string, itemId: string) {
+    const collection = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId }, select: { visibility: true } })
+    if (!collection) throw new ForbiddenException('只能修改自己的合集')
+    if (collection.visibility === 'community') await this.visibility.assertCommunityWrite(userId)
     const changed = await this.prisma.learningCollectionItem.deleteMany({ where: { id: itemId, collection: { id, ownerId: userId } } })
     if (!changed.count) throw new ForbiddenException('只能修改自己的合集')
     await this.prisma.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } })
@@ -364,6 +374,9 @@ export class ResourceHubService {
   }
 
   async reorderCollection(userId: string, id: string, expectedRevision: number, itemIds: string[]) {
+    const visible = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId }, select: { visibility: true } })
+    if (!visible) throw new ConflictException('合集已变化、不可编辑或不存在')
+    if (visible.visibility === 'community') await this.visibility.assertCommunityWrite(userId)
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM learning_collections WHERE id = ${id} FOR UPDATE`
       const collection = await tx.learningCollection.findFirst({ where: { id, ownerId: userId, revision: expectedRevision }, include: { items: true } })

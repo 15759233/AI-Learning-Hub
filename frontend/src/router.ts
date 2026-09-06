@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/community/user/:username', component: () => import('./community/CommunityProfileView.vue'), meta: { title: '社区主页', requiresAuth: true, layout: 'community', communityMode: 'feed' } },
     { path: '/community/search', component: () => import('./community/CommunitySearchView.vue'), meta: { title: '社区搜索', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
     { path: '/community/drafts', component: () => import('./community/CommunityDraftsView.vue'), meta: { title: '草稿箱', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
+    { path: '/community/verification', component: () => import('./community/CommunityVerificationView.vue'), meta: { title: '校园实名认证', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
     { path: '/community/onboarding', component: () => import('./community/CommunityOnboardingView.vue'), meta: { title: '开始学习', requiresAuth: true, layout: 'public' } },
     { path: '/bookmarks', component: () => import('./community/CommunityCollectionView.vue'), meta: { title: '收藏与笔记', communityView: 'bookmarks', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
     { path: '/notifications', component: () => import('./community/NotificationsView.vue'), meta: { title: '消息通知', requiresAuth: true, layout: 'community', communityMode: 'wide' } },
@@ -49,10 +50,6 @@ router.beforeEach(async (to, from) => {
   if (to.meta.requiresAuth && !auth.user && auth.authState !== 'error') {
     useAuthUiStore().open({ redirect: to.fullPath, reason: to.path.startsWith('/labs/') ? '登录后可进入实训工作台' : '登录后可进入学习社区' })
     return from.matched.length ? false : { path: '/welcome' }
-  }
-  if (to.meta.requiresAuth && auth.onboardingRequired && to.path !== '/community/onboarding') {
-    sessionStorage.setItem('student-after-onboarding', to.fullPath)
-    return '/community/onboarding'
   }
 })
 

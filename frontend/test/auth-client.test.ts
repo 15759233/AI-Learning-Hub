@@ -16,7 +16,7 @@ describe('真实HTTP客户端会话边界', () => {
     expect(crypto.randomUUID).toBeUndefined()
     const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(new TypeError('response lost')).mockImplementation(async () => new Response(JSON.stringify({ code: 0, data: { user: { id: 'http-registered' }, accessToken: 'isolated-test-token', score: 100 } })))
     vi.stubGlobal('fetch', fetcher)
-    const input = { displayName: 'HTTP测试用户', email: 'http-registration@example.test', password: 'IsolatedTestOnly123!', agreementVersion: 'v1' }
+    const input = { username: 'http_test_user', displayName: 'HTTP测试用户', email: 'http-registration@example.test', password: 'IsolatedTestOnly123!', agreementVersion: 'v1' }
     const submit = kind === '注册' ? () => authApi.register(input) : () => assessmentApi.submit('http-quiz', [{ questionId: 'q1', answer: 'a' }])
     await expect(submit()).rejects.toMatchObject({ status: 0 })
     expect(fetcher).toHaveBeenCalledOnce()

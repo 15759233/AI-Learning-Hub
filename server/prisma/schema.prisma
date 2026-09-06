@@ -20,6 +20,13 @@ enum UserStatus {
   locked
 }
 
+enum CampusIdentityVerificationStatus {
+  pending
+  approved
+  rejected
+  revoked
+}
+
 enum LabType {
   agent
   deployment
@@ -128,6 +135,8 @@ model User {
   communityNotifications    UserNotification[]
   communitySignalSnapshot   UserFeedSignalSnapshot?
   communityFeedSessions     CommunityFeedSession[]
+  identityVerification      CampusIdentityVerification?  @relation("CampusIdentityOwner")
+  identityReviews           CampusIdentityVerification[]  @relation("CampusIdentityReviewer")
 
   @@index([status, createdAt])
   @@index([schoolId, status])
@@ -181,6 +190,33 @@ model RegistrationThrottle {
   @@map("registration_throttles")
 }
 
+model CampusIdentityVerification {
+  id                    String                           @id @default(cuid())
+  userId                String                           @unique @map("user_id")
+  realNameEncrypted     String                           @map("real_name_encrypted")
+  idNumberEncrypted     String                           @map("id_number_encrypted")
+  idNumberFingerprint   String                           @map("id_number_fingerprint")
+  idNumberLast4         String                           @map("id_number_last4")
+  className             String                           @map("class_name")
+  studentNo             String                           @map("student_no")
+  status                CampusIdentityVerificationStatus @default(pending)
+  submittedAt           DateTime                         @default(now()) @map("submitted_at")
+  reviewedAt            DateTime?                        @map("reviewed_at")
+  reviewedById          String?                          @map("reviewed_by_id")
+  reviewReason          String?                          @map("review_reason")
+  revision              Int                              @default(1)
+  createdAt             DateTime                         @default(now()) @map("created_at")
+  updatedAt             DateTime                         @updatedAt @map("updated_at")
+  user                   User                             @relation("CampusIdentityOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy             User?                            @relation("CampusIdentityReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, submittedAt])
+  @@index([idNumberFingerprint])
+  @@index([studentNo, status])
+  @@index([reviewedAt])
+  @@map("campus_identity_verifications")
+}
+
 model Department {
   id       String @id @default(cuid())
   schoolId String @map("school_id")
@@ -210,13 +246,13 @@ model AuthIdentity {
 model LoginLog {
   id        String   @id @default(cuid())
   userId    String?  @map("user_id")
-  email     String
+  identifier String
   ipHash    String   @map("ip_hash")
   result    String
   createdAt DateTime @default(now()) @map("created_at")
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@index([email, createdAt])
+  @@index([identifier, createdAt])
   @@map("login_logs")
 }
 

@@ -47,6 +47,7 @@ export enum QuestionType {
 
 export interface ApiEnvelope<T> {
   code: number
+  errorCode?: string
   message: string
   data: T
   requestId: string

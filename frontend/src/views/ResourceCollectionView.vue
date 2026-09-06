@@ -5,14 +5,17 @@ import { useRoute } from 'vue-router'
 import AppIcon from '../components/base/AppIcon.vue'
 import ResourceHubCard from '../components/ResourceHubCard.vue'
 import { resourceHubApi } from '../services/api/resourceHub'
+import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const route = useRoute()
 const collection = ref<LearningCollectionDto | null>(null)
 const error = ref('')
 const notice = ref('')
+const { requireWrite } = useCommunityAccess()
 const load = async () => { try { collection.value = await resourceHubApi.collection(String(route.params.collectionId)); error.value = '' } catch (cause) { error.value = cause instanceof Error ? cause.message : '合集读取失败' } }
 const move = async (index: number, step: number) => {
   if (!collection.value) return
+  if (collection.value.visibility === 'community' && !requireWrite()) return
   const next = [...collection.value.items], target = index + step
   if (target < 0 || target >= next.length) return
   ;[next[index], next[target]] = [next[target], next[index]]
@@ -21,6 +24,7 @@ const move = async (index: number, step: number) => {
 }
 const remove = async (itemId: string) => {
   if (!collection.value) return
+  if (collection.value.visibility === 'community' && !requireWrite()) return
   try { collection.value = await resourceHubApi.removeFromCollection(collection.value.id, itemId); notice.value = '已移出合集'; error.value = '' }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '移出合集失败' }
 }

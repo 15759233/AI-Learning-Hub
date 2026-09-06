@@ -1,6 +1,6 @@
 import { demoResourceHubCategories, demoResourceHubContributions } from '@ai-learning-hub/demo-fixtures'
 import type { CommunityAuthorDto, CommunityPostDetailDto, LearningCollectionDto, LearningCollectionSummaryDto, ResourceContributionDetailDto, ResourceHubHomeDto, ResourceHubItemDto, ResourceHubListDto, VideoAssetDto, VideoPlaybackDto } from '@ai-learning-hub/contracts'
-import { mockCommunity, mockResourceContributionPosts } from './community.mock'
+import { assertMockCommunityWrite, mockCommunity, mockResourceContributionPosts } from './community.mock'
 import { randomId } from './random-id'
 
 const collectionsKey = 'ai-learning-resource-hub:collections-v1'
@@ -150,6 +150,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
     try { state = JSON.parse(localStorage.getItem(progressKey) || '{}') } catch { /* 重建演示进度。 */ }
     state[parts[1]] = input; localStorage.setItem(progressKey, JSON.stringify(state)); value = input
   } else if (parts[0] === 'uploads' && parts[1] === 'video') {
+    assertMockCommunityWrite()
     const file = body as File
     const now = new Date().toISOString()
     const id = `demo-upload-${randomId()}`
@@ -157,6 +158,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
     uploadedVideos.set(id, { url: URL.createObjectURL(file), asset })
     value = asset
   } else if (parts[0] === 'uploads' && parts[1] === 'document') {
+    assertMockCommunityWrite()
     const file = body as File
     const id = `demo-file-${randomId()}`
     uploadedDocuments.set(id, { url: URL.createObjectURL(file), name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size })
@@ -166,12 +168,14 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
     if (!parts[1] && method === 'GET') value = rows.map(summary)
     else if (!parts[1] && method === 'POST') {
       const input = body as { name: string; description: string; visibility: 'private' | 'community'; learningGoal?: string }
+      if (input.visibility === 'community') assertMockCommunityWrite()
       const created: StoredCollection = { id: `demo-collection-${randomId()}`, ...input, learningGoal: input.learningGoal || '', systemKind: null, itemCount: 0, videoCount: 0, durationSeconds: 0, owner: student, isOwner: true, revision: 1, updatedAt: new Date().toISOString(), postIds: [] }
       rows.push(created); saveCollections(rows); value = detail(created)
     } else {
       const target = parts[1] === 'watch-later' ? watchLater() : readCollections().find((row) => row.id === parts[1])
       if (!target) throw new Error('合集不存在')
       if (parts[2] === 'items' && method === 'POST') {
+        if (target.visibility === 'community') assertMockCommunityWrite()
         const postId = (body as { postId: string }).postId
         if (!target.postIds.includes(postId)) target.postIds.push(postId)
         target.revision++; target.updatedAt = new Date().toISOString(); target.itemCount = target.postIds.length
@@ -180,6 +184,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
         target.durationSeconds = entries.reduce((total, entry) => total + (entry.durationSeconds || 0), 0)
         const next = readCollections().filter((row) => row.id !== target.id); next.push(target); saveCollections(next); value = detail(target)
       } else if (parts[2] === 'items' && parts[3] && method === 'DELETE') {
+        if (target.visibility === 'community') assertMockCommunityWrite()
         target.postIds = target.postIds.filter((postId) => `${target.id}-${postId}` !== parts[3])
         target.revision++; target.updatedAt = new Date().toISOString(); target.itemCount = target.postIds.length
         const entries = all().filter((entry) => target.postIds.includes(entry.postId || ''))
@@ -187,6 +192,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
         target.durationSeconds = entries.reduce((total, entry) => total + (entry.durationSeconds || 0), 0)
         const next = readCollections().filter((row) => row.id !== target.id); next.push(target); saveCollections(next); value = detail(target)
       } else if (parts[2] === 'order' && method === 'PUT') {
+        if (target.visibility === 'community') assertMockCommunityWrite()
         const input = body as { expectedRevision: number; itemIds: string[] }
         if (input.expectedRevision !== target.revision || input.itemIds.length !== target.postIds.length) throw new Error('合集已变化，请刷新后重试')
         const ordered = input.itemIds.map((itemId) => target.postIds.find((postId) => `${target.id}-${postId}` === itemId))
@@ -195,6 +201,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
         const next = readCollections().filter((row) => row.id !== target.id); next.push(target); saveCollections(next); value = detail(target)
       } else if (method === 'PATCH') {
         const input = body as { name: string; description: string; visibility: 'private' | 'community'; learningGoal?: string; expectedRevision?: number }
+        if (target.visibility === 'community' || input.visibility === 'community') assertMockCommunityWrite()
         if (input.expectedRevision !== target.revision || target.systemKind) throw new Error('合集已变化、不可编辑或不存在')
         Object.assign(target, { name: input.name, description: input.description, visibility: input.visibility, learningGoal: input.learningGoal || '', revision: target.revision + 1, updatedAt: new Date().toISOString() })
         const next = readCollections().filter((row) => row.id !== target.id); next.push(target); saveCollections(next); value = detail(target)

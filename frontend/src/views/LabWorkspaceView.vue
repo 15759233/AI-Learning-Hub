@@ -14,11 +14,13 @@ import { useLabsStore } from '../stores/content/labs'
 import { useLearningStore } from '../stores/learning'
 import { useCommunityStore } from '../stores/community'
 import { apiCatalogCover } from '../media/catalog'
+import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const route = useRoute()
 const store = useLearningStore()
 const auth = useAuthStore()
 const labsStore = useLabsStore()
+const { requireWrite } = useCommunityAccess()
 const apiDefinition = ref<LabDefinition>()
 const apiRun = ref<LabRunDto | null>(null)
 const detailLoading = ref(false)
@@ -48,7 +50,7 @@ const progress = computed(() => {
   return Math.max(stored, progressForState(state.value, definition.value.initialProgress))
 })
 const shareResult = () => {
-  if (!definition.value || state.value !== 'submitted') return
+  if (!definition.value || state.value !== 'submitted' || !requireWrite()) return
   useCommunityStore().openComposer({ type: 'lab_result', title: `${definition.value.title} · 我的实训复盘`, contentBlocks: [{ type: 'paragraph', text: `已完成${definition.value.title}。使用工具：${definition.value.tools.map((tool) => tool.label).join('、') || '受控实训工作台'}。结果摘要：${definition.value.result}。我的经验与改进：` }], bindings: [{ type: 'lab', id: definition.value.id }, ...(apiRun.value ? [{ type: 'lab_run' as const, id: apiRun.value.id }] : [])], ...(apiRun.value ? { sourceType: 'lab_run', sourceId: apiRun.value.id } : {}) })
 }
 

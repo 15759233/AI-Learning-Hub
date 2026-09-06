@@ -3,6 +3,7 @@ import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsIn
 import { CommunityPostType as DatabasePostType } from '@prisma/client'
 import type { CommunityPostInput, CommunityCommentInput, CommunityPostType, CommunityVisibility, CommunityContentBlock, CommunityBindingInput, LearningContentType, CommunityFeedMode, CommunitySignalInput, ResourceContributionInput } from '@ai-learning-hub/contracts'
 import type { CommunityProfileInput, CommunityProfileTab, OnboardingInput, UsernameInput, CommunitySearchType } from '@ai-learning-hub/contracts'
+import { USERNAME_PATTERN } from '../auth/username'
 const communityPostTypes = Object.values(DatabasePostType)
 
 export class BlockDto {
@@ -96,7 +97,7 @@ export class InterestsDto {
   @IsArray() @ArrayUnique() @ArrayMaxSize(3) @IsString({ each: true }) themeIds!: string[]
 }
 export class UsernameDto implements UsernameInput {
-  @Matches(/^[a-z][a-z0-9_]{3,29}$/) username!: string
+  @Matches(USERNAME_PATTERN) username!: string
 }
 export class OnboardingDto extends InterestsDto implements OnboardingInput {
   @IsInt() @Min(1) expectedRevision!: number

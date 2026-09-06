@@ -27,6 +27,7 @@ export class CommunityCommentService {
     })
   }
   async save(userId: string, postId: string, input: CommentDto, id?: string, key?: string) {
+    await this.visibility.assertCommunityWrite(userId)
     const post = await this.visibility.assertPost(userId, postId)
     if (post.status !== 'published') throw new BadRequestException('复核中的内容暂不可评论')
     const current = id ? await this.prisma.communityComment.findUnique({ where: { id } }) : null
@@ -59,6 +60,7 @@ export class CommunityCommentService {
     return (await this.list(userId, postId)).find((comment) => comment.id === row.id)!
   }
   async remove(userId: string, id: string) {
+    await this.visibility.assertCommunityWrite(userId)
     const comment = await this.prisma.communityComment.findUnique({ where: { id } })
     if (!comment || comment.authorId !== userId) throw new ForbiddenException('只能删除自己的评论')
     await this.visibility.viewer(userId)
@@ -71,6 +73,7 @@ export class CommunityCommentService {
     return { deleted: true }
   }
   async accept(userId: string, postId: string, commentId: string) {
+    await this.visibility.assertCommunityWrite(userId)
     const post = await this.visibility.assertPost(userId, postId)
     if (post.authorId !== userId || post.postType !== 'question') throw new ForbiddenException('只有问题作者可以采纳回答')
     const comment = await this.prisma.communityComment.findFirst({ where: { id: commentId, postId, deletedAt: null, status: 'published', author: { status: 'active' } } })

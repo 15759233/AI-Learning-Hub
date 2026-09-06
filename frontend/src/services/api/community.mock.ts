@@ -1,5 +1,5 @@
 import { createCommunityFixtures, demoArticles, demoChallenges, demoCourses, demoLabs, demoResourceHubCategories, demoResourceHubContributions, demoResources, demoStudents, demoThemes, lczCuratedPosts } from '@ai-learning-hub/demo-fixtures'
-import type { AuthUser, CommunityAuthorDto, CommunityCommentDto, CommunityContentBlock, CommunityContextDto, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityProfileDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
+import type { AuthUser, CampusIdentityVerificationDto, CommunityAuthorDto, CommunityCommentDto, CommunityContentBlock, CommunityContextDto, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityProfileDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { randomId } from './random-id'
 import { mockFixtureCover } from '../../media/catalog'
 const fixtures = createCommunityFixtures({ courses: demoCourses, labs: demoLabs, articles: demoArticles, themes: demoThemes, students: demoStudents })
@@ -125,6 +125,8 @@ const initialFollowing = fixtures.follows.filter((f) => f.follower === authors[0
 const hidden = new Set<string>(), muted = new Set<string>(), blocked = new Set<string>(), following = new Set(initialFollowing)
 const cursors = new Map<string, { ids: string[]; offset: number; mode: string; type: string; requestId: string }>()
 let bio = '', headline = '', location = '', websiteUrl = '', expertiseTopics: string[] = [], bannerUrl: string | null = null, pinnedPostId: string | null = null, allowAchievementDrafts = false, userRevision = 1, profileRevision = 1
+const initialVerification: CampusIdentityVerificationDto = { status: 'approved', submittedAt: '2026-08-30T08:00:00.000Z', reviewedAt: '2026-08-30T09:00:00.000Z', reviewReason: '演示账号固定审核结果', maskedRealName: '张*', maskedIdNumber: '3301**********1234', className: '计算机科学与技术 2026-1 班', studentNo: 'DEMO20260001', revision: 2 }
+let verification = structuredClone(initialVerification)
 const joinedAt = '2026-08-30T08:00:00.000Z'
 const storageKey = 'ai-learning-community:demo-v5'
 let restored = false
@@ -142,17 +144,18 @@ try {
     topics.forEach((topic) => { topic.following = stored.topicIds.includes(topic.id) })
     bio = stored.bio; headline = stored.headline; location = stored.location || ''; websiteUrl = stored.websiteUrl || ''; expertiseTopics = stored.expertiseTopics || []; bannerUrl = stored.bannerUrl || null; pinnedPostId = stored.pinnedPostId || null; allowAchievementDrafts = stored.allowAchievementDrafts
     userRevision = stored.userRevision || 1; profileRevision = stored.profileRevision || 1
+    if (stored.verification) verification = stored.verification
     authors[0].avatar = stored.avatar || null
   }
 } catch { /* 损坏的本地演示状态使用可重置的初始数据。 */ }
 }
-const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
+const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
 export const resetCommunityMock = () => {
   restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
   hidden.clear(); muted.clear(); blocked.clear(); following.clear(); cursors.clear(); initialFollowing.forEach((id) => following.add(id))
   topics.forEach((topic) => { topic.following = false; topic.followerCount = 0 })
-  bio = ''; headline = ''; location = ''; websiteUrl = ''; expertiseTopics = []; bannerUrl = null; pinnedPostId = null; allowAchievementDrafts = false; userRevision = 1; profileRevision = 1; authors[0].avatar = null
+  bio = ''; headline = ''; location = ''; websiteUrl = ''; expertiseTopics = []; bannerUrl = null; pinnedPostId = null; allowAchievementDrafts = false; userRevision = 1; profileRevision = 1; verification = structuredClone(initialVerification); authors[0].avatar = null
   if (typeof localStorage !== 'undefined') localStorage.removeItem(storageKey)
 }
 const context = (): CommunityContextDto => ({ todayPlan: null, continueCourse: null, continueLab: null, currentChallenge: null, trendingTopics: topics.slice(0, 6), suggestedUsers: authors.filter((user) => user.verifiedType !== 'none'), needsInterests: topics.filter((t) => t.following).length < 3 })
@@ -163,6 +166,16 @@ export const mockResourceContributionPosts = (ownDrafts = false) => {
 }
 const requirePost = (id: string) => { const post = visible(true).find((p) => p.id === id); if (!post) throw new Error('动态不可见或已删除'); return post }
 const requireOwner = (authorId: string) => { if (authorId !== authors[0].id) throw new Error('只能修改自己的内容') }
+export const assertMockCommunityWrite = () => {
+  let status = verification.status
+  try {
+    const stored = typeof localStorage === 'undefined' ? null : JSON.parse(localStorage.getItem('community-demo-user') || 'null')
+    status = stored?.identityVerificationStatus || status
+  } catch { /* 损坏的演示会话沿用内存认证状态。 */ }
+  if (status !== 'approved') {
+    throw Object.assign(new Error('需要完成校园实名认证后才能参与社区互动。'), { code: 'COMMUNITY_VERIFICATION_REQUIRED' })
+  }
+}
 const filtered = (url: URL) => visible().filter((p) => (!url.searchParams.get('type') || url.searchParams.get('type') === 'all' || p.type === url.searchParams.get('type')) && (url.searchParams.get('mode') !== 'following' || following.has(p.author.id) || p.topics.some((t) => topics.find((topic) => topic.id === t.id)?.following)))
 const profileFor = (id: string): CommunityProfileDto => {
   const user = authors.find((author) => author.id === id)
@@ -211,6 +224,8 @@ const authUser = (): AuthUser => {
     major: authors[0].major,
     onboardingCompleted: stored.onboardingCompleted ?? true,
     emailVerificationRequired: false,
+    identityVerificationStatus: stored.identityVerificationStatus || verification.status,
+    communityWriteEnabled: (stored.identityVerificationStatus || verification.status) === 'approved',
     revision: userRevision,
     profileRevision,
   }
@@ -222,6 +237,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
       const user = JSON.parse(localStorage.getItem('community-demo-user') || 'null')
       if (user?.username) {
         Object.assign(authors[0], { username: user.username, displayName: user.displayName, school: user.school, major: user.major })
+        if (user.identityVerificationStatus === 'unsubmitted' && verification.status === 'approved') verification = { status: 'unsubmitted', submittedAt: null, reviewedAt: null, reviewReason: null, maskedRealName: null, maskedIdNumber: null, className: null, studentNo: null, revision: null }
         for (const row of [...posts, ...comments]) if (row.author.id === authors[0].id) row.author = { ...authors[0] }
       }
     } catch { /* 损坏的演示账号不会覆盖当前展示资料。 */ }
@@ -233,8 +249,28 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
   }
   const url = new URL(path, 'http://mock.invalid'), parts = url.pathname.split('/').filter(Boolean)
   const [root, id, action, fourth] = parts
+  const readonlyWrite = root === 'verification' || root === 'notifications' || root === 'signals' || (root === 'feed' && (id === 'impressions' || id === 'dwell'))
+  if (method !== 'GET' && !readonlyWrite) assertMockCommunityWrite()
   let value: unknown
-  if (root === 'drafts') {
+  if (root === 'verification') {
+    if (method === 'GET') value = verification
+    else if (id === 'demo-review') {
+      const input = body as { status: 'pending' | 'approved' | 'rejected' | 'revoked'; reason: string }
+      const allowed = verification.status === 'pending' ? ['approved', 'rejected'] : verification.status === 'approved' ? ['revoked'] : []
+      if (!allowed.includes(input.status)) throw new Error('当前演示认证状态不能执行该审核操作')
+      verification = { ...verification, status: input.status, reviewedAt: new Date().toISOString(), reviewReason: input.reason || '演示审核结果', revision: (verification.revision || 0) + 1 }
+      value = verification
+    } else if (method === 'PUT') {
+      if (verification.status === 'pending' || verification.status === 'approved') throw new Error(verification.status === 'pending' ? '认证资料正在审核中，不能重复覆盖' : '认证已通过，如需修改请先撤销')
+      const input = body as { realName: string; idNumber: string; className: string; studentNo: string; expectedRevision?: number }
+      if (verification.revision !== null && input.expectedRevision !== verification.revision) throw new Error('认证资料状态已变化，请重新读取')
+      verification = { status: 'pending', submittedAt: new Date().toISOString(), reviewedAt: null, reviewReason: null, maskedRealName: `${input.realName.trim().slice(0, 1)}*`, maskedIdNumber: `${input.idNumber.trim().slice(0, 4)}**********${input.idNumber.trim().slice(-4).toUpperCase()}`, className: input.className.trim(), studentNo: input.studentNo.trim().toUpperCase(), revision: (verification.revision || 0) + 1 }
+      value = verification
+    }
+    const user = authUser()
+    const updated = { ...user, identityVerificationStatus: (value as CampusIdentityVerificationDto).status, communityWriteEnabled: (value as CampusIdentityVerificationDto).status === 'approved' }
+    localStorage.setItem('community-demo-user', JSON.stringify(updated))
+  } else if (root === 'drafts') {
     if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, updatedAt: p.editedAt || p.publishedAt, input: { type: p.type, title: p.title || '', contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft' } }))
     else { if (id && requirePost(id).status !== 'draft') throw new Error('不是草稿'); return mockCommunity<T>(id ? `/posts/${id}` : '/posts', method, body ? { ...body as CommunityPostInput, status: 'draft' } : undefined) }
   } else if (root === 'onboarding') {
@@ -284,7 +320,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     else { notifications.forEach((n) => { if (id === 'read-all' || n.id === id) n.readAt ||= new Date().toISOString() }); value = { read: true } }
   }
   else if (root === 'profile') {
-    if (id === 'username') { const user = JSON.parse(localStorage.getItem('community-demo-user') || '{}'); if (user.usernameChanged) throw new Error('公开用户名只能修改一次'); const username = (body as { username: string }).username; if (!/^[a-z][a-z0-9_]{3,29}$/.test(username) || authors.some((a) => a.username === username)) throw new Error('用户名不可用'); authors[0].username = username; value = { ...user, username, usernameChanged: true }; localStorage.setItem('community-demo-user', JSON.stringify(value)) }
+    if (id === 'username') { const user = JSON.parse(localStorage.getItem('community-demo-user') || '{}'); if (user.usernameChanged) throw new Error('公开用户名只能修改一次'); const username = (body as { username: string }).username.trim().toLowerCase(); if (!/^(?!_)(?!.*__)[a-z0-9_]{4,24}(?<!_)$/.test(username) || ['admin', 'administrator', 'root', 'system', 'official', 'moderator', 'support', 'api', 'www'].includes(username) || authors.some((a) => a.username.toLowerCase() === username)) throw new Error('用户名不可用'); authors[0].username = username; value = { ...user, username, usernameChanged: true }; localStorage.setItem('community-demo-user', JSON.stringify(value)) }
     else if (id === 'avatar' || id === 'banner') {
       const input = body as { file?: File; expectedUserRevision: number; expectedProfileRevision: number }
       if (input.expectedUserRevision !== userRevision || input.expectedProfileRevision !== profileRevision) throw new Error('资料已更新，请重新读取')

@@ -11,16 +11,18 @@ import CommunityAvatar from '../components/base/CommunityAvatar.vue'
 import { communityArt } from '../assets/community/manifest'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { useCommunityScrollRoot } from './composables/useCommunityScrollRoot'
+import { useCommunityAccess } from './composables/useCommunityAccess'
 import { postLabels } from './labels'
 import type { CommunityPostType } from '@ai-learning-hub/contracts'
 const props = defineProps<{ dialog?: boolean }>()
 const store = useCommunityStore(), auth = useAuthStore(), editor = useCommunityDraft(), panel = ref<HTMLElement>()
 const scrollRoot = useCommunityScrollRoot(), textarea = ref<HTMLTextAreaElement>()
 const { form, body, images, saving, error, savedAt } = storeToRefs(editor)
+const { requireWrite } = useCommunityAccess()
 const active = computed(() => store.composerOpen && store.composerMode === 'quick' && (props.dialog || store.composerInline))
 const tool = ref<'images' | 'binding' | 'topics' | null>(null)
 const types: Array<[CommunityPostType, string, string]> = [['question', '提出问题', 'question'], ['note', '发布笔记', 'note-edit'], ['lab_result', '分享实训', 'lab-share'], ['project', '展示项目', 'project-folder']]
-const open = (type: CommunityPostType = 'general') => { if (active.value) form.value.type = type; else store.openComposer({ type }) }
+const open = (type: CommunityPostType = 'general') => { if (!requireWrite()) return; if (active.value) form.value.type = type; else store.openComposer({ type }) }
 const resize = () => { const node = textarea.value; if (!node) return; node.style.height = '84px'; node.style.height = `${Math.min(240, Math.max(84, node.scrollHeight))}px` }
 const focus = () => {
   if (!active.value) return

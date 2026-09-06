@@ -14,7 +14,7 @@ import { setupComponent } from '../src/community/test-renderer'
 import { communityScrollRoot } from '../src/community/composables/useCommunityScrollRoot'
 import { ApiError } from '../src/services/api/client'
 
-const account = reactive({ user: { id: 'owner-a' } as { id: string } | null, dataMode: 'mock' })
+const account = reactive({ user: { id: 'owner-a', communityWriteEnabled: true } as { id: string; communityWriteEnabled: boolean } | null, dataMode: 'mock' })
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => account }))
 vi.mock('../src/services/api/community', () => ({ communityApi: { topics: vi.fn(), save: vi.fn(), saveDraft: vi.fn(), upload: vi.fn(), bindingContext: vi.fn(), post: vi.fn() } }))
 const storage = new Map<string, string>()
@@ -23,7 +23,7 @@ const settle = async () => { await nextTick(); await Promise.resolve(); await ne
 const post = { id: 'saved-post', type: 'general', status: 'published', topics: [], viewerState: {} } as CommunityPostDetailDto
 beforeEach(() => {
   vi.useFakeTimers(); vi.resetAllMocks(); storage.clear(); setActivePinia(createPinia())
-  account.user = { id: 'owner-a' }
+  account.user = { id: 'owner-a', communityWriteEnabled: true }
   account.dataMode = 'mock'
   vi.stubGlobal('localStorage', { getItem: (name: string) => storage.get(name) || null, setItem: (name: string, value: string) => storage.set(name, value), removeItem: (name: string) => storage.delete(name) })
   vi.stubGlobal('window', new EventTarget())

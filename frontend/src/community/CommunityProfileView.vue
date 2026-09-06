@@ -16,8 +16,10 @@ import CommunitySkeleton from './CommunitySkeleton.vue'
 import { badgeLabels } from './labels'
 import { resourceHubApi } from '../services/api/resourceHub'
 import ResourceHubCard from '../components/ResourceHubCard.vue'
+import { useCommunityAccess } from './composables/useCommunityAccess'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), store = useCommunityStore()
+const { requireWrite } = useCommunityAccess()
 const profile = ref<CommunityProfileDto | null>(null)
 const posts = ref<NonNullable<CommunityProfileDto['pinnedPost']>[]>([])
 const replies = ref<CommunityReplySummaryDto[]>([])
@@ -96,7 +98,7 @@ const follow = async () => {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '关注失败' }
 }
 const relationship = async (kind: 'mute' | 'block') => {
-  if (!profile.value) return
+  if (!profile.value || !requireWrite()) return
   const active = kind === 'mute' ? profile.value.muted : profile.value.blocked
   try { await communityApi.feedback(profile.value.id, kind, !active); await load() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败' }
@@ -125,7 +127,7 @@ const moreRelations = async () => {
   relationPeople.value.push(...result.items); relationCursor.value = result.nextCursor
 }
 const openEditor = () => {
-  if (!profile.value?.isSelf) return
+  if (!profile.value?.isSelf || !requireWrite()) return
   form.value = {
     expectedUserRevision: profile.value.userRevision,
     expectedProfileRevision: profile.value.revision,
@@ -171,7 +173,7 @@ const chooseImage = async (event: Event, kind: 'avatar' | 'banner') => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图片处理失败' }
 }
 const save = async () => {
-  if (!profile.value || saving.value) return
+  if (!profile.value || saving.value || !requireWrite()) return
   saving.value = true; error.value = ''
   try {
     form.value.expertiseTopics = [...new Set(topicsText.value.split(/[、,，]/).map((item) => item.trim()).filter(Boolean))]
@@ -185,7 +187,7 @@ const save = async () => {
   finally { saving.value = false }
 }
 const removeImage = async (kind: 'avatar' | 'banner') => {
-  if (!profile.value || saving.value) return
+  if (!profile.value || saving.value || !requireWrite()) return
   saving.value = true
   try {
     const result = await communityApi.removeProfileImage(kind, profile.value.userRevision, profile.value.revision)
@@ -194,6 +196,7 @@ const removeImage = async (kind: 'avatar' | 'banner') => {
   finally { saving.value = false }
 }
 const changeUsername = async () => {
+  if (!requireWrite()) return
   try {
     auth.user = await communityApi.username(username.value)
     sessionStorage.setItem('student-user', JSON.stringify(auth.user))
@@ -201,7 +204,7 @@ const changeUsername = async () => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '用户名修改失败' }
 }
 const pin = async (id: string | null) => {
-  if (!profile.value) return
+  if (!profile.value || !requireWrite()) return
   try { profile.value = await communityApi.pin(id, profile.value.revision); await loadTimeline() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '置顶设置失败' }
 }
@@ -304,7 +307,7 @@ onBeforeUnmount(() => { loadEpoch++ })
         <label class="community-checkbox"><input v-model="form.allowAchievementDrafts" type="checkbox" />允许生成学习成就草稿（不会自动发布）</label>
         <button class="button primary" :disabled="saving">{{ saving ? '保存中…' : '保存资料' }}</button>
       </form>
-      <form class="dialog-form community-profile-username-form" @submit.prevent="changeUsername"><label>公开用户名（只能修改一次）<input v-model="username" required pattern="[a-z][a-z0-9_]{3,29}" maxlength="30" /></label><button class="button secondary" type="submit">单独修改用户名</button></form>
+      <form class="dialog-form community-profile-username-form" @submit.prevent="changeUsername"><label>公开用户名（只能修改一次）<input v-model="username" required pattern="(?!_)(?!.*__)[A-Za-z0-9_]{4,24}(?<!_)" minlength="4" maxlength="24" /></label><button class="button secondary" type="submit">单独修改用户名</button></form>
     </AppDialog>
   </section>
 </template>

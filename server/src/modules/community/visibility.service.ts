@@ -12,8 +12,11 @@ export class CommunityVisibilityPolicyService {
   async viewer(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { communityProfile: true, school: true, userRoles: { include: { role: true } } } })
     if (!user || user.status !== 'active') throw new ForbiddenException('账号当前不可使用社区')
-    if (!user.emailVerifiedAt && (user.profile as Record<string, unknown>).emailVerificationRequired) throw new ForbiddenException('请先打开邮件完成邮箱验证')
     return user
+  }
+  async assertCommunityWrite(userId: string) {
+    const allowed = await this.prisma.user.count({ where: { id: userId, status: 'active', identityVerification: { is: { status: 'approved' } } } })
+    if (!allowed) throw new ForbiddenException({ message: '需要完成校园实名认证后才能参与社区互动。', errorCode: 'COMMUNITY_VERIFICATION_REQUIRED' })
   }
   async authorExclusions(userId: string) {
     const feedback = await this.prisma.communityFeedback.findMany({ where: { OR: [{ userId }, { targetId: userId, feedbackType: 'block' }] } })

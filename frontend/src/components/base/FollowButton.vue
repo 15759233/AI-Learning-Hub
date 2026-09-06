@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useCommunityAccess } from '../../community/composables/useCommunityAccess'
 defineProps<{ active?: boolean; pending?: boolean; label?: string }>()
-defineEmits<{ click: [] }>()
+const emit = defineEmits<{ click: [] }>()
+const { requireWrite } = useCommunityAccess()
+const click = () => { if (requireWrite()) emit('click') }
 </script>
-<template><button class="follow-button" type="button" :aria-label="label" :aria-pressed="!!active" :disabled="pending" @click="$emit('click')">{{ active ? '已关注' : '关注' }}</button></template>
+<template><button class="follow-button" type="button" :aria-label="label" :aria-pressed="!!active" :disabled="pending" @click="click">{{ active ? '已关注' : '关注' }}</button></template>

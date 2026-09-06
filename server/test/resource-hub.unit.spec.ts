@@ -173,7 +173,7 @@ describe('资源持久化边界', () => {
     const now = new Date('2026-09-06T00:00:00.000Z')
     const asset = { id: 'video-a', uploaderId: 'student-a', status: 'failed', originalName: 'demo.webm', originalMimeType: 'video/webm', durationSeconds: null, width: null, height: null, rotation: 0, attempts: 2, lastError: 'FFmpeg unavailable', posterFileId: null, createdAt: now, updatedAt: now }
     const prisma = { videoAsset: { findFirst: vi.fn(async () => asset) } }
-    const visibility = { viewer: vi.fn() }
+    const visibility = { viewer: vi.fn(), assertCommunityWrite: vi.fn() }
     expect(await hub(prisma, visibility).video('student-a', 'video-a')).toMatchObject({ id: 'video-a', status: 'failed', attempts: 2, lastError: 'FFmpeg unavailable' })
     expect(prisma.videoAsset.findFirst).toHaveBeenCalledWith({ where: { id: 'video-a', uploaderId: 'student-a' } })
     expect(visibility.viewer).toHaveBeenCalledWith('student-a')
@@ -214,7 +214,7 @@ describe('资源持久化边界', () => {
       communityPost: { findUnique: vi.fn(async () => stored) },
       $transaction: vi.fn(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx)),
     }
-    const visibility = { viewer: vi.fn() }
+    const visibility = { viewer: vi.fn(), assertCommunityWrite: vi.fn() }
     const service = new CommunityPostService(prisma as never, {} as never, visibility as never, {} as never)
     expect(await service.unpublish('student-a', 'post-a')).toEqual({ unpublished: true })
     expect(tx.communityPost.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'post-a', authorId: 'student-a', status: 'published', deletedAt: null }, data: expect.objectContaining({ status: 'draft', publishedAt: null }) }))

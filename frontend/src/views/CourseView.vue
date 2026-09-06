@@ -18,11 +18,13 @@ import { useLearningStore } from '../stores/learning'
 import { useCommunityStore } from '../stores/community'
 import { ensureAuth } from '../composables/useRequireAuth'
 import { behaviorApi } from '../services/api/behavior'
+import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const route = useRoute()
 const router = useRouter()
 const store = useLearningStore()
 const auth = useAuthStore()
+const { requireWrite } = useCommunityAccess()
 const courseStore = useCoursesStore()
 const { items: courses } = storeToRefs(courseStore)
 const course = computed(() => {
@@ -79,7 +81,7 @@ const copyCode = async () => {
 const saveNote = async () => {
   if (await store.saveNote(courseId.value, noteDraft.value, dataMode === 'api' ? currentApiLesson.value?.id : undefined)) noteOpen.value = false
 }
-const shareNote = () => { if (!ensureAuth('登录后可主动分享学习笔记', shareNote)) return; useCommunityStore().openComposer({ type: 'note', title: `${course.value?.title || '课程'}学习笔记`, contentBlocks: [{ type: 'paragraph', text: store.notes[noteKey.value] || noteDraft.value }], bindings: [{ type: 'course', id: courseId.value }, ...(currentApiLesson.value ? [{ type: 'lesson' as const, id: currentApiLesson.value.id }] : [])] }) }
+const shareNote = () => { if (!ensureAuth('登录后可主动分享学习笔记', shareNote) || !requireWrite()) return; useCommunityStore().openComposer({ type: 'note', title: `${course.value?.title || '课程'}学习笔记`, contentBlocks: [{ type: 'paragraph', text: store.notes[noteKey.value] || noteDraft.value }], bindings: [{ type: 'course', id: courseId.value }, ...(currentApiLesson.value ? [{ type: 'lesson' as const, id: currentApiLesson.value.id }] : [])] }) }
 const completeCurrentLesson = () => {
   const lessonId = dataMode === 'api' ? currentApiLesson.value?.id : currentLesson.value
   if (lessonId) void store.completeCourseStep(courseId.value, lessonId, displayLessons.value.length)

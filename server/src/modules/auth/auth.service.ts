@@ -10,6 +10,7 @@ import { durationMs } from './auth-ttl'
 import { Prisma } from '@prisma/client'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { actionEvent, lockUser, rateLimit } from '../../common/persistence'
+import { isEmail } from 'class-validator'
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 @Injectable()
@@ -21,14 +22,15 @@ export class AuthService {
     private readonly wechat: WechatMiniappService,
   ) {}
 
-  async login(email: string, password: string, clientKey: string, ip: string) {
-    email = email.trim().toLowerCase()
+  async login(identifier: string, password: string, clientKey: string, ip: string) {
+    identifier = identifier.trim()
+    const normalizedIdentifier = identifier.toLowerCase()
     const identityKey = hashToken(clientKey)
     await rateLimit(this.prisma, clientKey, 'login_attempt', 30, 15 * 60000)
     const current = await this.prisma.loginThrottle.findUnique({ where: { identityKey } })
     if (current?.blockedUntil && current.blockedUntil > new Date()) throw new HttpException('登录失败次数过多，请稍后再试', 429)
     const user = await this.prisma.user.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
+      where: isEmail(identifier) ? { email: { equals: normalizedIdentifier, mode: 'insensitive' } } : { username: { equals: normalizedIdentifier, mode: 'insensitive' } },
       include: authUserInclude,
     })
     const passwordValid = !!user?.passwordHash && await compare(password, user.passwordHash)
@@ -40,8 +42,8 @@ export class AuthService {
         blocked_until=CASE WHEN login_throttles.expires_at>=NOW() AND login_throttles.failures>=4 THEN NOW()+INTERVAL '1 minute' ELSE NULL END,
         expires_at=CASE WHEN login_throttles.expires_at<NOW() THEN NOW()+INTERVAL '15 minutes' ELSE login_throttles.expires_at END,
         updated_at=NOW()`
-      await this.prisma.loginLog.create({ data: { userId: user?.id, email, ipHash: hashToken(ip), result: 'failed' } })
-      throw new UnauthorizedException(passwordValid && user?.status !== 'active' ? '账号已禁用，请联系管理员' : '账号或密码错误')
+      await this.prisma.loginLog.create({ data: { userId: user?.id, identifier: normalizedIdentifier, ipHash: hashToken(ip), result: 'failed' } })
+      throw new UnauthorizedException('账号或密码错误')
     }
     await this.prisma.loginThrottle.deleteMany({ where: { identityKey } })
     return this.prisma.$transaction(async (tx) => {
@@ -49,7 +51,7 @@ export class AuthService {
       const locked = await tx.user.findUniqueOrThrow({ where: { id: user.id } })
       if (locked.status !== 'active' || locked.passwordHash !== user.passwordHash) throw new UnauthorizedException('账号凭证已变化，请重新登录')
       const fresh = await tx.user.update({ where: { id: user.id, status: 'active' }, data: { lastLoginAt: new Date() }, include: authUserInclude })
-      await tx.loginLog.create({ data: { userId: user.id, email, ipHash: hashToken(ip), result: 'success' } })
+      await tx.loginLog.create({ data: { userId: user.id, identifier: normalizedIdentifier, ipHash: hashToken(ip), result: 'success' } })
       await actionEvent(tx, user.id, 'user_logged_in', 'user', user.id)
       const profile = authUserDto(fresh)
       return { user: profile, ...(await this.createSession(profile, tx)) }

@@ -11,6 +11,7 @@ import { actionEvent, postRevision, rateLimit } from '../../common/persistence'
 export class CommunityInteractionService {
   constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService, private readonly notifications: CommunityNotificationService, private readonly signals: SignalsService) {}
   async react(userId: string, postId: string, type: CommunityReactionType | 'bookmark', active: boolean) {
+    await this.visibility.assertCommunityWrite(userId)
     if (!['like', 'useful', 'bookmark'].includes(type)) throw new BadRequestException('不支持的互动类型')
     const post = await this.visibility.assertPost(userId, postId)
     await this.prisma.$transaction(async (tx) => {
@@ -34,6 +35,7 @@ export class CommunityInteractionService {
     return { active: !!exists, stats: { likes: row.likeCount, useful: row.usefulCount, bookmarks: row.bookmarkCount, comments: row.commentCount } }
   }
   async commentLike(userId: string, commentId: string, active: boolean) {
+    await this.visibility.assertCommunityWrite(userId)
     const comment = await this.prisma.communityComment.findFirst({ where: { id: commentId, deletedAt: null, status: 'published', author: { status: 'active' } } })
     if (!comment) throw new NotFoundException('评论不存在')
     await this.visibility.assertPost(userId, comment.postId)
@@ -49,6 +51,7 @@ export class CommunityInteractionService {
     return { active: row.reactions.length > 0, likes: row.likeCount }
   }
   async follow(userId: string, targetId: string, topic: boolean, active: boolean) {
+    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     if (!topic && targetId === userId) throw new BadRequestException('不能关注自己')
     if (topic) {
@@ -74,6 +77,7 @@ export class CommunityInteractionService {
     return { active: !!count, followerCount }
   }
   async feedback(userId: string, targetId: string, type: 'hide' | 'not_interested' | 'mute_author' | 'block') {
+    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     const post = ['hide', 'not_interested'].includes(type) ? await this.visibility.assertPost(userId, targetId) : null
     if (!post && (userId === targetId || !await this.prisma.user.findUnique({ where: { id: targetId } }))) throw new BadRequestException('无效用户')
@@ -97,6 +101,7 @@ export class CommunityInteractionService {
     return { hidden: true }
   }
   async removeFeedback(userId: string, targetId: string, type: 'mute_author' | 'block') {
+    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     if (userId === targetId || !await this.prisma.user.count({ where: { id: targetId } })) throw new BadRequestException('无效用户')
     await this.prisma.$transaction(async (tx) => {
@@ -106,6 +111,7 @@ export class CommunityInteractionService {
     return { active: false }
   }
   async report(userId: string, targetId: string, input: ReportDto, comment = false) {
+    await this.visibility.assertCommunityWrite(userId)
     const row = comment ? await this.prisma.communityComment.findFirst({ where: { id: targetId, deletedAt: null, status: 'published' } }) : null
     if (comment && !row) throw new NotFoundException('评论不存在')
     if (row && (await this.visibility.authorExclusions(userId)).authors.includes(row.authorId)) throw new NotFoundException('评论不可见')

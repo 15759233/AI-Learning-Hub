@@ -17,6 +17,12 @@ describe('声明式导航契约', () => {
     expect(layout).toContain('to="/welcome">查看品牌门户')
     expect(communityNavigation.find((item) => item.label === '社区首页')?.path).toBe('/community')
   })
+  it('只读提示直接使用顶层 computed，避免嵌套 ref 被当作真值', () => {
+    const layout = source('layouts/CommunityLayout.vue')
+    expect(layout).toContain('const { canWrite, requireWrite, message } = useCommunityAccess()')
+    expect(layout).toContain('v-if="!canWrite && route.path !== \'/community/verification\'"')
+    expect(layout).not.toContain('access.canWrite')
+  })
   it('每条路由声明Meta，守卫不写Meta，移动导航不用数组下标', () => {
     const router = source('router.ts')
     for (const line of router.split('\n').filter((value) => value.trim().startsWith('{ path:'))) expect(line).toMatch(/meta: \{.*title:.*layout:.*requiresAuth:|meta: \{.*title:.*requiresAuth:.*layout:/)

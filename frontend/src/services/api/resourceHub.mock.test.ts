@@ -86,4 +86,14 @@ describe('资源共创 Mock 与正式契约语义', () => {
     expect(detail.stats.views).toBeGreaterThan(0)
     expect(detail.related.every((item) => item.id !== detail.post.id)).toBe(true)
   })
+
+  it('未认证禁止资源上传和社区合集，但保留私人合集与观看进度', async () => {
+    values.set('community-demo-user', JSON.stringify({ identityVerificationStatus: 'unsubmitted' }))
+    await expect(mockResourceHub('/uploads/video', 'POST', new File(['video'], 'demo.mp4', { type: 'video/mp4' }))).rejects.toMatchObject({ code: 'COMMUNITY_VERIFICATION_REQUIRED' })
+    await expect(mockResourceHub('/uploads/document', 'POST', new File(['notes'], 'notes.txt', { type: 'text/plain' }))).rejects.toMatchObject({ code: 'COMMUNITY_VERIFICATION_REQUIRED' })
+    await expect(mockResourceHub('/collections', 'POST', { name: '公开清单', description: '', visibility: 'community' })).rejects.toMatchObject({ code: 'COMMUNITY_VERIFICATION_REQUIRED' })
+    const privateCollection = await mockResourceHub<LearningCollectionDto>('/collections', 'POST', { name: '私人清单', description: '', visibility: 'private' })
+    await expect(mockResourceHub(`/collections/${privateCollection.id}/items`, 'POST', { postId: 'resource-demo-ai-literacy' })).resolves.toMatchObject({ itemCount: 1 })
+    await expect(mockResourceHub('/videos/video-resource-demo-ai-literacy/progress', 'PUT', { positionSeconds: 10, watchedSeconds: 8, completed: false })).resolves.toMatchObject({ positionSeconds: 10 })
+  })
 })

@@ -4,6 +4,7 @@ import { profileMediaUrl } from '../community/community.mapper'
 export const authUserInclude = {
   school: true,
   communityProfile: true,
+  identityVerification: { select: { status: true } },
   userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
 } satisfies Prisma.UserInclude
 export function authUserDto(user: Prisma.UserGetPayload<{ include: typeof authUserInclude }>): AuthUser {
@@ -13,6 +14,8 @@ export function authUserDto(user: Prisma.UserGetPayload<{ include: typeof authUs
     avatarUrl: profileMediaUrl(user.communityProfile?.avatarFileId), school: user.school?.name || null, major: user.major,
     onboardingCompleted: !!user.onboardingCompletedAt,
     emailVerificationRequired: !user.emailVerifiedAt && !!(user.profile as Record<string, unknown>)?.emailVerificationRequired,
+    identityVerificationStatus: user.identityVerification?.status || 'unsubmitted',
+    communityWriteEnabled: user.identityVerification?.status === 'approved',
     roles: user.userRoles.map((row) => row.role.code),
     permissions: [...new Set(user.userRoles.flatMap((row) => row.role.permissions.map((grant) => grant.permission.code)))],
   }

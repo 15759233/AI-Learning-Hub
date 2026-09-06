@@ -1,8 +1,8 @@
 import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentInput, CommunityContextDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationsDto, CommunityProfileTab, CommunityProfileTimelineDto, CommunityProfileUpdateDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { dataMode, request, writeRequest } from './client'
-import { mockCommunity } from './community.mock'
+import { assertMockCommunityWrite, mockCommunity } from './community.mock'
 import { randomId } from './random-id'
-import type { AuthUser, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, OnboardingInput } from '@ai-learning-hub/contracts'
+import type { AuthUser, CampusIdentityVerificationDto, CampusIdentityVerificationInput, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, IdentityVerificationStatus, OnboardingInput } from '@ai-learning-hub/contracts'
 const demoImages = new Map<string, File>()
 const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
   ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
@@ -11,6 +11,9 @@ export const communityApi = {
   feed: (mode: CommunityFeedMode, type: CommunityPostType | 'all', cursor?: string) => call<CommunityFeedDto>(`/feed?${new URLSearchParams({ mode, type, ...(cursor ? { cursor } : {}) })}`),
   updates: (since: string, mode: CommunityFeedMode, type: CommunityPostType | 'all') => call<{ count: number }>(`/feed/updates?${new URLSearchParams({ since, mode, type })}`),
   context: () => call<CommunityContextDto>('/context'),
+  verification: () => call<CampusIdentityVerificationDto>('/verification'),
+  submitVerification: (input: CampusIdentityVerificationInput) => call<CampusIdentityVerificationDto>('/verification', 'PUT', input),
+  demoVerificationStatus: (status: Exclude<IdentityVerificationStatus, 'unsubmitted'>, reason: string) => call<CampusIdentityVerificationDto>('/verification/demo-review', 'POST', { status, reason }),
   bindingContext: (binding: CommunityBindingInput) => call<CommunityBindingContextDto>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`),
   post: (id: string) => call<CommunityPostDetailDto>(`/posts/${id}`),
   save: (input: CommunityPostInput, id?: string, key?: string) => call<CommunityPostDetailDto>(id ? `/posts/${id}` : '/posts', id ? 'PATCH' : 'POST', input, key),
@@ -48,7 +51,7 @@ export const communityApi = {
   impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
   async upload(file: File) {
     if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !/\.(png|jpe?g|webp)$/i.test(file.name)) throw new Error('请选择不超过 5MB 的 PNG、JPEG 或 WebP 图片')
-    if (dataMode === 'mock') { const id = `demo-image-${randomId()}`; demoImages.set(id, file); return { id } }
+    if (dataMode === 'mock') { assertMockCommunityWrite(); const id = `demo-image-${randomId()}`; demoImages.set(id, file); return { id } }
     const form = new FormData(); form.append('file', file)
     return request<{ id: string }>('/community/media', { method: 'POST', body: form })
   },

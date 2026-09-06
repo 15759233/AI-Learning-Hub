@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Get, Headers, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import { Body, ConflictException, Controller, ForbiddenException, Get, Headers, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -51,7 +51,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() input: LoginDto, @Ip() ip: string, @Res({ passthrough: true }) response: Response) {
-    const result = await this.auth.login(input.email, input.password, `${ip}:${input.email.toLowerCase()}`, ip)
+    const result = await this.auth.login(input.identifier, input.password, `${ip}:${input.identifier.toLowerCase()}`, ip)
     this.setRefreshCookie(response, result.refreshToken, input.remember)
     return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn }
   }
@@ -99,6 +99,8 @@ export class MeController {
   @Patch('me')
   async update(@CurrentUser() user: AuthUser, @Body() input: UpdateProfileDto) {
     return this.prisma.$transaction(async (tx) => {
+      const canWrite = await tx.user.count({ where: { id: user.id, status: 'active', identityVerification: { is: { status: 'approved' } } } })
+      if (!canWrite) throw new ForbiddenException({ message: '需要完成校园实名认证后才能参与社区互动。', errorCode: 'COMMUNITY_VERIFICATION_REQUIRED' })
       if (!(await tx.user.updateMany({ where: { id: user.id, revision: input.expectedRevision }, data: { displayName: input.displayName, revision: { increment: 1 } } })).count) throw new ConflictException('资料已变化，请重新读取')
       const row = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: authUserInclude })
       await actionEvent(tx, user.id, 'profile_updated', 'user', user.id)

@@ -13,8 +13,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
       : raw && typeof raw === 'object' && 'message' in raw
         ? Array.isArray(raw.message) ? raw.message.join('；') : String(raw.message)
         : '服务暂时不可用'
+    const errorCode = raw && typeof raw === 'object' && 'errorCode' in raw && typeof raw.errorCode === 'string' ? raw.errorCode : undefined
+    const retryAfter = raw && typeof raw === 'object' && 'retryAfter' in raw && typeof raw.retryAfter === 'number' ? raw.retryAfter : undefined
+    if (status === 429 && retryAfter) response.setHeader('Retry-After', String(retryAfter))
     response.status(status).json({
       code: status * 100 + 1,
+      ...(errorCode ? { errorCode } : {}),
       message,
       details: {},
       data: null,

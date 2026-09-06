@@ -4,8 +4,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { resourceHubApi } from '../services/api/resourceHub'
+import { useCommunityAccess } from './composables/useCommunityAccess'
 
 const editor = useCommunityDraft()
+const { requireWrite } = useCommunityAccess()
 const { form, saving, error } = storeToRefs(editor)
 const categories = ref<ResourceHubCategoryDto[]>([])
 const tags = ref(form.value.contribution?.tags.join('、') || '')
@@ -64,6 +66,7 @@ watch(() => contribution.value.kind, (kind) => {
 const choose = async (event: Event) => {
   const target = event.target as HTMLInputElement, file = target.files?.[0]
   if (!file) return
+  if (!requireWrite()) { target.value = ''; return }
   stopVideoStatus()
   const version = operationVersion
   saving.value = true
