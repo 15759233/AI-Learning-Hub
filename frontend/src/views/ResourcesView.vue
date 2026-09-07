@@ -18,6 +18,9 @@ const community = useCommunityStore()
 const auth = useAuthStore()
 const legacyResources = useResourcesStore()
 const home = ref<ResourceHubHomeDto | null>(null)
+const primaryCategoryCodes = ['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice']
+const primaryCategories = computed(() => primaryCategoryCodes.flatMap((code) => home.value?.categories.filter((entry) => entry.code === code) || []))
+const moreCategories = computed(() => home.value?.categories.filter((entry) => entry.code !== 'uncategorized' && !primaryCategoryCodes.includes(entry.code)) || [])
 const results = ref<ResourceHubItemDto[]>([])
 const queryKind = ['video', 'article', 'document'].includes(String(route.query.kind)) ? String(route.query.kind) as ResourceContributionKind : 'all'
 const keyword = ref(typeof route.query.q === 'string' ? route.query.q : '')
@@ -154,8 +157,14 @@ watch(legacySlug, async (slug) => {
 
       <nav class="resource-category-nav" aria-label="资源分类">
         <button :class="{ active: !category }" @click="selectCategory('')"><AppIcon name="resource" :size="25" /><span>全部资源</span></button>
-        <button v-for="entry in home.categories.filter((value) => value.code !== 'uncategorized')" :key="entry.id" :class="{ active: category === entry.code }" @click="selectCategory(entry.code)"><AppIcon :name="entry.icon" :size="25" /><span>{{ entry.name }}</span></button>
+        <button v-for="entry in primaryCategories" :key="entry.id" :class="{ active: category === entry.code }" @click="selectCategory(entry.code)"><AppIcon :name="entry.icon" :size="25" /><span>{{ entry.name }}</span></button>
       </nav>
+      <details v-if="moreCategories.length" class="resource-category-more">
+        <summary><span class="when-closed">展开</span><span class="when-open">收起</span>其他分类</summary>
+        <div class="resource-category-options" aria-label="其他资源分类">
+          <button v-for="entry in moreCategories" :key="entry.id" :class="{ active: category === entry.code }" @click="selectCategory(entry.code)"><AppIcon :name="entry.icon" :size="18" /><span>{{ entry.name }}</span></button>
+        </div>
+      </details>
       <div class="resource-hub-toolbar">
         <div class="resource-kind-tabs" role="tablist" aria-label="内容形态">
           <button v-for="entry in [{ key: 'all', label: '全部' }, { key: 'video', label: '视频' }, { key: 'article', label: '图文' }, { key: 'document', label: '资料' }]" :key="entry.key" :class="{ active: kind === entry.key }" @click="selectKind(entry.key as typeof kind)">{{ entry.label }}</button>
