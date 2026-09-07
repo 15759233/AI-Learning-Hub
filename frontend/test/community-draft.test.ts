@@ -242,13 +242,19 @@ describe('共享发布器与草稿账号隔离', () => {
     expect(vi.mocked(communityApi.save).mock.calls[0][0].contentBlocks).toEqual([{ type: 'paragraph', text: '第二次填写的有效正文' }])
     expect(editor.body).toBe(''); expect(store.composerOpen).toBe(false)
   })
-  it('快捷切高级共用正文、图片、关联与保存请求', async () => {
+  it('快捷高级编辑打开写图文并保留正文、图片和发布参数', async () => {
+    const view = setupComponent<{ advanced: () => void }>(CommunityQuickComposer)
     const editor = useCommunityDraft(), store = useCommunityStore()
-    store.openComposer(); await settle()
+    store.openComposer({ type: 'note', title: '学习笔记', visibility: 'school' }); store.composerInline = true; await settle()
     editor.body = '切换编辑模式不丢内容'; editor.images = [{ fileId: 'image-a', alt: '学习图片' }]
-    store.composerMode = 'advanced'; expect(useCommunityDraft()).toBe(editor)
+    editor.form.bindings = [{ type: 'course', id: 'course-a' }]; editor.form.topicIds = ['topic-a']
+    view.state.advanced(); await settle()
+    expect(store.composerMode).toBe('rich'); expect(store.composerInline).toBe(false)
+    expect(useCommunityDraft()).toBe(editor)
+    expect(editor.richBlocks).toEqual([{ type: 'paragraph', text: '切换编辑模式不丢内容' }, { type: 'image', fileId: 'image-a', alt: '学习图片' }])
     await editor.save()
-    expect(communityApi.save).toHaveBeenCalledWith(expect.objectContaining({ contentBlocks: [{ type: 'paragraph', text: '切换编辑模式不丢内容' }, { type: 'image', fileId: 'image-a', alt: '学习图片' }] }), undefined, expect.any(String))
+    expect(communityApi.save).toHaveBeenCalledWith(expect.objectContaining({ type: 'note', title: '学习笔记', visibility: 'school', bindings: [{ type: 'course', id: 'course-a' }], topicIds: ['topic-a'], contentBlocks: [{ type: 'paragraph', text: '切换编辑模式不丢内容' }, { type: 'image', fileId: 'image-a', alt: '学习图片' }] }), undefined, expect.any(String))
+    view.unmount()
   })
   it('切号取消待保存定时器，保留前账号已保存稿且不写后账号', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
