@@ -99,6 +99,7 @@ export interface CommunityViewerStateDto {
   liked: boolean; markedUseful: boolean; bookmarked: boolean; followingAuthor: boolean
 }
 export interface CommunityPostSummaryDto {
+  coverFileId?: string | null
   detection?: ContentDetectionResult
   revision?: number
   mediaCount?: number
@@ -114,6 +115,7 @@ export interface CommunityPostSummaryDto {
 }
 export interface CommunityPostDetailDto extends CommunityPostSummaryDto { body: string }
 export interface CommunityPostInput {
+  coverFileId?: string | null
   expectedRevision?: number
   type: CommunityPostType; title?: string; contentBlocks: CommunityContentBlock[]
   bindings: CommunityBindingInput[]; topicIds: string[]; visibility: CommunityVisibility

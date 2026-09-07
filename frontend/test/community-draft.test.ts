@@ -10,13 +10,14 @@ import type { CommunityAuthorDto, CommunityPostDetailDto } from '@ai-learning-hu
 import CommunityQuickComposer from '../src/community/CommunityQuickComposer.vue'
 import CommunityComposer from '../src/community/CommunityComposer.vue'
 import CommunityDraftConflict from '../src/community/CommunityDraftConflict.vue'
+import CommunityDraftsView from '../src/community/CommunityDraftsView.vue'
 import { setupComponent } from '../src/community/test-renderer'
 import { communityScrollRoot } from '../src/community/composables/useCommunityScrollRoot'
 import { ApiError } from '../src/services/api/client'
 
 const account = reactive({ user: { id: 'owner-a', communityWriteEnabled: true } as { id: string; communityWriteEnabled: boolean } | null, dataMode: 'mock' })
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => account }))
-vi.mock('../src/services/api/community', () => ({ communityApi: { topics: vi.fn(), save: vi.fn(), saveDraft: vi.fn(), upload: vi.fn(), bindingContext: vi.fn(), post: vi.fn() } }))
+vi.mock('../src/services/api/community', () => ({ communityApi: { topics: vi.fn(), drafts: vi.fn(), save: vi.fn(), saveDraft: vi.fn(), upload: vi.fn(), bindingContext: vi.fn(), post: vi.fn() } }))
 const storage = new Map<string, string>()
 const key = (id: string) => `community-draft:mock:${id}`
 const settle = async () => { await nextTick(); await Promise.resolve(); await nextTick() }
@@ -28,11 +29,37 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: (name: string) => storage.get(name) || null, setItem: (name: string, value: string) => storage.set(name, value), removeItem: (name: string) => storage.delete(name) })
   vi.stubGlobal('window', new EventTarget())
   vi.mocked(communityApi.topics).mockResolvedValue([])
+  vi.mocked(communityApi.drafts).mockResolvedValue([])
   vi.mocked(communityApi.save).mockResolvedValue(post)
   vi.mocked(communityApi.saveDraft).mockResolvedValue({ id: 'server-draft' } as CommunityPostDetailDto)
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
+  it('关闭编辑器后草稿箱刷新，继续编辑使用最新封面及版本', async () => {
+    const view = setupComponent<{ drafts: unknown[] }>(CommunityDraftsView)
+    await settle()
+    const store = useCommunityStore()
+    store.openComposer({ title: '封面草稿', contentBlocks: [] })
+    await settle()
+    const updated = { id: 'draft', revision: 3, input: { coverFileId: 'new-cover', expectedRevision: 3 } }
+    vi.mocked(communityApi.drafts).mockResolvedValueOnce([updated] as never)
+    store.composerOpen = false
+    await settle()
+    expect(view.state.drafts).toEqual([updated])
+    view.unmount()
+  })
+  it('普通图文草稿保留独立封面与原帖子类型，清除封面显式发送 null', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer({ type: 'general', status: 'draft', title: '普通图文', contentBlocks: [{ type: 'paragraph', text: '正文保持独立' }], coverFileId: 'own-cover' })
+    await settle()
+    expect(store.composerMode).toBe('rich')
+    expect(await editor.save(true)).toBe(true)
+    expect(communityApi.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'general', coverFileId: 'own-cover' }), undefined, expect.any(String))
+    expect(vi.mocked(communityApi.saveDraft).mock.calls[0][0].contribution).toBeUndefined()
+    editor.form.coverFileId = null
+    await editor.save(true)
+    expect(communityApi.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ coverFileId: null }), expect.any(String), expect.any(String))
+  })
   it('图文复用真实发布：失败保稿、同键重试、待复核不声称公开', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
     const blocks = [{ type: 'rich_text' as const, text: '<h2>实践记录</h2><p><strong>核心结论</strong></p>' }, { type: 'image' as const, fileId: 'owned-file', alt: '实验截图' }]

@@ -4,7 +4,7 @@ import { assertMockCommunityWrite, mockCommunity } from './community.mock'
 import { randomId } from './random-id'
 import type { GovernanceAppealInput, GovernanceMineDto, GovernanceReportInput, GovernanceTarget } from '@ai-learning-hub/contracts'
 import type { AuthUser, CampusIdentityVerificationDto, CampusIdentityVerificationInput, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, IdentityVerificationStatus, OnboardingInput } from '@ai-learning-hub/contracts'
-const demoImages = new Map<string, File>()
+import { demoImages } from './community-images.mock'
 const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
   ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
   : mockCommunity<T>(path, method, body)

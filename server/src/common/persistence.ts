@@ -101,7 +101,7 @@ export async function postRevision(tx: Prisma.TransactionClient, postId: string,
   const post = await tx.communityPost.findUniqueOrThrow({ where: { id: postId }, include: { bindings: true, topics: true } })
   await tx.communityPostRevision.createMany({ skipDuplicates: true, data: [{
     postId, revisionNo: post.revision, editorId, editorType, reason,
-    titleSnapshot: post.title, contentBlocksSnapshot: post.contentBlocks as Prisma.InputJsonValue,
+    titleSnapshot: post.title, contentBlocksSnapshot: post.contentBlocks as Prisma.InputJsonValue, coverFileIdSnapshot: post.coverFileId,
     bindingsSnapshot: post.bindings.map((ref) => ({ type: ref.targetType, id: ref.targetId })),
     topicIdsSnapshot: post.topics.map((ref) => ref.topicId), visibilitySnapshot: post.visibility, statusSnapshot: post.status,
   }] })

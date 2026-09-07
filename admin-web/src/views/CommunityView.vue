@@ -182,11 +182,13 @@ const savePost = async (publish = false) => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败' } finally { postSaving.value = false }
 }
 const images = ref<Record<string, string>>({}); let imageEpoch = 0
+const selectedCoverId = computed(() => selected.value?.post.coverFileId || selected.value?.post.contribution?.coverFileId)
 const clearImages = () => { imageEpoch++; Object.values(images.value).forEach(URL.revokeObjectURL); images.value = {} }
 watch(selected, async (value) => {
   clearImages(); const epoch = imageEpoch
-  for (const block of value?.post.contentBlocks || []) if (block.type === 'image') {
-    try { const url = await communityAdminApi.image(block.fileId); if (epoch === imageEpoch) images.value[block.fileId] = url; else URL.revokeObjectURL(url) } catch { /* 不可用图片显示替代说明。 */ }
+  const ids = new Set([...(value?.post.contentBlocks || []).flatMap((block) => block.type === 'image' ? [block.fileId] : []), ...(selectedCoverId.value ? [selectedCoverId.value] : [])])
+  for (const id of ids) {
+    try { const url = await communityAdminApi.image(id); if (epoch === imageEpoch) images.value[id] = url; else URL.revokeObjectURL(url) } catch { /* 不可用图片显示替代说明。 */ }
   }
 })
 onUnmounted(() => { detailEpoch++; clearImages() })
@@ -217,6 +219,7 @@ onMounted(async () => {
         <template v-if="selected">
           <header><h2>{{ selected.post.title || '动态详情' }}</h2><small>{{ selected.post.author.displayName }} · {{ statusLabels[selected.post.status] }}</small></header>
           <div class="community-admin-body">
+            <figure v-if="selectedCoverId"><img v-if="images[selectedCoverId]" :src="images[selectedCoverId]" alt="作品封面" /><figcaption>{{ images[selectedCoverId] ? '作品封面' : '封面不可用或正在读取' }}</figcaption></figure>
             <template v-for="(block, index) in selected.post.contentBlocks" :key="index">
               <pre v-if="block.type === 'code'"><code>{{ block.code }}</code></pre>
               <figure v-else-if="block.type === 'image'"><img v-if="images[block.fileId]" :src="images[block.fileId]" :alt="block.alt || '学习图片'" /><figcaption v-else>图片不可用或正在读取</figcaption></figure>

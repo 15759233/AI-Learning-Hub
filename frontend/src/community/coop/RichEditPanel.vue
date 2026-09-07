@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import AppDialog from '../../components/base/AppDialog.vue'
 import AppIcon from '../../components/base/AppIcon.vue'
 import BaseRichEditor from './BaseRichEditor.vue'
 import CommunityDraftConflict from '../CommunityDraftConflict.vue'
 import ResourceContributionFields from '../ResourceContributionFields.vue'
+import CommunityCoverField from '../CommunityCoverField.vue'
 import { useCommunityDraft } from '../composables/useCommunityDraft'
 import { useCommunityStore } from '../../stores/community'
 import { useCommunityAccess } from '../composables/useCommunityAccess'
 import { mdToHtml, htmlToMarkdown } from './markdown-convert'
 
 const editor = useCommunityDraft(), store = useCommunityStore()
+const coverFileId = computed({
+  get: () => editor.form.contribution ? editor.form.contribution.coverFileId : editor.form.coverFileId || undefined,
+  set: (value: string | undefined) => { if (editor.form.contribution) editor.form.contribution.coverFileId = value; else editor.form.coverFileId = value || null },
+})
 const { requireWrite } = useCommunityAccess()
 const richRef = ref<InstanceType<typeof BaseRichEditor> | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -57,7 +62,8 @@ const publish = () => { if (requireWrite('post')) void editor.save() }
 
       <!-- 公共富文本编辑器(打开时才创建,关闭即销毁;草稿负责跨会话保存) -->
       <BaseRichEditor ref="richRef" @change="wordCount = $event.getText().replace(/\s+/g, '').length" />
-      <details v-if="editor.form.contribution"><summary>分类、标签与教学引用设置</summary><ResourceContributionFields /></details>
+      <CommunityCoverField v-model="coverFileId" />
+      <details v-if="editor.form.contribution"><summary>分类、标签与教学引用设置</summary><ResourceContributionFields :show-cover="false" /></details>
       <p v-if="editor.error" class="community-notice" role="alert">{{ editor.error }}</p>
       <CommunityDraftConflict />
 

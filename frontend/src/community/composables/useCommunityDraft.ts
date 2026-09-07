@@ -31,7 +31,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   const advanced = computed(() => store.composerMode !== 'quick')
   const blocks = computed<CommunityContentBlock[]>(() => richBlocks.value ?? [...(body.value.trim() ? [{ type: 'paragraph' as const, text: body.value.trim() }] : []), ...(quote.value.trim() ? [{ type: 'quote' as const, text: quote.value.trim() }] : []), ...(code.value.trim() ? [{ type: 'code' as const, language: language.value, code: code.value }] : []), ...images.value.map((image) => ({ type: 'image' as const, ...image }))])
   const input = () => ({ ...form.value, contentBlocks: blocks.value })
-  const hasContent = () => !!(blocks.value.length || form.value.title?.trim() || form.value.bindings.length || form.value.topicIds.length || form.value.contribution)
+  const hasContent = () => !!(blocks.value.length || form.value.title?.trim() || form.value.bindings.length || form.value.topicIds.length || form.value.contribution || form.value.coverFileId)
   const key = () => `community-draft:${auth.dataMode}:${auth.user?.id || 'anonymous'}`
   let timer: ReturnType<typeof setTimeout> | undefined, remoteTimer: ReturnType<typeof setTimeout> | undefined, hydrating = false
   let pending: Promise<boolean> | null = null
@@ -48,7 +48,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     hydrating = true
     form.value = JSON.parse(JSON.stringify(value)); preview.value = false; error.value = ''; savedAt.value = ''; dirty.value = false; conflict.value = false; draftUnavailable.value = false
     richError.value = ''
-    richBlocks.value = value.contribution?.kind === 'article' || value.contentBlocks.some((block) => ['rich_text', 'heading', 'list'].includes(block.type)) ? JSON.parse(JSON.stringify(value.contentBlocks)) : null
+    richBlocks.value = value.coverFileId || value.contribution?.kind === 'article' || value.contentBlocks.some((block) => ['rich_text', 'heading', 'list'].includes(block.type)) ? JSON.parse(JSON.stringify(value.contentBlocks)) : null
     if (richBlocks.value !== null) { store.composerMode = 'rich'; store.composerInline = false }
     body.value = value.contentBlocks.filter((b) => b.type === 'paragraph').map((b) => b.text).join('\n\n')
     code.value = value.contentBlocks.filter((b) => b.type === 'code').map((b) => b.code).join('\n')
@@ -187,7 +187,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     try {
       const post = await communityApi.post(id)
       if (!current()) return
-      hydrate({ type: post.type, title: post.title || '', contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, status: post.status === 'draft' ? 'draft' : 'published', expectedRevision: post.revision, contribution: post.contribution ? { kind: post.contribution.kind, categoryId: post.contribution.categoryId, tags: post.contribution.tags, teachingReuseConsent: post.contribution.teachingReuseConsent, sourceName: post.contribution.sourceName, sourceUrl: post.contribution.sourceUrl, videoAssetId: post.contribution.videoAssetId, attachmentFileId: post.contribution.attachmentFileId, coverFileId: post.contribution.coverFileId } : undefined })
+      hydrate({ type: post.type, title: post.title || '', coverFileId: post.coverFileId, contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, status: post.status === 'draft' ? 'draft' : 'published', expectedRevision: post.revision, contribution: post.contribution ? { kind: post.contribution.kind, categoryId: post.contribution.categoryId, tags: post.contribution.tags, teachingReuseConsent: post.contribution.teachingReuseConsent, sourceName: post.contribution.sourceName, sourceUrl: post.contribution.sourceUrl, videoAssetId: post.contribution.videoAssetId, attachmentFileId: post.contribution.attachmentFileId, coverFileId: post.contribution.coverFileId } : undefined })
       requestKey = ''; requestBody = ''; unconfirmed = undefined; localSave(); savedAt.value = '已读取服务器版本'; dirty.value = false
     } catch (cause) { if (current()) { error.value = cause instanceof Error ? cause.message : '服务端版本读取失败'; if (cause instanceof ApiError && cause.status === 404 && draftId.value) draftUnavailable.value = true } }
   }

@@ -86,7 +86,7 @@ export class CommunityAdminController {
   @Get('media/:id')
   async media(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const scope = await this.visibility.adminWhere()
-    const attached = await this.prisma.communityPost.count({ where: { ...scope, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }) || await this.prisma.communityComment.count({ where: { post: scope, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } })
+    const attached = await this.prisma.communityPost.count({ where: { AND: [scope, { OR: [{ coverFileId: id }, { contribution: { coverFileId: id } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] }] } }) || await this.prisma.communityComment.count({ where: { post: scope, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } })
     if (!attached) throw new BadRequestException('图片未关联社区内容')
     await this.visibility.auditAdminRead(user.id, 'file', id)
     return { url: `/api/v1/files/${encodeURIComponent(id)}/download` }
@@ -112,7 +112,7 @@ export class CommunityAdminController {
       this.prisma.communityPostRevision.findMany({ where: { postId: id, ...(reviewableDraft ? {} : { statusSnapshot: { not: 'draft' } }) }, orderBy: { revisionNo: 'desc' } }),
       this.prisma.communityModerationAction.findMany({ where: { targetType: 'post', targetId: id }, select: { id: true, action: true, reason: true, createdAt: true }, orderBy: { createdAt: 'desc' } }),
       this.prisma.activityEvent.findMany({ where: { targetType: 'post', targetId: id, NOT: { eventType: 'post_draft_saved' } }, select: { id: true, eventType: true, actionType: true, userId: true, entityType: true, entityId: true, targetType: true, targetId: true, source: true, occurredAt: true }, orderBy: { occurredAt: 'desc' }, take: 100 }),
-      this.prisma.fileRecord.findMany({ where: { id: { in: (row.contentBlocks as Array<{ fileId?: string }>).flatMap((b) => b.fileId ? [b.fileId] : []) } }, select: { id: true, originalName: true, mimeType: true, size: true } }),
+      this.prisma.fileRecord.findMany({ where: { id: { in: [...(row.contentBlocks as Array<{ fileId?: string }>).flatMap((b) => b.fileId ? [b.fileId] : []), ...[row.coverFileId, row.contribution?.coverFileId].filter((id): id is string => !!id)] } }, select: { id: true, originalName: true, mimeType: true, size: true } }),
     ])
     return { post: (await this.posts.mapMany(user.id, [row]))[0], comments: await this.comments.list(user.id, id, true), reports, recommendation, revisions, moderation, actions: actions.map((a) => ({ id: a.id, eventType: a.actionType || a.eventType, actorId: a.userId, entityType: a.entityType || a.targetType, entityId: a.entityId || a.targetId, source: a.source, occurredAt: a.occurredAt.toISOString() })), files: await Promise.all(files.map(async (f) => ({ ...f, exists: await this.storage.exists(f.id) }))) }
   }

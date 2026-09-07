@@ -51,6 +51,7 @@ export class ContributionDto implements ResourceContributionInput {
   @IsOptional() @IsString() @Length(1, 100) coverFileId?: string
 }
 export class PostDto implements CommunityPostInput {
+  @IsOptional() @IsString() @Length(1, 100) coverFileId?: string | null
   @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(communityPostTypes) type!: CommunityPostType
   @IsOptional() @IsString() @MaxLength(160) title?: string

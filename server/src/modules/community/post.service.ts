@@ -76,6 +76,8 @@ export class CommunityPostService {
     if (current && input.expectedRevision === undefined) throw new BadRequestException('编辑动态必须提供 expectedRevision')
     if (current && !['draft', 'published', 'pending_review'].includes(current.status)) throw new ForbiddenException('当前状态的内容暂不可编辑')
     if (input.visibility === 'school' && !viewer.schoolId) throw new BadRequestException('未认证学校，不能发布同校内容')
+    const coverFileId = input.coverFileId === undefined ? current?.coverFileId || null : input.coverFileId
+    if (coverFileId && !await this.prisma.fileRecord.count({ where: { quarantinedAt: null, id: coverFileId, uploadedBy: userId, mimeType: { in: ['image/png', 'image/jpeg', 'image/webp'] }, extension: { in: ['.png', '.jpg', '.jpeg', '.webp'] }, size: { gt: 0, lte: 5 * 1024 * 1024 } } })) throw new BadRequestException('封面必须由本人上传且为不超过 5MB 的 PNG、JPEG 或 WebP')
     const contribution: ResourceContributionInput | undefined = input.contribution || (current?.contribution ? {
       kind: current.contribution.kind,
       categoryId: current.contribution.categoryId || undefined,
@@ -135,7 +137,7 @@ export class CommunityPostService {
         if (attachment && (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/zip', 'application/x-zip-compressed', 'text/plain'].includes(attachment.mimeType) || attachment.size > attachmentMaxBytes)) throw new BadRequestException('资料附件的类型或大小不符合要求')
       }
     }
-    const contentHash = createHash('sha256').update(`${input.title || ''}\n${plainText}\n${JSON.stringify(normalizedContribution || null)}`.replace(/\s+/g, '').toLowerCase()).digest('hex')
+    const contentHash = createHash('sha256').update(`${input.title || ''}\n${plainText}\n${JSON.stringify(normalizedContribution || null)}${coverFileId || ''}`.replace(/\s+/g, '').toLowerCase()).digest('hex')
     const post = await this.prisma.$transaction(async (tx) => {
       await lockFileReferences(tx)
       const scope = audit?.action === 'official_publish' ? `post:${userId}:new` : `post:${id || 'new'}`
@@ -153,7 +155,7 @@ export class CommunityPostService {
       const publishing = status === 'published' && latest?.status !== 'published'
       if (input.status === 'published' && latest?.status !== 'published') await this.visibility.consumeQuota(tx, userId, 'post', ip)
       const oldTopicIds = current ? (await tx.communityPostTopic.findMany({ where: { postId: current.id } })).map((row) => row.topicId) : []
-      const data = { authorId: userId, postType: input.type, status, visibility: input.visibility, schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
+      const data = { authorId: userId, postType: input.type, status, visibility: input.visibility, schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), coverFileId, contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
       if (latest) await postRevision(tx, latest.id, userId, 'user', '编辑前版本')
       const saved = id ? await tx.communityPost.update({ where: { id, revision: latest!.revision }, data: { ...data, revision: { increment: 1 } } }) : await tx.communityPost.create({ data })
       if (detection) await this.detection.record(tx, { type: 'post', id: saved.id, revision: saved.revision, authorId: userId, submittedById: audit?.actorId || userId }, detection)
@@ -260,8 +262,8 @@ export class CommunityPostService {
     const runRefs = new Map(runs.map((run) => [run.id, publicLabs.get(`lab:${run.labId}`)]))
     return rows.map((row) => ({
       id: row.id, revision: row.revision, type: row.postType, status: row.status, visibility: row.visibility, title: row.title,
-      mediaCount: (row.contentBlocks as CommunityContentBlock[]).filter((block) => block.type === 'image').length,
-      body: row.body, bodyPreview: row.plainText.slice(0, 320), contentBlocks: row.contentBlocks as CommunityContentBlock[],
+      mediaCount: (row.contentBlocks as CommunityContentBlock[]).filter((block) => block.type === 'image').length + (row.coverFileId ? 1 : 0),
+      body: row.body, bodyPreview: row.plainText.slice(0, 320), contentBlocks: row.contentBlocks as CommunityContentBlock[], coverFileId: row.coverFileId,
       author: authorDto(row.author),
       bindings: [...new Map(row.bindings.map((ref) => {
         if (ref.targetType === 'lab_run' && row.authorId !== userId) return runRefs.get(ref.targetId)

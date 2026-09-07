@@ -891,6 +891,7 @@ model FileRecord {
   profileAvatars          CommunityProfile[]     @relation("CommunityProfileAvatar")
   profileBanners          CommunityProfile[]     @relation("CommunityProfileBanner")
   contributionCovers      ResourceContribution[] @relation("ResourceContributionCover")
+  communityPostCovers     CommunityPost[]        @relation("CommunityPostCover")
   contributionAttachments ResourceContribution[] @relation("ResourceContributionAttachment")
   videoSources            VideoAsset[]           @relation("VideoAssetSource")
   videoPlayableFiles      VideoAsset[]           @relation("VideoAssetPlayable")
@@ -1775,6 +1776,8 @@ model CommunityProfile {
 }
 
 model CommunityPost {
+  coverFileId     String?                 @map("cover_file_id")
+  coverFile       FileRecord?             @relation("CommunityPostCover", fields: [coverFileId], references: [id], onDelete: Restrict)
   moderationActions CommunityModerationAction[]
   id              String                  @id @default(cuid())
   revision        Int                     @default(1)
@@ -2316,6 +2319,7 @@ model UserNotification {
 }
 
 model CommunityPostRevision {
+  coverFileIdSnapshot    String?       @map("cover_file_id_snapshot")
   id                    String        @id @default(cuid())
   postId                String        @map("post_id")
   revisionNo            Int           @map("revision_no")

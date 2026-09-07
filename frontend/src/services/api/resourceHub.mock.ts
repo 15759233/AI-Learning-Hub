@@ -2,6 +2,7 @@ import { demoResourceHubCategories, demoResourceHubContributions } from '@ai-lea
 import type { CommunityAuthorDto, CommunityPostDetailDto, LearningCollectionDto, LearningCollectionSummaryDto, ResourceContributionDetailDto, ResourceHubHomeDto, ResourceHubItemDto, ResourceHubListDto, VideoAssetDto, VideoPlaybackDto } from '@ai-learning-hub/contracts'
 import { assertMockCommunityWrite, checkMockContent, mockCommunity, mockResourceContributionPosts } from './community.mock'
 import { randomId } from './random-id'
+import { mockCoverUrl } from './community-images.mock'
 
 const collectionsKey = 'ai-learning-resource-hub:collections-v1'
 const progressKey = 'ai-learning-resource-hub:progress-v1'
@@ -30,7 +31,7 @@ const item = (post: CommunityPostDetailDto): ResourceHubItemDto => {
   kind: contribution.kind,
   category: contribution.category,
   tags: contribution.tags,
-  coverUrl: contribution.coverUrl,
+  coverUrl: mockCoverUrl(contribution.coverFileId) || contribution.video?.posterUrl || fixture?.coverUrl || mockCoverUrl(post.contentBlocks.find((block) => block.type === 'image')?.fileId) || contribution.coverUrl,
   author: post.author,
   stats: { views: fixture?.views || 0, likes: post.stats.likes, comments: post.stats.comments, bookmarks: post.stats.bookmarks, downloads: 0 },
   durationSeconds: contribution.video?.durationSeconds || null,
@@ -122,7 +123,9 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
     const uploaded = post.contribution?.attachmentFileId ? uploadedDocuments.get(post.contribution.attachmentFileId) : undefined
     const contribution = uploaded && post.contribution?.attachment
       ? { ...post.contribution, attachment: { ...post.contribution.attachment, name: uploaded.name, size: uploaded.size, mimeType: uploaded.mimeType, downloadUrl: uploaded.url } }
-      : post.contribution!
+      : { ...post.contribution! }
+    contribution.coverUrl = entry.coverUrl
+    if (contribution.video) contribution.video = { ...contribution.video, posterUrl: entry.coverUrl }
     const collection = readCollections().find((row) => row.postIds.includes(post.id) && (row.owner.id === student.id || row.visibility === 'community' && (row.contentStatus || 'published') === 'published'))
     value = { post: { ...post, contribution }, contribution, stats: entry.stats, collection: collection ? detail(collection) : null, related: all().filter((candidate) => candidate.id !== entry.id && candidate.category?.code === entry.category?.code).slice(0, 6) } satisfies ResourceContributionDetailDto
   } else if (parts[0] === 'videos' && parts.length === 2) {
@@ -146,13 +149,14 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
       updatedAt: now,
     } satisfies VideoAssetDto
   } else if (parts[0] === 'videos' && parts[2] === 'playback') {
-    if (!mockResourceContributionPosts(true).some((post) => (post.contribution?.video?.id || post.contribution?.videoAssetId) === parts[1])) throw new Error('视频不存在或不可见')
+    const post = mockResourceContributionPosts(true).find((post) => (post.contribution?.video?.id || post.contribution?.videoAssetId) === parts[1])
+    if (!post) throw new Error('视频不存在或不可见')
     const entry = demoResourceHubContributions.find((candidate) => `video-${candidate.id}` === parts[1])
     const uploaded = uploadedVideos.get(parts[1])
     if (!entry && !uploaded) throw new Error('视频不存在')
     let progress = null
     try { progress = JSON.parse(localStorage.getItem(progressKey) || '{}')[parts[1]] || null } catch { /* 使用空进度。 */ }
-    value = { assetId: parts[1], sources: [{ src: entry?.videoUrl || uploaded!.url, type: 'video/mp4' }], poster: entry?.coverUrl || null, durationSeconds: entry?.durationSeconds || 60, expiresAt: new Date(Date.now() + 21600000).toISOString(), captions: [], chapters: [], progress } satisfies VideoPlaybackDto
+    value = { assetId: parts[1], sources: [{ src: entry?.videoUrl || uploaded!.url, type: 'video/mp4' }], poster: item(post).coverUrl, durationSeconds: entry?.durationSeconds || 60, expiresAt: new Date(Date.now() + 21600000).toISOString(), captions: [], chapters: [], progress } satisfies VideoPlaybackDto
   } else if (parts[0] === 'videos' && parts[2] === 'progress') {
     if (!mockResourceContributionPosts().some((post) => (post.contribution?.video?.id || post.contribution?.videoAssetId) === parts[1])) throw new Error('待审预览不能计入学习进度')
     const input = body as { positionSeconds: number; watchedSeconds: number; completed: boolean }

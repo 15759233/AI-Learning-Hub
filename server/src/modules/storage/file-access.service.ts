@@ -11,13 +11,13 @@ export class FileAccessService {
     const file = await this.prisma.fileRecord.findUnique({ where: { id } })
     if (!file || file.quarantinedAt) throw new NotFoundException('文件不存在')
     await this.visibility.assertMediaEligibility(file.uploadedBy)
-    const mediaWhere = { OR: [{ contribution: { is: { OR: [{ coverFileId: id }, { attachmentFileId: id }, { videoAsset: { is: { OR: [{ sourceFileId: id }, { playableFileId: id }, { posterFileId: id }] } } }] } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] }
+    const mediaWhere = { OR: [{ coverFileId: id }, { contribution: { is: { OR: [{ coverFileId: id }, { attachmentFileId: id }, { videoAsset: { is: { OR: [{ sourceFileId: id }, { playableFileId: id }, { posterFileId: id }] } } }] } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] }
     const boundPost = await this.prisma.communityPost.count({ where: mediaWhere })
     const boundComment = await this.prisma.communityComment.count({ where: { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } })
     const boundProfile = await this.prisma.communityProfile.count({ where: { OR: [{ avatarFileId: id }, { bannerFileId: id }] } })
     if (file.uploadedBy === userId && !boundPost && !boundComment && !boundProfile) return file
     const reviewer = await this.prisma.userRole.count({ where: { userId, role: { permissions: { some: { permission: { code: 'community.read' } } } } } })
-    if (reviewer && (await this.prisma.communityPost.count({ where: { AND: [await this.visibility.adminWhere(), { OR: [{ contribution: { coverFileId: id } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] }] } }) || await this.prisma.communityComment.count({ where: { post: await this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) {
+    if (reviewer && (await this.prisma.communityPost.count({ where: { AND: [await this.visibility.adminWhere(), { OR: [{ coverFileId: id }, { contribution: { coverFileId: id } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] }] } }) || await this.prisma.communityComment.count({ where: { post: await this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) {
       await this.visibility.auditAdminRead(userId, 'file', id)
       return file
     }

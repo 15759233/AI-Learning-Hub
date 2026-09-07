@@ -1,6 +1,7 @@
 import { createCommunityFixtures, demoArticles, demoChallenges, demoCourses, demoLabs, demoResourceHubCategories, demoResourceHubContributions, demoResources, demoStudents, demoThemes, lczCuratedPosts } from '@ai-learning-hub/demo-fixtures'
 import { communityOperations, type AuthUser, type CampusIdentityVerificationDto, type CommunityAuthorDto, type CommunityCommentDto, type CommunityContentBlock, type CommunityContextDto, type CommunityEligibilityDto, type CommunityNotificationDto, type CommunityOperation, type CommunityPostDetailDto, type CommunityPostInput, type CommunityProfileDto, type CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { randomId } from './random-id'
+import { mockCoverUrl, resetMockImages } from './community-images.mock'
 import { mockFixtureCover } from '../../media/catalog'
 import { defaultContentDetectionPolicy, detectContent, postDetectionInput, type ContentDetectionInput, type ContentDetectionResult } from '@ai-learning-hub/contracts'
 import { contentDetectionNotice } from '../../community/labels'
@@ -164,6 +165,7 @@ try {
 }
 const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification, pendingChanges, profileDetection, governance })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
 export const resetCommunityMock = () => {
+  resetMockImages()
   restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
   hidden.clear(); muted.clear(); blocked.clear(); following.clear(); cursors.clear(); initialFollowing.forEach((id) => following.add(id))
@@ -363,7 +365,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     const updated = { ...user, identityVerificationStatus: (value as CampusIdentityVerificationDto).status, communityWriteEnabled: (value as CampusIdentityVerificationDto).status === 'approved' }
     localStorage.setItem('community-demo-user', JSON.stringify(updated))
   } else if (root === 'drafts') {
-    if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, revision: p.revision, updatedAt: p.editedAt || p.publishedAt, input: { expectedRevision: p.revision, type: p.type, title: p.title || '', contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft', ...(p.contribution ? { contribution: { kind: p.contribution.kind, categoryId: p.contribution.categoryId, tags: p.contribution.tags, teachingReuseConsent: p.contribution.teachingReuseConsent, sourceName: p.contribution.sourceName, sourceUrl: p.contribution.sourceUrl, videoAssetId: p.contribution.videoAssetId, attachmentFileId: p.contribution.attachmentFileId, coverFileId: p.contribution.coverFileId } } : {}) } }))
+    if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, revision: p.revision, updatedAt: p.editedAt || p.publishedAt, input: { expectedRevision: p.revision, type: p.type, title: p.title || '', coverFileId: p.coverFileId, contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft', ...(p.contribution ? { contribution: { kind: p.contribution.kind, categoryId: p.contribution.categoryId, tags: p.contribution.tags, teachingReuseConsent: p.contribution.teachingReuseConsent, sourceName: p.contribution.sourceName, sourceUrl: p.contribution.sourceUrl, videoAssetId: p.contribution.videoAssetId, attachmentFileId: p.contribution.attachmentFileId, coverFileId: p.contribution.coverFileId } } : {}) } }))
     else { if (id && requirePost(id).status !== 'draft') throw new Error('不是草稿'); return mockCommunity<T>(id ? `/posts/${id}` : '/posts', method, body ? { ...body as CommunityPostInput, status: 'draft' } : undefined) }
   } else if (root === 'onboarding') {
     if (method === 'GET') value = [{ id: 'demo-school', name: 'AI 创客学院（本地演示）' }]
@@ -556,7 +558,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
         ...input.contribution,
         postId: savedId,
         category: demoResourceHubCategories.find((category) => category.id === input.contribution?.categoryId) || null,
-        coverUrl: post?.contribution?.coverUrl || null,
+        coverUrl: input.contribution.coverFileId ? mockCoverUrl(input.contribution.coverFileId) : post?.contribution?.coverFileId ? null : post?.contribution?.coverUrl || null,
         featured: post?.contribution?.featured || false,
         liveReplay: post?.contribution?.liveReplay || false,
         revision: (post?.contribution?.revision || 0) + 1,
@@ -578,7 +580,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
         attachment: input.contribution.kind === 'document' ? post?.contribution?.attachment || { id: input.contribution.attachmentFileId!, name: '本地演示资料.pdf', size: 120000, mimeType: 'application/pdf' } : null,
       } : post?.contribution
       const detection = input.status === 'published' ? checkMockContent(postDetectionInput(input.title, text(input.contentBlocks), input.contentBlocks, contribution)) : undefined
-      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: savedId, revision: (post?.revision || 0) + 1, type: input.type, status: detection?.action === 'review' ? 'pending_review' : input.status, detection, visibility: input.visibility, title: input.title || null, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), contribution, publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
+      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: savedId, revision: (post?.revision || 0) + 1, type: input.type, status: detection?.action === 'review' ? 'pending_review' : input.status, detection, visibility: input.visibility, title: input.title || null, coverFileId: input.coverFileId === undefined ? post?.coverFileId || null : input.coverFileId, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), contribution, publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
       posts = [saved, ...posts.filter((p) => p.id !== saved.id)]; value = saved
     } else value = id ? post : visible().filter((p) => (!url.searchParams.get('keyword') || `${p.title} ${p.body}`.includes(url.searchParams.get('keyword')!)) && (!url.searchParams.get('bindingId') || p.bindings.some((b) => b.id === url.searchParams.get('bindingId'))))
   }

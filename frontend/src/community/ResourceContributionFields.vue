@@ -5,6 +5,9 @@ import { storeToRefs } from 'pinia'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { resourceHubApi } from '../services/api/resourceHub'
 import { useCommunityAccess } from './composables/useCommunityAccess'
+import CommunityCoverField from './CommunityCoverField.vue'
+
+withDefaults(defineProps<{ showCover?: boolean }>(), { showCover: true })
 
 const editor = useCommunityDraft()
 const { availability, decision, requireWrite } = useCommunityAccess()
@@ -149,6 +152,7 @@ onMounted(async () => {
     <p v-if="contribution.kind !== 'article' && !uploadDecision.allowed" class="community-notice">{{ uploadDecision.message }}<span v-if="availability('upload')">{{ availability('upload') }}</span><RouterLink v-if="uploadDecision.nextAction" class="text-link" :to="uploadDecision.nextAction.route">{{ uploadDecision.nextAction.label }}</RouterLink></p>
     <div v-if="uploadStatus" class="resource-upload-state" role="status"><progress :value="uploadProgress" max="100" /><span>{{ uploadStatus }}</span><button v-if="cancelUpload" type="button" class="text-link" @click="cancelUpload()">取消上传</button></div>
     <p v-if="scanNotice" class="composer-privacy">{{ scanNotice }}</p>
+    <CommunityCoverField v-if="showCover" v-model="contribution.coverFileId" />
     <template v-if="contribution.kind === 'article'">
       <label>参考来源名称（选填）<input v-model="contribution.sourceName" maxlength="120" placeholder="原创内容可留空" /></label>
       <label>参考来源链接（选填）<input v-model="contribution.sourceUrl" type="url" maxlength="500" placeholder="https://…" /></label>
