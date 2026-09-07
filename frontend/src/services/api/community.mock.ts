@@ -4,6 +4,7 @@ import { randomId } from './random-id'
 import { mockFixtureCover } from '../../media/catalog'
 import { defaultContentDetectionPolicy, detectContent, postDetectionInput, type ContentDetectionInput, type ContentDetectionResult } from '@ai-learning-hub/contracts'
 import { contentDetectionNotice } from '../../community/labels'
+import { reportCategories, type LearningCollectionDto, type GovernanceAppealInput, type GovernanceMineDto, type GovernanceReportInput, type GovernanceTarget } from '@ai-learning-hub/contracts'
 
 export const checkMockContent = (input: ContentDetectionInput) => {
   const result = detectContent(input, defaultContentDetectionPolicy)
@@ -136,6 +137,7 @@ let bio = '', headline = '', location = '', websiteUrl = '', expertiseTopics: st
 let pendingChanges: CommunityProfileDto['pendingChanges'], profileDetection: ContentDetectionResult | undefined
 const initialVerification: CampusIdentityVerificationDto = { status: 'approved', submittedAt: '2026-08-30T08:00:00.000Z', reviewedAt: '2026-08-30T09:00:00.000Z', reviewReason: '演示账号固定审核结果', maskedRealName: '张*', maskedIdNumber: '3301**********1234', className: '计算机科学与技术 2026-1 班', studentNo: 'DEMO20260001', revision: 2 }
 let verification = structuredClone(initialVerification)
+let governance: GovernanceMineDto = { actions: [], reports: [], appeals: [], reviews: [] }
 const joinedAt = '2026-08-30T08:00:00.000Z'
 const storageKey = 'ai-learning-community:demo-v5'
 let restored = false
@@ -155,11 +157,12 @@ try {
     userRevision = stored.userRevision || 1; profileRevision = stored.profileRevision || 1
     pendingChanges = stored.pendingChanges; profileDetection = stored.profileDetection
     if (stored.verification) verification = stored.verification
+    if (stored.governance) governance = stored.governance
     authors[0].avatar = stored.avatar || null
   }
 } catch { /* 损坏的本地演示状态使用可重置的初始数据。 */ }
 }
-const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification, pendingChanges, profileDetection })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
+const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification, pendingChanges, profileDetection, governance })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
 export const resetCommunityMock = () => {
   restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
@@ -167,10 +170,12 @@ export const resetCommunityMock = () => {
   topics.forEach((topic) => { topic.following = false; topic.followerCount = 0 })
   bio = ''; headline = ''; location = ''; websiteUrl = ''; expertiseTopics = []; bannerUrl = null; pinnedPostId = null; allowAchievementDrafts = false; userRevision = 1; profileRevision = 1; verification = structuredClone(initialVerification); authors[0].avatar = null
   pendingChanges = undefined; profileDetection = undefined
+  governance = { actions: [], reports: [], appeals: [], reviews: [] }
   if (typeof localStorage !== 'undefined') localStorage.removeItem(storageKey)
 }
 const context = (): CommunityContextDto => ({ todayPlan: null, continueCourse: null, continueLab: null, currentChallenge: null, trendingTopics: topics.slice(0, 6), suggestedUsers: authors.filter((user) => user.verifiedType !== 'none'), needsInterests: topics.filter((t) => t.following).length < 3 })
-const visible = (ownDrafts = false) => posts.filter((p) => !hidden.has(p.id) && !muted.has(p.author.id) && !blocked.has(p.author.id) && (p.status === 'published' || p.status === 'limited' || (ownDrafts && ['draft', 'pending_review'].includes(p.status) && p.author.id === authors[0].id)))
+export const mockTargetUnavailable = (type: string, id: string, authorId: string) => governance.actions.some((row) => !row.revokedAt && (!row.expiresAt || Date.parse(row.expiresAt) > Date.now()) && (row.action === 'ban' && authorId === authors[0].id || row.action === 'takedown' && row.target.id === id && (row.target.type === type || ['post', 'resource'].includes(type) && ['post', 'resource'].includes(row.target.type))))
+const visible = (ownDrafts = false) => posts.filter((p) => !mockTargetUnavailable('post', p.id, p.author.id) && !hidden.has(p.id) && !muted.has(p.author.id) && !blocked.has(p.author.id) && (p.status === 'published' || p.status === 'limited' || (ownDrafts && ['draft', 'pending_review'].includes(p.status) && p.author.id === authors[0].id)))
 export const mockResourceContributionPosts = (ownDrafts = false) => {
   restoreMock()
   return structuredClone(visible(ownDrafts).filter((post) => !!post.contribution))
@@ -190,6 +195,11 @@ const mockEligibility = (): CommunityEligibilityDto => {
   const operations = Object.fromEntries(communityOperations.map((operation) => [operation, operation === 'read' || allowed
     ? { allowed: true, reasonCode: null, message: null, availableAt: null, nextAction: null }
     : { allowed: false, reasonCode: 'COMMUNITY_VERIFICATION_REQUIRED', message: '需要完成校园实名认证后才能参与社区公开操作。', availableAt: null, nextAction: { label: '前往认证', route: '/community/verification' } }])) as CommunityEligibilityDto['operations']
+  for (const action of governance.actions) {
+    if (action.revokedAt || action.expiresAt && Date.parse(action.expiresAt) <= Date.now()) continue
+    const keys = action.action === 'ban' ? communityOperations : action.action === 'mute' ? ['post', 'comment'] : action.action === 'restrict' ? action.operations : []
+    for (const key of keys) if (communityOperations.includes(key as CommunityOperation)) operations[key as CommunityOperation] = { allowed: false, reasonCode: action.action === 'ban' ? 'ACCOUNT_UNAVAILABLE' : 'COMMUNITY_OPERATION_RESTRICTED', message: action.reason, availableAt: action.expiresAt, nextAction: null }
+  }
   return {
     canRead: operations.read.allowed,
     canPost: operations.post.allowed,
@@ -206,7 +216,7 @@ export const assertMockCommunityWrite = (operation: CommunityOperation = 'post')
 const filtered = (url: URL) => visible().filter((p) => (!url.searchParams.get('type') || url.searchParams.get('type') === 'all' || p.type === url.searchParams.get('type')) && (url.searchParams.get('mode') !== 'following' || following.has(p.author.id) || p.topics.some((t) => topics.find((topic) => topic.id === t.id)?.following)))
 const profileFor = (id: string): CommunityProfileDto => {
   const user = authors.find((author) => author.id === id)
-  if (!user) throw new Error('用户不存在或不可见')
+  if (!user || mockTargetUnavailable('profile', id, id)) throw new Error('用户不存在或不可见')
   const own = id === authors[0].id
   const publicPosts = visible().filter((post) => post.author.id === id)
   const pinned = publicPosts.find((post) => post.id === pinnedPostId && post.status === 'published' && post.visibility === 'public') || null
@@ -290,6 +300,43 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
   }
   const url = new URL(path, 'http://mock.invalid'), parts = url.pathname.split('/').filter(Boolean)
   const [root, id, action, fourth] = parts
+  if (root === 'governance') {
+    if (id === 'mine' && method === 'GET') return structuredClone(governance) as T
+    if (id === 'reports' && method === 'POST') {
+      assertMockCommunityWrite('report')
+      const input = body as GovernanceReportInput & { targetType: GovernanceTarget; targetId: string }
+      if (!['post', 'comment', 'resource', 'collection', 'profile'].includes(input.targetType) || !Object.hasOwn(reportCategories, input.category) || !input.reason?.trim() || input.reason.length > 100 || (input.description?.length || 0) > 1000) throw new Error('举报对象、分类或说明无效')
+      const post = posts.find((row) => row.id === input.targetId), comment = comments.find((row) => row.id === input.targetId), profile = authors.find((row) => row.id === input.targetId)
+      if ((input.targetType === 'post' || input.targetType === 'resource') && (!post || !visible().some((row) => row.id === post.id))) throw new Error('内容当前不可举报')
+      if (input.targetType === 'resource' && !post?.contribution) throw new Error('资源作品不存在')
+      if (input.targetType === 'comment' && (!comment || comment.deleted || !visible().some((row) => row.id === comment.postId) || mockTargetUnavailable('comment', comment.id, comment.author.id))) throw new Error('评论当前不可举报')
+      if (input.targetType === 'profile' && (!profile || mockTargetUnavailable('profile', profile.id, profile.id))) throw new Error('资料不存在')
+      const collection = input.targetType === 'collection' ? await (await import('./resourceHub.mock')).mockResourceHub<LearningCollectionDto>(`/collections/${input.targetId}`) : null
+      if (collection && (collection.visibility !== 'community' || collection.contentStatus !== 'published' || mockTargetUnavailable('collection', collection.id, collection.owner.id))) throw new Error('合集当前不可举报')
+      const revision = post?.revision || comment?.revision || collection?.revision || (profile?.id === authors[0].id ? profileRevision : 1)
+      const targetType = post?.contribution ? 'resource' : input.targetType
+      const duplicate = governance.reports.find((row) => row.target.id === input.targetId && row.target.type === targetType && row.target.revision === revision)
+      if (duplicate) return { reported: true, id: duplicate.id } as T
+      if ((input.evidence?.length || 0) > 3 || input.evidence?.some((url) => !/^https:\/\//.test(url))) throw new Error('证据最多3条，必须为 HTTPS 链接')
+      const reportId = randomId(), now = new Date().toISOString()
+      governance.reports.unshift({ id: reportId, revision: 1, target: { type: targetType, id: input.targetId, revision, title: post?.title || comment?.body || profile?.displayName || collection?.name || '', available: true, route: null }, category: input.category, reason: input.reason, description: input.description || '', evidence: input.evidence || [], status: 'pending', assignedToId: null, dueAt: new Date(Date.now() + 48 * 3600000).toISOString(), createdAt: now, resultReason: '', actionId: null })
+      persist(); return { reported: true, id: reportId } as T
+    }
+    if (id === 'appeals' && method === 'POST') {
+      const input = body as GovernanceAppealInput
+      if ((input.evidence?.length || 0) > 3 || input.evidence?.some((url) => !/^https:\/\//.test(url) || url.length > 500) || input.reason.length > 1000) throw new Error('申诉说明或证据无效')
+      if (!!input.actionId === !!input.reviewId || input.reason.trim().length < 10) throw new Error('请关联具体处罚或修订并填写至少10字理由')
+      if (input.actionId ? !governance.actions.some((row) => row.id === input.actionId && !row.revokedAt) : !governance.reviews.some((row) => row.id === input.reviewId && row.status === 'rejected')) throw new Error('没有可申诉的本人记录')
+      const same = governance.appeals.filter((row) => input.actionId ? row.actionId === input.actionId : row.reviewId === input.reviewId)
+      const duplicate = same.find((row) => row.reason === input.reason.trim() && JSON.stringify(row.evidence) === JSON.stringify(input.evidence || []))
+      if (duplicate) return duplicate as T
+      if (same.some((row) => ['pending', 'reviewing'].includes(row.status))) throw new Error('此事项已有待处理申诉')
+      if (governance.appeals.filter((row) => Date.now() - Date.parse(row.createdAt) < 86400000).length >= 5) throw new Error('今日申诉次数已达上限')
+      const row = { id: randomId(), revision: 1, actionId: input.actionId || null, reviewId: input.reviewId || null, reason: input.reason.trim(), evidence: input.evidence || [], status: 'pending' as const, resultReason: '', assignedToId: null, dueAt: new Date(Date.now() + 48 * 3600000).toISOString(), createdAt: new Date().toISOString() }
+      governance.appeals.unshift(row); persist(); return row as T
+    }
+    throw new Error('不支持的演示治理操作')
+  }
   const readonlyWrite = root === 'verification' || root === 'notifications' || root === 'signals' || method === 'DELETE' || ['hide', 'not-interested', 'mute', 'block', 'unpublish'].includes(action || '') || (root === 'feed' && (id === 'impressions' || id === 'dwell'))
   const draftWrite = root === 'drafts' || root === 'posts' && (body as CommunityPostInput | undefined)?.status === 'draft'
   if (method !== 'GET' && !readonlyWrite && !draftWrite && root !== 'onboarding') {
@@ -316,7 +363,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     const updated = { ...user, identityVerificationStatus: (value as CampusIdentityVerificationDto).status, communityWriteEnabled: (value as CampusIdentityVerificationDto).status === 'approved' }
     localStorage.setItem('community-demo-user', JSON.stringify(updated))
   } else if (root === 'drafts') {
-    if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, revision: p.revision, updatedAt: p.editedAt || p.publishedAt, input: { type: p.type, title: p.title || '', contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft' } }))
+    if (method === 'GET') value = visible(true).filter((p) => p.status === 'draft' && p.author.id === authors[0].id).map((p) => ({ id: p.id, revision: p.revision, updatedAt: p.editedAt || p.publishedAt, input: { expectedRevision: p.revision, type: p.type, title: p.title || '', contentBlocks: p.contentBlocks, bindings: p.bindings.map((b) => ({ type: b.type, id: b.id })), topicIds: p.topics.map((t) => t.id), visibility: p.visibility, status: 'draft', ...(p.contribution ? { contribution: { kind: p.contribution.kind, categoryId: p.contribution.categoryId, tags: p.contribution.tags, teachingReuseConsent: p.contribution.teachingReuseConsent, sourceName: p.contribution.sourceName, sourceUrl: p.contribution.sourceUrl, videoAssetId: p.contribution.videoAssetId, attachmentFileId: p.contribution.attachmentFileId, coverFileId: p.contribution.coverFileId } } : {}) } }))
     else { if (id && requirePost(id).status !== 'draft') throw new Error('不是草稿'); return mockCommunity<T>(id ? `/posts/${id}` : '/posts', method, body ? { ...body as CommunityPostInput, status: 'draft' } : undefined) }
   } else if (root === 'onboarding') {
     if (method === 'GET') value = [{ id: 'demo-school', name: 'AI 创客学院（本地演示）' }]
@@ -446,7 +493,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     if (!comment || muted.has(comment.author.id)) throw new Error('评论不存在')
     const post = requirePost(comment.postId)
     if (action && ((comment.status || 'published') !== 'published' || !['published', 'limited'].includes(post.status))) throw new Error('待审评论不能进行公开互动')
-    if (action === 'report') return { reported: true } as T
+    if (action === 'report') return mockCommunity<T>('/governance/reports', 'POST', { ...body as object, targetType: 'comment', targetId: id, category: 'other' })
     if (!action) requireOwner(comment.author.id)
     if (action === 'like') { comment.liked = method === 'PUT'; comment.likes = comment.liked ? 1 : 0 }
     else if (method === 'DELETE') { if (!comment.deleted && (comment.status || 'published') === 'published') post.stats.comments--; comment.deleted = true; comment.body = '该评论已删除'; comment.contentBlocks = []; comment.accepted = false; if (post.question?.acceptedCommentId === id) { post.question.acceptedCommentId = null; post.question.status = 'open' } }
@@ -490,7 +537,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
       if (post!.viewerState[state] !== active) post!.stats[stat] += active ? 1 : -1
       post!.viewerState[state] = active; value = { active }
     } else if (action === 'hide' || action === 'not-interested') { visible().filter((p) => action === 'hide' ? p.id === id : p.type === post!.type).forEach((p) => hidden.add(p.id)); value = {} }
-    else if (action === 'report') value = { reported: true }
+    else if (action === 'report') return mockCommunity<T>('/governance/reports', 'POST', { ...body as object, targetType: 'post', targetId: id, category: 'other' })
     else if (action === 'unpublish') {
       requireOwner(post!.author.id)
       if (post!.status !== 'published') throw new Error('只有已发布动态可以下架')

@@ -2,12 +2,19 @@ import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContext
 import { dataMode, request, writeRequest } from './client'
 import { assertMockCommunityWrite, mockCommunity } from './community.mock'
 import { randomId } from './random-id'
+import type { GovernanceAppealInput, GovernanceMineDto, GovernanceReportInput, GovernanceTarget } from '@ai-learning-hub/contracts'
 import type { AuthUser, CampusIdentityVerificationDto, CampusIdentityVerificationInput, CommunityDraftDto, CommunitySearchResultDto, CommunitySearchType, IdentityVerificationStatus, OnboardingInput } from '@ai-learning-hub/contracts'
 const demoImages = new Map<string, File>()
 const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Promise<T> => dataMode === 'api'
   ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
   : mockCommunity<T>(path, method, body)
 export const communityApi = {
+  governance: (page = 1) => call<GovernanceMineDto>(`/governance/mine?page=${page}`),
+  reportTarget: (targetType: GovernanceTarget, targetId: string, input: GovernanceReportInput) => call<{ reported: boolean; id: string }>('/governance/reports', 'POST', { targetType, targetId, ...input }),
+  appeal: (input: GovernanceAppealInput) => call('/governance/appeals', 'POST', input),
+  recoverySession: (identifier: string, password: string) => request<{ token: string; expiresIn: number }>('/community/recovery/session', { method: 'POST', body: JSON.stringify({ identifier, password }) }, false),
+  recoveryMine: (token: string, page = 1) => request<GovernanceMineDto>(`/community/recovery/mine?page=${page}`, { headers: { authorization: `Bearer ${token}` } }, false),
+  recoveryAppeal: (token: string, input: GovernanceAppealInput) => request('/community/recovery/appeals', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(input) }, false),
   feed: (mode: CommunityFeedMode, type: CommunityPostType | 'all', cursor?: string) => call<CommunityFeedDto>(`/feed?${new URLSearchParams({ mode, type, ...(cursor ? { cursor } : {}) })}`),
   updates: (since: string, mode: CommunityFeedMode, type: CommunityPostType | 'all') => call<{ count: number }>(`/feed/updates?${new URLSearchParams({ since, mode, type })}`),
   context: () => call<CommunityContextDto>('/context'),

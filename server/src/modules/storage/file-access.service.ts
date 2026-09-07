@@ -1,3 +1,4 @@
+import { visibleComment, visibleProfile } from '../community/governance-policy'
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { CommunityVisibilityPolicyService } from '../community/visibility.service'
@@ -24,8 +25,8 @@ export class FileAccessService {
         { snapshot: { path: ['visibility'], equals: 'public' } },
       ] } } } }),
       this.prisma.communityPost.count({ where: { AND: [await this.visibility.where(userId), { contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } }] } }),
-      this.prisma.communityComment.count({ where: { deletedAt: null, status: 'published', author: { status: 'active' }, authorId: { notIn: (await this.visibility.authorExclusions(userId)).authors }, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] }, post: await this.visibility.where(userId) } }),
-      this.prisma.communityProfile.count({ where: { user: { status: 'active' }, OR: [{ avatarFileId: id }, { bannerFileId: id }] } }),
+      this.prisma.communityComment.count({ where: { deletedAt: null, status: 'published', ...visibleComment(), authorId: { notIn: (await this.visibility.authorExclusions(userId)).authors }, contentBlocks: { array_contains: [{ type: 'image', fileId: id }] }, post: await this.visibility.where(userId) } }),
+      this.prisma.communityProfile.count({ where: { user: visibleProfile(), OR: [{ avatarFileId: id }, { bannerFileId: id }] } }),
     ])
     if (!resource && !post && !comment && !profile) throw new NotFoundException('文件不存在或无权访问')
     return file

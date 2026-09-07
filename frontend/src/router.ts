@@ -10,6 +10,8 @@ const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: (to, _from, saved) => to.meta.layout === 'community' || (to.meta.layout === 'adaptive' && useAuthStore().user) ? false : saved || { top: 0 },
   routes: [
+    { path: '/community/governance', component: () => import('./community/CommunityGovernanceView.vue'), meta: { title: '处理与申诉', layout: 'community', communityMode: 'wide', requiresAuth: true } },
+    { path: '/account-recovery', component: () => import('./community/CommunityGovernanceView.vue'), meta: { title: '账号恢复与申诉', layout: 'public', requiresAuth: false } },
     { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { title: 'AI 创客社区', layout: 'landing', requiresAuth: false } },
     { path: '/welcome', name: 'welcome', component: () => import('./views/HomeView.vue'), meta: { title: 'AI 创客社区', layout: 'landing', requiresAuth: false } },
     { path: '/community', component: () => import('./community/CommunityFeedView.vue'), meta: { title: '学习社区', requiresAuth: true, layout: 'community', communityMode: 'feed' } },

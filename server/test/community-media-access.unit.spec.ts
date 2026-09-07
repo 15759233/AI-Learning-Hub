@@ -44,7 +44,7 @@ describe('社区媒体地址不能绕过后续内容复核', () => {
     const storage = { open: vi.fn(async () => ({ ...file, stream })), getSignedUrl: vi.fn() }
     const prisma = { resource: { findMany: vi.fn(async () => []) } }
     const response = { set: vi.fn(), redirect: vi.fn() }
-    const controller = new LocalFileController(prisma as never, new ConfigService(), fileAccess as never, storage as never)
+    const controller = new LocalFileController(prisma as never, fileAccess as never, storage as never)
     const result = await controller.download({ id: 'synthetic-viewer' } as never, file.id, response as never)
     expect(result).toBeInstanceOf(StreamableFile)
     const chunks: Buffer[] = []
@@ -66,7 +66,7 @@ describe('社区媒体地址不能绕过后续内容复核', () => {
     const storage = { open: vi.fn(async () => { throw new NotFoundException('文件不存在') }), getSignedUrl: vi.fn() }
     const prisma = { resource: { findMany: vi.fn() } }
     const fileAccess = { assert: vi.fn(async () => ({ id: 'synthetic-file', storageDriver: 's3' })) }
-    const controller = new LocalFileController(prisma as never, new ConfigService(), fileAccess as never, storage as never)
+    const controller = new LocalFileController(prisma as never, fileAccess as never, storage as never)
     await expect(controller.download({ id: 'synthetic-viewer' } as never, 'synthetic-file', { set: vi.fn() } as never)).rejects.toThrow('文件不存在')
     expect(storage.open).toHaveBeenCalledOnce()
     expect(prisma.resource.findMany).not.toHaveBeenCalled()
@@ -83,7 +83,7 @@ describe('社区媒体地址不能绕过后续内容复核', () => {
     const stream = Readable.from(Buffer.from([1, 2, 3]))
     const storage = { open: vi.fn(async () => ({ stream })) }
     const prisma = { resource: { findMany: vi.fn(async () => { throw new Error('合成数据库失败') }) } }
-    const controller = new LocalFileController(prisma as never, new ConfigService(), { assert: vi.fn() } as never, storage as never)
+    const controller = new LocalFileController(prisma as never, { assert: vi.fn() } as never, storage as never)
     await expect(controller.download({ id: 'synthetic-viewer' } as never, 'synthetic-file', { set: vi.fn() } as never)).rejects.toThrow('合成数据库失败')
     expect(stream.destroyed).toBe(true)
   })

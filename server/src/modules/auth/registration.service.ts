@@ -175,7 +175,7 @@ export class RegistrationService {
     await this.throttle('forgot', email, ip)
     if (!this.mailAvailable()) throw new ServiceUnavailableException('邮件服务尚未配置，请联系管理员')
     const user = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
-    if (user?.status === 'active') {
+    if (user) {
       const token = randomBytes(48).toString('base64url')
       await this.prisma.$transaction(async (tx) => {
         await tx.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } })
@@ -207,9 +207,9 @@ export class RegistrationService {
     const passwordHash = await hash(password, 12)
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.passwordResetToken.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
-      if (!row || row.usedAt || row.expiresAt <= new Date() || row.user.status !== 'active') throw new BadRequestException('重置链接已失效')
+      if (!row || row.usedAt || row.expiresAt <= new Date()) throw new BadRequestException('重置链接已失效')
       await lockUser(tx, row.userId)
-      if (!await tx.user.count({ where: { id: row.userId, status: 'active' } })) throw new BadRequestException('账号已失效')
+      if (!await tx.user.count({ where: { id: row.userId } })) throw new BadRequestException('账号已失效')
       const claimed = await tx.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } })
       if (!claimed.count) throw new BadRequestException('重置链接已使用')
       await tx.user.update({ where: { id: row.userId }, data: { passwordHash, sessionVersion: { increment: 1 } } })

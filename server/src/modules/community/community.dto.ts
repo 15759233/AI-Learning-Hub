@@ -80,6 +80,8 @@ export class CommunityQueryDto {
   @IsOptional() @IsString() @MaxLength(100) bindingId?: string
 }
 export class ReportDto {
+  @IsOptional() @IsIn(['harassment', 'privacy', 'spam', 'copyright', 'misinformation', 'safety', 'other']) category = 'other'
+  @IsOptional() @IsArray() @ArrayMaxSize(3) @ArrayUnique() @IsString({ each: true }) @MaxLength(500, { each: true }) @IsUrl({ protocols: ['https'], require_protocol: true, disallow_auth: true }, { each: true }) evidence: string[] = []
   @IsString() @Length(2, 100) @Matches(/\S/) reason!: string
   @IsOptional() @IsString() @MaxLength(1000) description = ''
 }
@@ -165,6 +167,7 @@ export class PolicyDto {
 }
 const restrictableOperations = communityOperations.filter((operation): operation is Exclude<CommunityOperation, 'read'> => operation !== 'read')
 export class RestrictionCreateDto {
+  @IsString() @Length(2, 100) @Matches(/\S/) ruleCode!: string
   @IsString() @Length(1, 100) userId!: string
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(7) @ArrayUnique() @IsIn(restrictableOperations, { each: true }) operations!: Array<typeof restrictableOperations[number]>
   @IsOptional() @IsDateString() startsAt?: string
@@ -172,6 +175,7 @@ export class RestrictionCreateDto {
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
 }
 export class RestrictionUpdateDto {
+  @IsString() @Length(2, 100) @Matches(/\S/) ruleCode!: string
   @IsInt() @Min(1) expectedRevision!: number
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(7) @ArrayUnique() @IsIn(restrictableOperations, { each: true }) operations!: Array<typeof restrictableOperations[number]>
   @IsOptional() @IsDateString() startsAt?: string

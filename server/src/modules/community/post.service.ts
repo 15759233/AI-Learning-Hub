@@ -12,6 +12,7 @@ import type { CommunityQueryDto, PostDto } from './community.dto'
 import { actionEvent, idempotency, lockFileReferences, postRevision } from '../../common/persistence'
 import { ContentDetectionService } from './content-detection.service'
 import { postDetectionInput } from '@ai-learning-hub/contracts'
+import { availableAccount, visibleComment } from './governance-policy'
 
 export const postInclude = {
   author: { include: authorInclude }, bindings: { orderBy: { sortOrder: 'asc' as const } },
@@ -241,12 +242,15 @@ export class CommunityPostService {
   }
   async mapMany(userId: string, rows: HydratedPost[]): Promise<CommunityPostDetailDto[]> {
     const ids = rows.map((row) => row.id)
-    const [reactions, bookmarks, follows, topicFollows, teachers] = await Promise.all([
+    const commentWhere = { postId: { in: ids }, deletedAt: null, status: 'published' as const, ...visibleComment() }
+    const [reactions, bookmarks, follows, topicFollows, teachers, commentCounts, acceptedComments] = await Promise.all([
       this.prisma.communityPostReaction.findMany({ where: { userId, postId: { in: ids } } }),
       this.prisma.communityBookmark.findMany({ where: { userId, postId: { in: ids } } }),
       this.prisma.communityUserFollow.findMany({ where: { followerId: userId, followeeId: { in: rows.map((row) => row.authorId) } } }),
       this.prisma.communityTopicFollow.findMany({ where: { userId } }),
-      this.prisma.communityComment.findMany({ where: { postId: { in: ids }, deletedAt: null, status: 'published', author: { status: 'active', communityProfile: { verifiedType: { in: ['teacher', 'mentor'] } }, userRoles: { some: { role: { code: { in: ['teacher', 'mentor'] } } } } } }, select: { postId: true } }),
+      this.prisma.communityComment.findMany({ where: { ...commentWhere, author: { ...availableAccount(), communityProfile: { verifiedType: { in: ['teacher', 'mentor'] } }, userRoles: { some: { role: { code: { in: ['teacher', 'mentor'] } } } } } }, select: { postId: true } }),
+      this.prisma.communityComment.groupBy({ by: ['postId'], where: commentWhere, _count: { _all: true } }),
+      this.prisma.communityComment.findMany({ where: { ...commentWhere, id: { in: rows.flatMap((row) => row.question?.acceptedCommentId ? [row.question.acceptedCommentId] : []) } }, select: { id: true } }),
     ])
     const references = await this.refs.resolveMany(rows.flatMap((row) => row.bindings.map((ref) => ({ type: ref.targetType as CommunityBindingInput['type'], id: ref.targetId }))), userId)
     // 他人的 LabRun 永远不进入普通 DTO，最多展示它关联的公开实训。
@@ -264,10 +268,10 @@ export class CommunityPostService {
         return references.get(`${ref.targetType}:${ref.targetId}`) || { type: ref.targetType as CommunityBindingInput['type'], id: ref.targetId, title: '关联内容已下架', route: '', status: 'unavailable' }
       }).filter((ref): ref is NonNullable<typeof ref> => !!ref).map((ref) => [`${ref.type}:${ref.id}`, ref])).values()],
       topics: row.topics.filter((ref) => ref.topic.status === 'active').map(({ topic }): CommunityTopicDto => ({ ...topic, following: topicFollows.some((follow) => follow.topicId === topic.id) })),
-      stats: { likes: row.likeCount, useful: row.usefulCount, comments: row.commentCount, bookmarks: row.bookmarkCount },
+      stats: { likes: row.likeCount, useful: row.usefulCount, comments: commentCounts.find((count) => count.postId === row.id)?._count._all || 0, bookmarks: row.bookmarkCount },
       viewerState: { liked: reactions.some((r) => r.postId === row.id && r.reactionType === 'like'), markedUseful: reactions.some((r) => r.postId === row.id && r.reactionType === 'useful'), bookmarked: bookmarks.some((b) => b.postId === row.id), followingAuthor: follows.some((f) => f.followeeId === row.authorId) },
       recommendationReasons: [], labels: row.status === 'limited' ? [...row.labels, '内容正在人工复核'] : row.labels,
-      question: row.question ? { status: row.question.status as 'open' | 'solved' | 'closed', acceptedCommentId: row.question.acceptedCommentId, teacherAnswered: teachers.some((c) => c.postId === row.id) } : null,
+      question: row.question ? { status: row.question.status === 'solved' && !acceptedComments.some((comment) => comment.id === row.question!.acceptedCommentId) ? 'open' : row.question.status as 'open' | 'solved' | 'closed', acceptedCommentId: acceptedComments.some((comment) => comment.id === row.question!.acceptedCommentId) ? row.question.acceptedCommentId : null, teacherAnswered: teachers.some((c) => c.postId === row.id) } : null,
       publishedAt: (row.publishedAt || row.createdAt).toISOString(), editedAt: row.editedAt?.toISOString() || null,
       contribution: row.contribution ? this.contribution(row.contribution) : null,
     }))

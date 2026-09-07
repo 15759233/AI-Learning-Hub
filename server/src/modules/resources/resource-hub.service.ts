@@ -1,3 +1,4 @@
+import { activeSanction, availableAccount, visibleCollection } from '../community/governance-policy'
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
@@ -256,7 +257,7 @@ export class ResourceHubService {
     const coverFileId = stored.coverFileId || stored.videoAsset?.posterFileId || post.contentBlocks.find((block) => block.type === 'image')?.fileId
     const coverUrl = coverFileId ? this.mediaUrl(coverFileId, userId) : null
     const collection = await this.prisma.learningCollectionItem.findFirst({
-      where: { contributionPostId: postId, collection: { OR: [{ ownerId: userId }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }] } },
+      where: { contributionPostId: postId, collection: { OR: [{ ownerId: userId }, visibleCollection()] } },
       orderBy: { createdAt: 'asc' },
       select: { collectionId: true },
     })
@@ -299,7 +300,7 @@ export class ResourceHubService {
     const [items, collections] = await Promise.all([
       this.allItems(viewerId),
       this.prisma.learningCollection.findMany({
-        where: { ownerId: userId, ...(viewerId === userId ? {} : { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }) },
+        where: { ownerId: userId, ...(viewerId === userId ? {} : visibleCollection()) },
         include: { owner: { include: authorInclude }, items: { where: { contribution: { post: visiblePost } }, include: { contribution: { include: { videoAsset: true } } } } },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       }),
@@ -324,7 +325,7 @@ export class ResourceHubService {
     const row = await this.prisma.learningCollection.findFirst({
       where: {
         ...(id === 'watch-later' ? { ownerId: userId, systemKind: 'watch_later' } : { id }),
-        OR: [{ ownerId: userId }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }],
+        OR: [{ ownerId: userId }, visibleCollection()],
       },
       include: {
         owner: { include: authorInclude },
@@ -453,7 +454,8 @@ export class ResourceHubService {
     const asset = await this.visibleAsset(userId, assetId, true)
     const expires = Math.floor(Date.now() / 1000) + 6 * 60 * 60
     const token = this.sign('play', assetId, userId, expires)
-    const poster = asset.posterFileId ? this.mediaUrl(asset.posterFileId, userId) : null
+    const posterFileId = asset.contribution?.coverFileId || asset.posterFileId
+    const poster = posterFileId ? this.mediaUrl(posterFileId, userId) : null
     const progress = await this.prisma.resourceWatchProgress.findUnique({ where: { userId_videoAssetId: { userId, videoAssetId: assetId } } })
     return {
       assetId,
@@ -526,7 +528,7 @@ export class ResourceHubService {
       this.prisma.resourceContribution.count({
         where: {
           postId: { in: input.bannerPostIds },
-          post: { status: 'published', visibility: 'public', deletedAt: null, author: { status: 'active' } },
+          post: { status: 'published', visibility: 'public', deletedAt: null, author: availableAccount(), moderationActions: { none: activeSanction('takedown') } },
           OR: [{ kind: { not: 'video' } }, { videoAsset: { is: { status: 'ready' } } }],
         },
       }),

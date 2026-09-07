@@ -182,10 +182,22 @@ export class UsersService {
   }
   async status(actor: AuthUser, id: string, input: UserStatusUpdateDto) {
     return this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       await this.assertTarget(actor, id, tx)
+      const current = await tx.user.findUniqueOrThrow({ where: { id } })
+      if ((input.status !== 'active' || current.status !== 'active') && !actor.roles.includes('super_admin')) throw new ForbiddenException('设置或撤销无限期账号停用需要超级管理员；临时封禁请通过治理工作台设置期限')
+      if (current.status === input.status) throw new ConflictException('账号已经处于此状态，不重复处置')
       if (!input.expectedRevision) throw new BadRequestException('请携带账号版本')
       if (!(await tx.user.updateMany({ where: { id, revision: input.expectedRevision }, data: { status: input.status, revision: { increment: 1 }, ...(input.status !== 'active' ? { sessionVersion: { increment: 1 } } : {}) } })).count) throw new ConflictException('账号资料已变化，请刷新')
       if (input.status !== 'active') await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })
+      // 新的账号状态决定替代旧的手工状态记录；独立治理封禁继续生效。
+      await tx.communityModerationAction.updateMany({ where: { subjectId: id, action: 'ban', revokedAt: null, metadata: { path: ['accountStatus'], not: Prisma.DbNull } }, data: { revokedAt: new Date(), revokedById: actor.id, revokeReason: input.reason, revision: { increment: 1 } } })
+      if (input.status !== 'active') {
+        const action = await tx.communityModerationAction.create({ data: { actorId: actor.id, subjectId: id, targetType: 'profile', targetId: id, action: 'ban', reason: input.reason, ruleCode: '账号管理：无限期停用', metadata: { accountStatus: input.status, accountRevision: input.expectedRevision + 1 } } })
+        await tx.userNotification.create({ data: { recipientId: id, notificationType: 'moderation', entityType: 'moderation_action', entityId: action.id, dedupeKey: `governance:${id}:moderation_action:${action.id}`, payload: { message: `账号已停用：${input.reason}。可通过账号恢复与申诉查看依据。` } } })
+      } else {
+        await tx.userNotification.create({ data: { recipientId: id, notificationType: 'moderation', entityType: 'account_restored', entityId: id, dedupeKey: `governance:${id}:account_restored:${input.expectedRevision}`, payload: { message: `账号状态已恢复：${input.reason}。其他有效处罚仍需分别复核。` } } })
+      }
       await this.audit(tx, actor.id, id, `user_${input.status}`, input.reason)
       return { updated: true }
     })

@@ -11,6 +11,7 @@ import CommunityAvatar from '../components/base/CommunityAvatar.vue'
 import CommunityBindingCard from './CommunityBindingCard.vue'
 import CommunityBlocks from './CommunityBlocks.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
+import CommunityReportDialog from './CommunityReportDialog.vue'
 import { postLabels, badgeLabels, relativeTime, contentDetectionNotice } from './labels'
 import { useCommunityAccess } from './composables/useCommunityAccess'
 const props = defineProps<{ post: CommunityPostSummaryDto; detail?: boolean; requestId?: string; showPin?: boolean; pinned?: boolean }>()
@@ -19,7 +20,7 @@ const auth = useAuthStore(), store = useCommunityStore(), router = useRouter()
 const { requireWrite } = useCommunityAccess()
 const followingAuthor = computed(() => store.authorFollowing[props.post.author.id] ?? props.post.viewerState.followingAuthor)
 const detectionNotice = computed(() => contentDetectionNotice(props.post.detection) || (props.post.status === 'pending_review' ? '投稿已保存，等待人工复核，尚未公开。' : ''))
-const pending = ref(false), error = ref(''), reportOpen = ref(false), deleteOpen = ref(false), unpublishOpen = ref(false), reason = ref('内容不准确'), description = ref(''), expanded = ref(false), overflowed = ref(false)
+const pending = ref(false), error = ref(''), reportOpen = ref(false), deleteOpen = ref(false), unpublishOpen = ref(false), expanded = ref(false), overflowed = ref(false)
 const act = async (action: () => Promise<unknown>, refresh = true, operation: CommunityOperation = 'interaction') => { if (!requireWrite(operation)) return; pending.value = true; error.value = ''; try { await action(); if (refresh) emit('changed') } catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败' } finally { pending.value = false } }
 const openAction = (target: 'report' | 'delete' | 'unpublish') => {
   if (!requireWrite(target === 'report' ? 'report' : 'read')) return
@@ -35,7 +36,6 @@ const reaction = (kind: 'like' | 'useful' | 'bookmark') => {
 const hide = (kind: 'hide' | 'not-interested' | 'mute' | 'block') => act(async () => { await communityApi.feedback(['mute', 'block'].includes(kind) ? props.post.author.id : props.post.id, kind); store.removePost(props.post.id); emit('hidden', props.post.id) }, false, 'read')
 const remove = () => act(async () => { await communityApi.remove(props.post.id); deleteOpen.value = false; store.removePost(props.post.id); emit('hidden', props.post.id) }, false, 'read')
 const unpublish = () => act(async () => { await communityApi.unpublish(props.post.id); unpublishOpen.value = false; store.removePost(props.post.id); emit('hidden', props.post.id) }, false, 'read')
-const report = () => act(async () => { await communityApi.report(props.post.id, reason.value, description.value); reportOpen.value = false }, true, 'report')
 const edit = () => act(async () => { const post = await communityApi.post(props.post.id); store.openComposer({ expectedRevision: post.revision, type: post.type, title: post.title || '', contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, status: post.status === 'draft' ? 'draft' : 'published', contribution: post.contribution ? { kind: post.contribution.kind, categoryId: post.contribution.categoryId, tags: post.contribution.tags, teachingReuseConsent: post.contribution.teachingReuseConsent, sourceName: post.contribution.sourceName, sourceUrl: post.contribution.sourceUrl, videoAssetId: post.contribution.videoAssetId, attachmentFileId: post.contribution.attachmentFileId, coverFileId: post.contribution.coverFileId } : undefined }, post.id) }, true, 'read')
 const openPost = () => { void communityApi.signals({ eventType: 'community_post_click', targetType: 'post', targetId: props.post.id, requestId: props.requestId }).catch(() => undefined) }
 const bodyClick = (event: MouseEvent) => {
@@ -65,7 +65,7 @@ const bindingClick = (binding: CommunityBindingDto) => {
     <button :class="{ selected: post.viewerState.markedUseful }" :aria-pressed="post.viewerState.markedUseful" :aria-label="`有帮助 ${post.stats.useful}`" :disabled="store.operations[`${post.id}:useful`]" @click="reaction('useful')"><AppIcon name="check" :size="18" /><span>{{ post.stats.useful || '有帮助' }}</span></button>
     <button :class="{ selected: post.viewerState.bookmarked }" :aria-pressed="post.viewerState.bookmarked" :aria-label="`收藏 ${post.stats.bookmarks}`" :disabled="store.operations[`${post.id}:bookmark`]" @click="reaction('bookmark')"><AppIcon name="bookmark" :size="18" /><span>{{ post.stats.bookmarks || '收藏' }}</span></button>
   </footer><p v-if="error" class="community-error" role="alert">{{ error }}</p>
-  <AppDialog v-model="reportOpen" title="举报内容"><form class="dialog-form" @submit.prevent="report"><label>举报原因<select v-model="reason"><option>内容不准确</option><option>不当内容或骚扰</option><option>泄露个人信息</option><option>垃圾广告</option><option>版权问题</option></select></label><label>补充说明<textarea v-model="description" maxlength="1000" rows="3" /></label><p>举报信息仅供有权限的审核人员处理，不向作者公开。</p><button class="button primary" :disabled="pending">提交举报</button></form></AppDialog>
+  <CommunityReportDialog v-model="reportOpen" :target-type="post.contribution ? 'resource' : 'post'" :target-id="post.id" @submitted="emit('changed')" />
   <AppDialog v-model="unpublishOpen" title="下架自己的资源作品"><p>作品将从资源中心、社区、作者页和合集公开入口撤下，并保留为私人草稿，之后仍可编辑并重新发布。</p><button class="button primary" :disabled="pending" @click="unpublish">确认下架</button></AppDialog>
   <AppDialog v-model="deleteOpen" title="删除自己的动态"><p>动态将不再对社区显示，讨论记录保留用于审计。</p><button class="button primary" :disabled="pending" @click="remove">确认删除</button></AppDialog>
 </article></template>

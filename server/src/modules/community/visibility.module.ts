@@ -3,5 +3,6 @@ import { CommunityUploadGuard, CommunityVisibilityPolicyService } from './visibi
 import { ContentDetectionService } from './content-detection.service'
 import { CommunityNotificationService } from './notification.service'
 import { SignalsModule } from '../signals/signals.module'
-@Module({ imports: [SignalsModule], providers: [CommunityVisibilityPolicyService, CommunityUploadGuard, ContentDetectionService, CommunityNotificationService], exports: [CommunityVisibilityPolicyService, CommunityUploadGuard, ContentDetectionService, CommunityNotificationService] })
+import { CommunityGovernanceService } from './governance.service'
+@Module({ imports: [SignalsModule], providers: [CommunityVisibilityPolicyService, CommunityUploadGuard, ContentDetectionService, CommunityNotificationService, CommunityGovernanceService], exports: [CommunityVisibilityPolicyService, CommunityUploadGuard, ContentDetectionService, CommunityNotificationService, CommunityGovernanceService] })
 export class CommunityVisibilityModule {}

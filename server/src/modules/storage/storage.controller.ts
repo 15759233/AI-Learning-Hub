@@ -1,9 +1,6 @@
+import { visibleProfile } from '../community/governance-policy'
 import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { FileInterceptor } from '@nestjs/platform-express'
-import { createReadStream } from 'node:fs'
-import { access } from 'node:fs/promises'
-import * as path from 'node:path'
 import type { Response } from 'express'
 import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -45,16 +42,11 @@ export class StorageController {
 
 @Controller('files')
 export class LocalFileController {
-  private readonly root: string
-
   constructor(
     private readonly prisma: PrismaService,
-    config: ConfigService,
     private readonly fileAccess: FileAccessService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
-  ) {
-    this.root = path.resolve(config.get('STORAGE_LOCAL_PATH') || './var/uploads')
-  }
+  ) {}
 
   @Get('profile/:id')
   @RawResponse()
@@ -64,27 +56,21 @@ export class LocalFileController {
         id,
         visibility: 'public',
         OR: [
-          { profileAvatars: { some: { user: { status: 'active' } } } },
-          { profileBanners: { some: { user: { status: 'active' } } } },
+          { profileAvatars: { some: { user: visibleProfile() } } },
+          { profileBanners: { some: { user: visibleProfile() } } },
         ],
       },
     })
     if (!file) throw new NotFoundException('文件不存在')
-    if (file.storageDriver !== 'local') {
-      response.redirect(await this.storage.getSignedUrl(id))
-      return
-    }
-    const target = path.resolve(this.root, file.objectKey)
-    if (!target.startsWith(`${this.root}${path.sep}`)) throw new NotFoundException('文件不存在')
-    try { await access(target) } catch { throw new NotFoundException('文件不存在') }
+    const opened = await this.storage.open(id)
     response.set({
       'Content-Type': file.mimeType,
       'Content-Length': String(file.size),
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     })
-    return new StreamableFile(createReadStream(target))
+    return new StreamableFile(opened.stream)
   }
 
   @Get(':id/download')

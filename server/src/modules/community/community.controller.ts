@@ -1,3 +1,4 @@
+import { CommunityGovernanceService } from './governance.service'
 import { BadRequestException, Body, Controller, Delete, Get, Headers, Inject, Ip, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -25,7 +26,7 @@ import { reserveIdempotency } from '../../common/persistence'
 @Controller('community')
 @UseGuards(AuthGuard)
 export class CommunityController {
-  constructor(private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly interactions: CommunityInteractionService, private readonly notifications: CommunityNotificationService, private readonly context: CommunityContextService, private readonly feed: LearningFeedPipeline, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService, private readonly prisma: PrismaService, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly files: FileAccessService, private readonly searchService: CommunitySearchService) {}
+  constructor(private readonly governance: CommunityGovernanceService, private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly interactions: CommunityInteractionService, private readonly notifications: CommunityNotificationService, private readonly context: CommunityContextService, private readonly feed: LearningFeedPipeline, private readonly visibility: CommunityVisibilityPolicyService, private readonly signals: SignalsService, private readonly prisma: PrismaService, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly files: FileAccessService, private readonly searchService: CommunitySearchService) {}
   @Get('search') search(@CurrentUser() user: AuthUser, @Query() input: SearchDto) { return this.searchService.search(user.id, input) }
   @Get('onboarding/schools') schools() { return this.prisma.school.findMany({ where: { status: 'active' }, select: { id: true, name: true, departments: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } }) }
   @Post('onboarding') onboarding(@CurrentUser() user: AuthUser, @Body() input: OnboardingDto) { return this.context.onboarding(user.id, input) }
@@ -131,8 +132,8 @@ export class CommunityController {
   @Get('topics/:slug/posts') topicPosts(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Query() query: CommunityQueryDto) { return this.posts.list(user.id, query, { topics: { some: { topic: { slug, status: 'active' } } } }) }
   @Put('topics/:id/follow') followTopic(@CurrentUser() user: AuthUser, @Param('id') id: string, @Ip() ip: string) { return this.interactions.follow(user.id, id, true, true, ip) }
   @Delete('topics/:id/follow') unfollowTopic(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.interactions.follow(user.id, id, true, false) }
-  @Post('posts/:id/report') report(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ReportDto, @Ip() ip: string) { return this.interactions.report(user.id, id, input, false, ip) }
-  @Post('comments/:id/report') reportComment(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ReportDto, @Ip() ip: string) { return this.interactions.report(user.id, id, input, true, ip) }
+  @Post('posts/:id/report') report(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ReportDto, @Ip() ip: string) { return this.governance.report(user.id, 'post', id, input, ip) }
+  @Post('comments/:id/report') reportComment(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ReportDto, @Ip() ip: string) { return this.governance.report(user.id, 'comment', id, input, ip) }
   @Post('posts/:id/hide') hide(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.interactions.feedback(user.id, id, 'hide') }
   @Post('posts/:id/not-interested') notInterested(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.interactions.feedback(user.id, id, 'not_interested') }
   @Post('users/:id/mute') mute(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.interactions.feedback(user.id, id, 'mute_author') }

@@ -122,11 +122,14 @@ export class ContentDetectionService {
 
   async decide(actorId: string, id: string, input: { expectedRevision: number; ruleVersion: number; action: 'approve' | 'reject'; reason: string }) {
     if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || !Number.isSafeInteger(input.ruleVersion) || input.ruleVersion < 1 || !['approve', 'reject'].includes(input.action) || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500) throw new BadRequestException('请提供准确的内容修订、规则版本、复核动作和理由')
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction((tx) => this.decideTx(tx, actorId, id, input))
+  }
+  async decideTx(tx: Prisma.TransactionClient, actorId: string, id: string, input: { expectedRevision: number; ruleVersion: number; action: 'approve' | 'reject'; reason: string }) {
       await lockFileReferences(tx)
       await tx.$queryRaw`SELECT pg_advisory_xact_lock_shared(hashtext('content_detection_policy'))::text`
       const review = await tx.contentReview.findUnique({ where: { id } })
       if (!review || review.status !== 'pending' || review.contentRevision !== input.expectedRevision || review.ruleVersion !== input.ruleVersion) throw new ConflictException('复核记录已变化，请读取当前修订，不能审核旧版本')
+      if (review.assignedToId && review.assignedToId !== actorId) throw new ConflictException('此复核已被其他管理员领取')
       if ((await this.policy(tx)).version !== review.ruleVersion) throw new ConflictException('检测规则已有新版本，请编辑后重新提交检测')
       const approved = input.action === 'approve'
       if (approved && !await tx.user.count({ where: { id: review.authorId, status: 'active' } })) throw new BadRequestException('作者账号当前不可用，不能放行')
@@ -173,6 +176,5 @@ export class ContentDetectionService {
       await tx.communityModerationAction.create({ data: { actorId, targetType: review.targetType, targetId: review.targetId, action: approved ? 'content_review_approved' : 'content_review_rejected', reason: input.reason.trim(), metadata: { reviewId: id, contentRevision: review.contentRevision, ruleVersion: review.ruleVersion, exemptionScope: 'this_revision_only', mediaReview: 'not_performed' } } })
       await this.notifications.send(review.authorId, actorId, 'moderation', 'content_review', id, tx)
       return { id, status: approved ? 'approved' : 'rejected', targetType: review.targetType, targetId: review.targetId, contentRevision: review.contentRevision, ruleVersion: review.ruleVersion }
-    })
   }
 }

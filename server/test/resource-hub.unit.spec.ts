@@ -226,7 +226,7 @@ describe('资源持久化边界', () => {
     const findFirst = vi.fn(async () => null)
     const service = hub({ learningCollection: { findFirst } })
     await expect(service.collection('synthetic-viewer', 'synthetic-collection')).rejects.toThrow('不可见')
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'synthetic-collection', OR: [{ ownerId: 'synthetic-viewer' }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }] } }))
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'synthetic-collection', OR: [{ ownerId: 'synthetic-viewer' }, expect.objectContaining({ visibility: 'community', contentStatus: 'published', owner: expect.objectContaining({ status: 'active', receivedModeration: { none: expect.objectContaining({ action: 'ban', revokedAt: null }) } }), moderationActions: { none: expect.objectContaining({ action: 'takedown', revokedAt: null }) } })] } }))
   })
 
   it('消融：检测结果不改变合集可见性时不重复写状态，仍记录本修订的检测', async () => {
@@ -318,7 +318,7 @@ describe('资源持久化边界', () => {
     await expect(hub(prisma).updateConfig({ revision: 0, bannerPostIds: ['post-a'], sectionCategoryCodes: ['ai-foundation'] })).rejects.toThrow('必须公开、已发布、作者有效且视频已处理完成')
     expect(prisma.resourceContribution.count).toHaveBeenCalledWith({ where: {
       postId: { in: ['post-a'] },
-      post: { status: 'published', visibility: 'public', deletedAt: null, author: { status: 'active' } },
+      post: expect.objectContaining({ status: 'published', visibility: 'public', deletedAt: null, author: expect.objectContaining({ status: 'active', receivedModeration: { none: expect.objectContaining({ action: 'ban', revokedAt: null }) } }), moderationActions: { none: expect.objectContaining({ action: 'takedown', revokedAt: null }) } }),
       OR: [{ kind: { not: 'video' } }, { videoAsset: { is: { status: 'ready' } } }],
     } })
   })

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { communityOperations, type CommunityEligibilityDecisionDto, type CommunityEligibilityDto, type CommunityEligibilityPolicyDto, type CommunityOperation, type CommunityOperationRestrictionDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { idempotency, rateLimit } from '../../common/persistence'
+import { activeSanction, availableAccount } from './governance-policy'
 
 const protectedOperations = communityOperations.filter((operation): operation is Exclude<CommunityOperation, 'read'> => operation !== 'read')
 const trustedRoles = new Set(['super_admin', 'admin', 'community_official', 'teacher', 'mentor'])
@@ -37,7 +38,7 @@ export class CommunityVisibilityPolicyService {
     await this.prisma.auditLog.create({ data: { actorId, action: 'restricted_content_read', targetType, targetId } })
   }
   async viewer(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { communityProfile: true, school: true, userRoles: { include: { role: true } } } })
+    const user = await this.prisma.user.findUnique({ where: { id: userId, AND: [availableAccount()] }, include: { communityProfile: true, school: true, userRoles: { include: { role: true } } } })
     if (!user || user.status !== 'active') throw new ForbiddenException('账号当前不可使用社区')
     return user
   }
@@ -50,12 +51,12 @@ export class CommunityVisibilityPolicyService {
       quotas: Object.fromEntries(Object.entries(quotaDefaults).map(([key, fallback]) => [key, normalizedQuota(quotas[key], fallback, quotaBounds[key as keyof typeof quotaBounds])])) as CommunityEligibilityPolicyDto['quotas'],
     }
   }
-  async eligibility(userId: string): Promise<CommunityEligibilityDto> {
-    const now = await this.databaseNow()
+  async eligibility(userId: string, tx: Prisma.TransactionClient = this.prisma): Promise<CommunityEligibilityDto> {
+    const now = await this.databaseNow(tx)
     const [user, registration, restrictions] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: userId }, include: { communityProfile: true, identityVerification: true, userRoles: { include: { role: true } } } }),
-      this.prisma.systemSetting.findUnique({ where: { key: 'registration' } }),
-      this.prisma.communityOperationRestriction.findMany({ where: { userId, revokedAt: null, startsAt: { lte: now }, endsAt: { gt: now } }, orderBy: [{ endsAt: 'desc' }, { id: 'desc' }] }),
+      tx.user.findUnique({ where: { id: userId, AND: [availableAccount()] }, include: { communityProfile: true, identityVerification: true, userRoles: { include: { role: true } } } }),
+      tx.systemSetting.findUnique({ where: { key: 'registration' } }),
+      tx.communityOperationRestriction.findMany({ where: { userId, revokedAt: null, startsAt: { lte: now }, endsAt: { gt: now } }, orderBy: [{ endsAt: 'desc' }, { id: 'desc' }] }),
     ])
     const decisions = Object.fromEntries(communityOperations.map((operation) => [operation, allowed()])) as CommunityEligibilityDto['operations']
     let base: CommunityEligibilityDecisionDto | null = null
@@ -88,11 +89,12 @@ export class CommunityVisibilityPolicyService {
       evaluatedAt: now.toISOString(),
     }
   }
-  async assertOperation(userId: string, operation: CommunityOperation) {
-    const decision = (await this.eligibility(userId)).operations[operation]
+  async assertOperation(userId: string, operation: CommunityOperation, tx: Prisma.TransactionClient = this.prisma) {
+    const decision = (await this.eligibility(userId, tx)).operations[operation]
     if (!decision.allowed) throw new ForbiddenException({ message: decision.message, errorCode: decision.reasonCode, availableAt: decision.availableAt, nextAction: decision.nextAction })
   }
   async consumeQuota(tx: Prisma.TransactionClient, userId: string, operation: keyof CommunityEligibilityPolicyDto['quotas'], ip?: string) {
+    await this.assertOperation(userId, operation, tx)
     const quota = (await this.policy(tx)).quotas[operation]
     await rateLimit(tx, userId, `community:${operation}:account`, quota.limit, quota.windowSeconds * 1000, `${this.operationLabel(operation)}过于频繁，请稍后再试`, 'COMMUNITY_RATE_LIMITED')
     if (ip) await rateLimit(tx, ip, `community:${operation}:ip`, Math.min(10_000, quota.limit * 20), quota.windowSeconds * 1000, '当前网络的社区操作过于频繁，请稍后再试', 'COMMUNITY_RATE_LIMITED')
@@ -113,42 +115,6 @@ export class CommunityVisibilityPolicyService {
     ])
     return rows.map((row) => this.restrictionDto(row, now))
   }
-  async createRestriction(actorId: string, input: { userId: string; operations: Exclude<CommunityOperation, 'read'>[]; startsAt?: string; endsAt: string; reason: string }) {
-    const startsAt = input.startsAt ? new Date(input.startsAt) : await this.databaseNow(), endsAt = new Date(input.endsAt), operationList = [...input.operations].sort()
-    this.assertRestrictionWindow(startsAt, endsAt)
-    const id = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-restriction:${input.userId}`},0))::text`
-      if (!await tx.user.count({ where: { id: input.userId } })) throw new BadRequestException('限制对象不存在')
-      const existing = await tx.communityOperationRestriction.findFirst({ where: { userId: input.userId, operations: { equals: operationList }, reason: input.reason.trim(), endsAt, revokedAt: null, ...(input.startsAt ? { startsAt } : { startsAt: { lte: startsAt } }) } })
-      if (existing) return existing.id
-      const row = await tx.communityOperationRestriction.create({ data: { userId: input.userId, operations: operationList, reason: input.reason.trim(), startsAt, endsAt, createdById: actorId } })
-      await tx.communityModerationAction.create({ data: { actorId, targetType: 'community_restriction', targetId: row.id, action: 'create', reason: row.reason, metadata: { userId: row.userId, operations: row.operations, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() } } })
-      return row.id
-    })
-    return (await this.restrictions()).find((row) => row.id === id)!
-  }
-  async updateRestriction(actorId: string, id: string, input: { expectedRevision: number; operations: Exclude<CommunityOperation, 'read'>[]; startsAt?: string; endsAt: string; reason: string }) {
-    const endsAt = new Date(input.endsAt), operationList = [...input.operations].sort()
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-restriction:${id}`},0))::text`
-      const current = await tx.communityOperationRestriction.findUnique({ where: { id } })
-      if (!current || current.revokedAt) throw new BadRequestException('限制记录不存在或已撤销')
-      const startsAt = input.startsAt ? new Date(input.startsAt) : current.startsAt
-      this.assertRestrictionWindow(startsAt, endsAt)
-      const changed = await tx.communityOperationRestriction.updateMany({ where: { id, revision: input.expectedRevision, revokedAt: null }, data: { operations: operationList, startsAt, endsAt, reason: input.reason.trim(), revision: { increment: 1 } } })
-      if (!changed.count) throw new ConflictException('限制记录已变化，请刷新')
-      await tx.communityModerationAction.create({ data: { actorId, targetType: 'community_restriction', targetId: id, action: 'update', reason: input.reason.trim(), metadata: { operations: operationList, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() } } })
-      return { updated: true }
-    })
-  }
-  async revokeRestriction(actorId: string, id: string, expectedRevision: number, reason: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const changed = await tx.communityOperationRestriction.updateMany({ where: { id, revision: expectedRevision, revokedAt: null }, data: { revokedAt: new Date(), revokedById: actorId, revision: { increment: 1 } } })
-      if (!changed.count) throw new ConflictException('限制记录已变化或已经撤销，请刷新')
-      await tx.communityModerationAction.create({ data: { actorId, targetType: 'community_restriction', targetId: id, action: 'revoke', reason } })
-      return { revoked: true }
-    })
-  }
   async updateEligibilityPolicy(actorId: string, input: { expectedRevision: number; operation: keyof CommunityEligibilityPolicyDto['quotas']; limit: number; windowSeconds: number; reason: string }) {
     const bounds = quotaBounds[input.operation]
     if (input.limit < bounds.limit[0] || input.limit > bounds.limit[1] || input.windowSeconds < bounds.windowSeconds[0] || input.windowSeconds > bounds.windowSeconds[1]) throw new BadRequestException('限流参数超出当前操作的安全范围')
@@ -163,10 +129,6 @@ export class CommunityVisibilityPolicyService {
       await tx.communityModerationAction.create({ data: { actorId, targetType: 'community_eligibility_policy', targetId: input.operation, action: 'configure', reason: input.reason, metadata: { limit: input.limit, windowSeconds: input.windowSeconds, revision: stored.revision } } })
       return { ...policy, revision: stored.revision }
     })
-  }
-  private assertRestrictionWindow(startsAt: Date, endsAt: Date) {
-    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) throw new BadRequestException('限制结束时间必须晚于开始时间')
-    if (endsAt.getTime() - startsAt.getTime() > 366 * 86400000) throw new BadRequestException('单次功能限制最长为366天')
   }
   private async databaseNow(tx: Pick<Prisma.TransactionClient, '$queryRaw'> = this.prisma) {
     const [row] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT NOW() AS now`
@@ -189,7 +151,7 @@ export class CommunityVisibilityPolicyService {
   async where(userId: string, ownDrafts = false): Promise<Prisma.CommunityPostWhereInput> {
     const [viewer, feedback] = await Promise.all([this.viewer(userId), this.authorExclusions(userId)])
     return {
-      deletedAt: null, author: { status: 'active' },
+      deletedAt: null, author: availableAccount(), moderationActions: { none: activeSanction('takedown') },
       authorId: { notIn: feedback.authors }, id: { notIn: feedback.posts }, postType: { notIn: feedback.types },
       AND: [
         { OR: [{ status: { in: ['published', 'limited'] } }, ...(ownDrafts ? [{ authorId: userId, status: { in: ['draft' as const, 'pending_review' as const] } }] : [])] },

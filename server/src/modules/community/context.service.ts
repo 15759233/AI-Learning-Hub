@@ -1,3 +1,4 @@
+import { availableAccount, visibleProfile, visibleComment } from './governance-policy'
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import type { CommunityBindingInput, CommunityBindingContextDto, CommunityContextDto, CommunityProfileDto, CommunityProfileRelationsDto, CommunityProfileTimelineDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -98,7 +99,7 @@ export class CommunityContextService {
   }
   async profile(userId: string, username: string): Promise<CommunityProfileDto> {
     await this.visibility.viewer(userId)
-    const user = await this.prisma.user.findFirst({ where: { id: username, status: 'active' }, include: authorInclude })
+    const user = await this.prisma.user.findFirst({ where: { id: username, ...(username === userId ? availableAccount() : visibleProfile()) }, include: authorInclude })
     if (!user) throw new NotFoundException('用户不存在')
     const relations = user.id === userId ? [] : await this.prisma.communityFeedback.findMany({
       where: { OR: [{ userId, targetId: user.id, feedbackType: { in: ['mute_author', 'block'] } }, { userId: user.id, targetId: userId, feedbackType: 'block' }] },
@@ -114,10 +115,10 @@ export class CommunityContextService {
       this.prisma.communityUserFollow.count({ where: { followerId: userId, followeeId: user.id } }),
       this.prisma.communityUserFollow.count({ where: { followerId: user.id, followeeId: userId } }),
       this.prisma.communityPost.count({ where: { AND: [visibleWhere, { authorId: user.id }] } }),
-      this.prisma.communityComment.count({ where: { authorId: user.id, deletedAt: null, status: 'published', post: visibleWhere } }),
+      this.prisma.communityComment.count({ where: { authorId: user.id, deletedAt: null, status: 'published', ...visibleComment(), post: visibleWhere } }),
       this.prisma.communityPost.aggregate({ where: { AND: [visibleWhere, { authorId: user.id }] }, _sum: { likeCount: true } }),
-      this.prisma.communityUserFollow.count({ where: { followeeId: user.id, followerId: { notIn: excluded }, follower: { status: 'active' } } }),
-      this.prisma.communityUserFollow.count({ where: { followerId: user.id, followeeId: { notIn: excluded }, followee: { status: 'active' } } }),
+      this.prisma.communityUserFollow.count({ where: { followeeId: user.id, followerId: { notIn: excluded }, follower: visibleProfile() } }),
+      this.prisma.communityUserFollow.count({ where: { followerId: user.id, followeeId: { notIn: excluded }, followee: visibleProfile() } }),
       user.communityProfile?.pinnedPostId ? this.prisma.communityPost.findFirst({
         where: { AND: [visibleWhere, { id: user.communityProfile.pinnedPostId, authorId: user.id, status: 'published', visibility: 'public', deletedAt: null }] },
         include: postInclude,
@@ -299,7 +300,7 @@ export class CommunityContextService {
     const excluded = (await this.visibility.authorExclusions(userId)).authors
     const rows = await this.prisma.communityUserFollow.findMany({
       where: {
-        ...(kind === 'followers' ? { followeeId: profile.id, followerId: { notIn: excluded }, follower: { status: 'active' as const } } : { followerId: profile.id, followeeId: { notIn: excluded }, followee: { status: 'active' as const } }),
+        ...(kind === 'followers' ? { followeeId: profile.id, followerId: { notIn: excluded }, follower: visibleProfile() } : { followerId: profile.id, followeeId: { notIn: excluded }, followee: visibleProfile() }),
         ...(after ? { OR: [{ createdAt: { lt: after } }, { createdAt: after, ...(kind === 'followers' ? { followerId: { lt: cursor!.id } } : { followeeId: { lt: cursor!.id } }) }] } : {}),
       },
       include: { follower: { include: authorInclude }, followee: { include: authorInclude } },
@@ -345,7 +346,7 @@ export class CommunityContextService {
       this.prisma.labRun.findFirst({ where: { userId, status: { in: ['ready', 'running', 'stopped'] }, lab: { status: 'published', deletedAt: null } }, orderBy: { startedAt: 'desc' } }),
       this.prisma.challenge.findFirst({ where: { status: 'published', deletedAt: null }, orderBy: { publishedAt: 'desc' } }),
       this.topics(userId),
-      this.prisma.user.findMany({ where: { id: { not: userId, notIn: excluded.authors }, status: 'active', communityProfile: { verifiedType: { in: ['teacher', 'mentor', 'official'] } } }, include: authorInclude, take: 4 }),
+      this.prisma.user.findMany({ where: { id: { not: userId, notIn: excluded.authors }, ...visibleProfile(), communityProfile: { verifiedType: { in: ['teacher', 'mentor', 'official'] } } }, include: authorInclude, take: 4 }),
       this.prisma.communityTopicFollow.count({ where: { userId } }),
       this.prisma.notification.findFirst({ where: { status: 'published', audience: { in: ['all', 'student'] } }, orderBy: { publishedAt: 'desc' } }),
     ])

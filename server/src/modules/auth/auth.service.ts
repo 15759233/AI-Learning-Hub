@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { actionEvent, lockUser, rateLimit } from '../../common/persistence'
 import { isEmail } from 'class-validator'
+import { activeSanction } from '../community/governance-policy'
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 @Injectable()
@@ -22,6 +23,28 @@ export class AuthService {
     private readonly wechat: WechatMiniappService,
   ) {}
 
+  async recoverySession(identifier: string, password: string, ip: string) {
+    const normalized = identifier.trim().toLowerCase()
+    await rateLimit(this.prisma, normalized, 'recovery:account', 5, 15 * 60000, '账号恢复验证过于频繁，请稍后重试')
+    await rateLimit(this.prisma, ip, 'recovery:ip', 50, 15 * 60000, '当前网络验证过于频繁，请稍后重试')
+    const user = await this.prisma.user.findFirst({ where: isEmail(normalized) ? { email: { equals: normalized, mode: 'insensitive' } } : { username: { equals: normalized, mode: 'insensitive' } } })
+    if (!user?.passwordHash || !await compare(password, user.passwordHash)) throw new UnauthorizedException('账号或密码错误')
+    // 使用现有密码验证，只签发申诉范围的短凭据；不恢复账号、不签发普通会话。
+    const token = await this.jwt.signAsync({ sub: user.id, purpose: 'community_recovery', sessionVersion: user.sessionVersion }, { secret: this.config.getOrThrow('JWT_SECRET'), expiresIn: 600, audience: 'community-recovery' })
+    await this.prisma.auditLog.create({ data: { actorId: user.id, action: 'account_recovery_verified', targetType: 'user', targetId: user.id } })
+    return { token, expiresIn: 600 }
+  }
+  async recoveryIdentity(authorization?: string) {
+    try {
+      const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+      if (!token) throw new Error()
+      const payload = await this.jwt.verifyAsync<{ sub: string; purpose: string; sessionVersion: number }>(token, { secret: this.config.getOrThrow('JWT_SECRET'), audience: 'community-recovery' })
+      if (payload.purpose !== 'community_recovery' || !payload.sub) throw new Error()
+      const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { sessionVersion: true } })
+      if (!user || user.sessionVersion !== payload.sessionVersion) throw new Error()
+      return payload.sub
+    } catch { throw new UnauthorizedException('恢复凭据已失效，请重新验证账号') }
+  }
   async login(identifier: string, password: string, clientKey: string, ip: string) {
     identifier = identifier.trim()
     const normalizedIdentifier = identifier.toLowerCase()
@@ -67,6 +90,7 @@ export class AuthService {
     await lockUser(tx, user.id)
     const current = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: authUserInclude })
     if (current.status !== 'active' || current.sessionVersion !== (user.sessionVersion || 0)) throw new UnauthorizedException('账号会话已变化，请重新登录')
+    if (await tx.communityModerationAction.count({ where: { ...activeSanction('ban'), subjectId: user.id } })) throw new UnauthorizedException('账号被限制登录，请通过账号恢复与申诉入口查看处理决定')
     user = authUserDto(current)
     const accessTtl = this.config.get<string>('ACCESS_TOKEN_TTL') || '15m'
     const accessToken = await this.jwt.signAsync(user, {

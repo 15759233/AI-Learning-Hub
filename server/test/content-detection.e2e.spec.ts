@@ -183,7 +183,10 @@ describe('内容检测增量真实HTTP与数据库验收', () => {
     for (const [target, id] of [['post', post.data.id], ['comment', comment.data.id]] as const) {
       const old = await review(target, id)
       const path = `/admin/community/${target}/${id}/moderate`
-      expect((await request(path, admin, 'POST', { action: 'hide', reason: '隐藏合成待审案例' })).status).toBe(201)
+      expect((await request(path, admin, 'POST', { action: 'hide', reason: '旧入口不能绕过治理依据' })).status).toBe(400)
+      // 模拟升级前已经隐藏的历史行；新增下架已由治理E2E验证。
+      if (target === 'post') await db.communityPost.update({ where: { id }, data: { status: 'hidden', revision: { increment: 1 } } })
+      else await db.communityComment.update({ where: { id }, data: { status: 'hidden', revision: { increment: 1 } } })
       const restored = await request(path, admin, 'POST', { action: 'restore', reason: '重检合成待审案例' })
       expect(restored.status).toBe(201)
       expect(restored.data.detection.action).toBe('review')

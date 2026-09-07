@@ -1,3 +1,6 @@
+import { CommunityGovernanceService } from './governance.service'
+import { GovernanceDecisionDto } from './governance.dto'
+import { activeSanction, availableAccount } from './governance-policy'
 import { BadRequestException, Body, ConflictException, Controller, Get, Headers, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
@@ -27,7 +30,7 @@ import type { CommunityContentBlock, ContentDetectionResult } from '@ai-learning
 @UseGuards(AuthGuard, PermissionsGuard)
 @Permissions('community.read')
 export class CommunityAdminController {
-  constructor(private readonly prisma: PrismaService, private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly notifications: CommunityNotificationService, private readonly feed: LearningFeedPipeline, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly admin: CommunityAdminService, private readonly visibility: CommunityVisibilityPolicyService, private readonly detection: ContentDetectionService) {}
+  constructor(private readonly prisma: PrismaService, private readonly posts: CommunityPostService, private readonly comments: CommunityCommentService, private readonly notifications: CommunityNotificationService, private readonly feed: LearningFeedPipeline, @Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly admin: CommunityAdminService, private readonly visibility: CommunityVisibilityPolicyService, private readonly detection: ContentDetectionService, private readonly governance: CommunityGovernanceService) {}
   @Get('content-policy') @Permissions('community.moderate')
   contentPolicy() { return this.detection.policy() }
   @Get('content-policy/history') @Permissions('community.moderate')
@@ -55,7 +58,7 @@ export class CommunityAdminController {
     if (!row) throw new BadRequestException('复核记录不存在')
     if (row.targetType === 'resource' && !user.permissions.includes('resource.read')) throw new BadRequestException('读取资源复核还需要资源查看权限')
     // 复用现有正文，只读取与复核一致的修订；旧修订不得展示新内容让审核人误判。
-    const post = row.targetType === 'post' ? await this.prisma.communityPost.findFirst({ where: { id: row.targetId, revision: row.contentRevision }, include: { contribution: true } }) : null
+    const post = row.targetType === 'post' ? await this.prisma.communityPost.findFirst({ where: { id: row.targetId, revision: row.contentRevision, status: { not: 'draft' } }, include: { contribution: true } }) : null
     await this.visibility.auditAdminRead(user.id, 'content_review', id)
     return { ...row, payload: row.targetType === 'post' ? post ? postDetectionInput(post.title, post.plainText, post.contentBlocks as CommunityContentBlock[], post.contribution, post.labels) : null : row.payload, contentAvailable: row.targetType !== 'post' || !!post }
   }
@@ -98,6 +101,7 @@ export class CommunityAdminController {
     if (!row || !reviewableDraft && !await this.prisma.communityPost.count({ where: { id, ...await this.visibility.adminWhere() } })) throw new BadRequestException('动态不存在或为私人草稿')
     if (reviewableDraft || ['pending_review', 'hidden', 'removed'].includes(row.status)) await this.visibility.auditAdminRead(user.id, 'post', id)
     const reports = user.permissions.includes('community.report.manage') ? await this.prisma.communityReport.findMany({ where: { OR: [{ postId: id }, { comment: { postId: id } }] }, select: { id: true, postId: true, commentId: true, reason: true, description: true, status: true, createdAt: true } }) : []
+    if (reports.length) await this.visibility.auditAdminRead(user.id, 'report', id)
     let recommendation = null
     if (user.permissions.includes('community.feed.manage')) {
       const session = await this.prisma.communityFeedSession.findFirst({ where: { entries: { array_contains: [{ type: 'post', id }] } }, orderBy: { createdAt: 'desc' } })
@@ -130,44 +134,26 @@ export class CommunityAdminController {
     })
   }
   @Get('reports') @Permissions('community.report.manage')
-  reports(@Query() query: AdminCommunityQuery) { return this.admin.reports(query) }
+  reports(@CurrentUser() user: AuthUser, @Query() query: AdminCommunityQuery) { return this.admin.reports(user.id, query) }
   @Post('reports/:id/handle') @Permissions('community.report.manage', 'community.moderate')
-  async handle(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ModerationDto) {
-    const report = await this.prisma.communityReport.findUnique({ where: { id } })
-    if (!report) throw new BadRequestException('举报不存在')
-    await this.prisma.$transaction(async (tx) => {
-      await lockFileReferences(tx)
-      await tx.$queryRaw`SELECT id FROM community_reports WHERE id = ${id} FOR UPDATE`
-      const current = await tx.communityReport.findUniqueOrThrow({ where: { id } })
-      if (!['pending', 'reviewing'].includes(current.status)) throw new ConflictException('举报已经处理，请刷新')
-      if (input.action !== 'reject') await this.moderateTx(user, report.commentId ? 'comment' : 'post', report.commentId || report.postId!, input, tx)
-      await tx.communityReport.update({ where: { id }, data: { status: input.action === 'reject' ? 'rejected' : 'resolved', handledBy: user.id, handledAt: new Date() } })
-      await tx.communityModerationAction.create({ data: { actorId: user.id, targetType: 'report', targetId: id, action: input.action, reason: input.reason } })
-    })
-    return { handled: true }
-  }
+  handle(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: GovernanceDecisionDto) { return this.governance.decideReport(user, id, input) }
   @Post(':target/:id/moderate') @Permissions('community.moderate')
   async moderate(@CurrentUser() user: AuthUser, @Param('target') target: string, @Param('id') id: string, @Body() input: ModerationDto) {
     return this.prisma.$transaction((tx) => this.moderateTx(user, target, id, input, tx))
   }
   private async moderateTx(user: AuthUser, target: string, id: string, input: ModerationDto, tx: Prisma.TransactionClient) {
     await lockFileReferences(tx)
+    if (['hide', 'remove', 'disable_author'].includes(input.action)) throw new BadRequestException('下架和封禁请使用治理工作台，提交规则依据、期限及内容版本')
+    if (input.action === 'restore' && await tx.communityModerationAction.count({ where: { ...activeSanction(), targetId: id, action: { in: ['takedown', 'ban'] } } })) throw new ConflictException('仍有有效处罚，请通过对应处罚或申诉撤销')
     let detection: ContentDetectionResult | undefined
     if (!['post', 'comment'].includes(target) || input.action === 'reject') throw new BadRequestException('处理对象或操作不合法')
-    if (input.action === 'disable_author' && !user.permissions.includes('platform.manage')) throw new BadRequestException('处理作者需要平台管理权限')
       const row = target === 'post' ? await tx.communityPost.findUnique({ where: { id } }) : await tx.communityComment.findUnique({ where: { id } })
       if (!row) throw new BadRequestException('内容不存在')
+      if (row.deletedAt) throw new ConflictException('内容已经删除，不能通过历史恢复入口重新公开')
+      if (['restore', 'limit'].includes(input.action) && !await tx.user.count({ where: { ...availableAccount(), id: row.authorId } })) throw new ConflictException('作者当前不可用，不能恢复内容')
       if (row.status === 'pending_review' && !['hide', 'remove', 'disable_author'].includes(input.action)) throw new ConflictException('待复核内容必须通过对应修订的复核记录处理，不能直接恢复或限制展示')
       if (!await tx.communityPost.count({ where: { id: target === 'post' ? id : (row as { postId: string }).postId, ...await this.visibility.adminWhere(tx) } })) throw new BadRequestException('私人草稿不属于社区审核范围')
-      if (input.action === 'disable_author') {
-        if (row.authorId === user.id) throw new BadRequestException('不能禁用当前管理员')
-        await lockUser(tx, row.authorId)
-        const protectedTarget = await tx.userRole.count({ where: { userId: row.authorId, role: { code: { in: ['admin', 'super_admin'] } } } })
-        if (protectedTarget && !user.roles.includes('super_admin')) throw new BadRequestException('管理管理员账号需要超级管理员权限')
-        await tx.user.update({ where: { id: row.authorId }, data: { status: 'disabled', revision: { increment: 1 }, sessionVersion: { increment: 1 } } })
-        await tx.refreshToken.updateMany({ where: { userId: row.authorId, revokedAt: null }, data: { revokedAt: new Date() } })
-      }
-      else if (target === 'post') {
+      if (target === 'post') {
         const post = await tx.communityPost.findUniqueOrThrow({ where: { id }, include: { contribution: true } })
         const labels = input.action === 'label' ? [...post.labels, input.label || input.reason] : post.labels
         if (['restore', 'limit'].includes(input.action) || input.action === 'label' && ['published', 'limited'].includes(post.status)) detection = await this.detection.check(tx, postDetectionInput(post.title, post.plainText, post.contentBlocks as CommunityContentBlock[], post.contribution, labels))
@@ -199,7 +185,7 @@ export class CommunityAdminController {
     const users = await this.prisma.user.findMany({ where: { status: 'active' }, include: authorInclude, take: 100 })
     return users.map((row) => ({ ...authorDto(row), expertiseTopics: row.communityProfile?.expertiseTopics || [] }))
   }
-  @Patch('official/:id') @Permissions('community.official.publish')
+  @Patch('official/:id') @Permissions('community.official.publish', 'platform.manage')
   async verify(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: OfficialDto) {
     if (!input.expectedRevision) throw new BadRequestException('请携带社区资料版本')
     const roleCode = input.verifiedType === 'official' ? 'community_official' : input.verifiedType
@@ -219,11 +205,11 @@ export class CommunityAdminController {
   @Get('restrictions') @Permissions('community.moderate')
   restrictions() { return this.visibility.restrictions() }
   @Post('restrictions') @Permissions('community.moderate')
-  createRestriction(@CurrentUser() user: AuthUser, @Body() input: RestrictionCreateDto) { return this.visibility.createRestriction(user.id, input) }
+  createRestriction(@CurrentUser() user: AuthUser, @Body() input: RestrictionCreateDto) { return this.governance.saveRestriction(user, input) }
   @Patch('restrictions/:id') @Permissions('community.moderate')
-  updateRestriction(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: RestrictionUpdateDto) { return this.visibility.updateRestriction(user.id, id, input) }
+  updateRestriction(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: RestrictionUpdateDto) { return this.governance.saveRestriction(user, input, id) }
   @Post('restrictions/:id/revoke') @Permissions('community.moderate')
-  revokeRestriction(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: RestrictionRevokeDto) { return this.visibility.revokeRestriction(user.id, id, input.expectedRevision, input.reason) }
+  revokeRestriction(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: RestrictionRevokeDto) { return this.governance.revokeRestriction(user, id, input.expectedRevision, input.reason) }
   @Get('eligibility-policy') @Permissions('community.moderate')
   eligibilityPolicy() { return this.visibility.policy() }
   @Patch('eligibility-policy') @Permissions('community.moderate')

@@ -1,3 +1,4 @@
+import { visibleComment } from './governance-policy'
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import type { CommunityCommentDto, CommunityContentBlock, ContentDetectionResult } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -16,7 +17,7 @@ export class CommunityCommentService {
   async list(userId: string, postId: string, admin = false, id?: string): Promise<CommunityCommentDto[]> {
     if (!admin) await this.visibility.assertPost(userId, postId)
     const [rows, question, feedback] = await Promise.all([
-      this.prisma.communityComment.findMany({ where: { postId, ...(id ? { id } : {}), ...(!admin ? { OR: [{ status: { not: 'pending_review' } }, { authorId: userId }] } : {}) }, include: { author: { include: authorInclude }, reactions: { where: { userId } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: id ? 1 : 500 }),
+      this.prisma.communityComment.findMany({ where: { postId, ...(id ? { id } : {}), ...(!admin ? { ...visibleComment(), OR: [{ status: { not: 'pending_review' } }, { authorId: userId }] } : {}) }, include: { author: { include: authorInclude }, reactions: { where: { userId } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: id ? 1 : 500 }),
       this.prisma.communityQuestionState.findUnique({ where: { postId } }),
       this.visibility.authorExclusions(userId),
     ])
@@ -38,7 +39,7 @@ export class CommunityCommentService {
     const current = id ? await this.prisma.communityComment.findUnique({ where: { id } }) : null
     if (id && (!current || current.authorId !== userId || current.deletedAt || !['published', 'pending_review'].includes(current.status) || current.postId !== postId)) throw new ForbiddenException('只能编辑自己的可见或待复核评论')
     if (current && input.expectedRevision === undefined) throw new BadRequestException('编辑评论必须提供 expectedRevision')
-    const parent = input.parentId ? await this.prisma.communityComment.findUnique({ where: { id: input.parentId } }) : null
+    const parent = input.parentId ? await this.prisma.communityComment.findUnique({ where: { ...visibleComment(), id: input.parentId } }) : null
     if (input.parentId && (!parent || parent.postId !== postId || parent.parentId || parent.deletedAt || parent.status !== 'published')) throw new BadRequestException('仅允许回复同一动态下的一级评论')
     if (parent && (await this.visibility.authorExclusions(userId)).authors.includes(parent.authorId)) throw new NotFoundException('评论不可见')
     const { clean, plainText } = await this.posts.blocks(userId, input.contentBlocks)
@@ -87,7 +88,7 @@ export class CommunityCommentService {
     await this.visibility.assertOperation(userId, 'comment')
     const post = await this.visibility.assertPost(userId, postId)
     if (post.authorId !== userId || post.postType !== 'question') throw new ForbiddenException('只有问题作者可以采纳回答')
-    const comment = await this.prisma.communityComment.findFirst({ where: { id: commentId, postId, deletedAt: null, status: 'published', author: { status: 'active' } } })
+    const comment = await this.prisma.communityComment.findFirst({ where: { id: commentId, postId, deletedAt: null, status: 'published', ...visibleComment() } })
     if (!comment || (await this.visibility.authorExclusions(userId)).authors.includes(comment.authorId)) throw new NotFoundException('回答不存在')
     await this.prisma.$transaction(async (tx) => {
       await tx.communityQuestionState.update({ where: { postId }, data: { status: 'solved', acceptedCommentId: commentId, solvedAt: new Date() } })

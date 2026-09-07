@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import type { CommunityAdminInspectionDto, CommunityAdminReportDto, CommunityAdminSummaryDto, CommunityAuthorDto, CommunityEligibilityPolicyDto, CommunityFeedPolicyDto, CommunityModerationInput, CommunityOperation, CommunityOperationRestrictionDto, CommunityPostDetailDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
+import type { CommunityAdminInspectionDto, CommunityAdminSummaryDto, CommunityAuthorDto, CommunityEligibilityPolicyDto, CommunityFeedPolicyDto, CommunityOperation, CommunityOperationRestrictionDto, CommunityPostDetailDto, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { communityAdminApi, type AdminCommunityComment } from '../services/community'
 import { useSessionStore } from '../stores/session'
 import AdminPageHeader from '../components/AdminPageHeader.vue'
@@ -9,15 +9,16 @@ import AdminKpiCard from '../components/AdminKpiCard.vue'
 import AdminIcon from '../components/AdminIcon.vue'
 import AdminDialog from '../components/AdminDialog.vue'
 import AdminPagination from '../components/AdminPagination.vue'
+import CommunityGovernanceWorkbench from '../components/CommunityGovernanceWorkbench.vue'
 import { contentDetectionFields, type ContentDetectionField, type ContentDetectionPolicy, type ContentDetectionResult, type ContentDetectionRule, type ContentReviewDto } from '@ai-learning-hub/contracts'
 const session = useSessionStore(), can = (permission: string) => !!session.user?.permissions.includes(permission)
 const route = useRoute()
-const tabs = [{ key: 'posts', label: '动态内容', permission: 'community.read' }, { key: 'questions', label: '学习问答', permission: 'community.read' }, { key: 'comments', label: '评论管理', permission: 'community.read' }, { key: 'topics', label: '话题管理', permission: 'community.topic.manage' }, { key: 'reports', label: '举报处理', permission: 'community.report.manage' }, { key: 'official', label: '官方账号', permission: 'community.official.publish' }, { key: 'eligibility', label: '操作资格', permission: 'community.moderate' }, { key: 'content', label: '内容检测与复核', permission: 'community.moderate' }, { key: 'policy', label: '推荐策略', permission: 'community.feed.manage' }]
+const tabs = [{ key: 'posts', label: '动态内容', permission: 'community.read' }, { key: 'questions', label: '学习问答', permission: 'community.read' }, { key: 'comments', label: '评论管理', permission: 'community.read' }, { key: 'topics', label: '话题管理', permission: 'community.topic.manage' }, { key: 'reports', label: '治理工作台', permission: 'community.report.manage' }, { key: 'official', label: '官方账号', permission: 'community.official.publish' }, { key: 'eligibility', label: '操作资格', permission: 'community.moderate' }, { key: 'content', label: '内容检测与复核', permission: 'community.moderate' }, { key: 'policy', label: '推荐策略', permission: 'community.feed.manage' }]
 const tab = ref('posts'), keyword = ref(''), page = ref(1), loading = ref(false), error = ref(''), selected = ref<CommunityAdminInspectionDto | null>(null)
 const total = ref(0)
 const filters = reactive({ status: '', authorId: '', schoolId: '', topicId: '', postType: '' as '' | CommunityPostDetailDto['type'], visibility: '' as '' | 'public' | 'school', hasMedia: undefined as boolean | undefined, reported: undefined as boolean | undefined, createdFrom: '', createdTo: '', sortBy: 'createdAt' as 'createdAt' | 'publishedAt' | 'editedAt', sortOrder: 'desc' as 'asc' | 'desc' })
 let loadEpoch = 0, detailEpoch = 0
-const summary = ref<CommunityAdminSummaryDto | null>(null), posts = ref<CommunityPostDetailDto[]>([]), comments = ref<AdminCommunityComment[]>([]), topics = ref<CommunityTopicDto[]>([]), reports = ref<CommunityAdminReportDto[]>([]), officials = ref<Array<CommunityAuthorDto & { expertiseTopics: string[]; revision: number }>>([]), policy = ref<CommunityFeedPolicyDto | null>(null)
+const summary = ref<CommunityAdminSummaryDto | null>(null), posts = ref<CommunityPostDetailDto[]>([]), comments = ref<AdminCommunityComment[]>([]), topics = ref<CommunityTopicDto[]>([]), officials = ref<Array<CommunityAuthorDto & { expertiseTopics: string[]; revision: number }>>([]), policy = ref<CommunityFeedPolicyDto | null>(null)
 const restrictions = ref<CommunityOperationRestrictionDto[]>([]), eligibilityPolicy = ref<CommunityEligibilityPolicyDto | null>(null)
 type RestrictableOperation = Exclude<CommunityOperation, 'read'>
 const operationLabels: Record<RestrictableOperation, string> = { post: '发帖', comment: '评论与回复', upload: '文件上传', interaction: '点赞与关注', profile: '公开资料', collection: '公开合集', report: '举报' }
@@ -47,7 +48,6 @@ const load = async () => {
     if (['posts', 'questions'].includes(tab.value)) { const r = await communityAdminApi.posts(query); if (epoch === loadEpoch) { posts.value = r.items; total.value = r.total } }
     if (tab.value === 'comments') { const r = await communityAdminApi.comments(query); if (epoch === loadEpoch) { comments.value = r.items; total.value = r.total } }
     if (tab.value === 'topics') { const r = await communityAdminApi.topics(query); if (epoch === loadEpoch) { topics.value = r.items; total.value = r.total } }
-    if (tab.value === 'reports') { const r = await communityAdminApi.reports(query); if (epoch === loadEpoch) { reports.value = r.items; total.value = r.total } }
     if (tab.value === 'official') { const r = await communityAdminApi.officials(query); if (epoch === loadEpoch) { officials.value = r.items; total.value = r.total } }
     if (tab.value === 'eligibility') {
       const [restrictionRows, quotaPolicy, users] = await Promise.all([communityAdminApi.restrictions(), communityAdminApi.eligibilityPolicy(), communityAdminApi.officials({ page: 1, pageSize: 100 })])
@@ -112,16 +112,12 @@ const decideReview = async (action: 'approve' | 'reject') => {
   finally { contentSaving.value = false }
 }
 const inspect = async (id: string) => { const epoch = ++detailEpoch; selected.value = null; try { const value = await communityAdminApi.inspection(id); if (epoch === detailEpoch) selected.value = value } catch (cause) { if (epoch === detailEpoch) error.value = cause instanceof Error ? cause.message : '读取详情失败' } }
-const moderationOpen = ref(false), target = ref<{ type: 'post' | 'comment' | 'report'; id: string }>({ type: 'post', id: '' })
-const moderation = reactive<CommunityModerationInput>({ action: 'limit', reason: '', label: '' })
-const openModeration = (type: 'post' | 'comment' | 'report', id: string) => { target.value = { type, id }; moderation.action = type === 'comment' ? 'hide' : 'limit'; moderation.reason = ''; moderation.label = ''; error.value = ''; moderationOpen.value = true }
-const handle = async () => {
-  loading.value = true
-  try {
-    if (target.value.type === 'report') await communityAdminApi.handle(target.value.id, moderation)
-    else await communityAdminApi.moderate(target.value.type, target.value.id, moderation)
-    moderationOpen.value = false; await load(); if (selected.value) await inspect(selected.value.post.id)
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '处理失败' } finally { loading.value = false }
+const governanceTarget = ref<{ type: 'post' | 'comment'; id: string; revision: number; title: string } | null>(null)
+const openModeration = (type: 'post' | 'comment', id: string) => {
+  const post = selected.value?.post.id === id ? selected.value.post : posts.value.find((row) => row.id === id)
+  const comment = comments.value.find((row) => row.id === id) || selected.value?.comments.find((row) => row.id === id)
+  governanceTarget.value = { type, id, revision: (type === 'post' ? post?.revision : comment?.revision) || 1, title: type === 'post' ? post?.title || post?.bodyPreview || id : comment?.body || id }
+  tab.value = 'reports'
 }
 const topicOpen = ref(false), topicId = ref<string | undefined>()
 const topicForm = reactive({ slug: '', name: '', description: '', accent: 'purple', themeId: '', status: 'active', recommended: false, sortOrder: 0, reason: '' })
@@ -133,9 +129,10 @@ const saveOfficial = async () => { try { await communityAdminApi.verify(official
 const policyForm = reactive({ parameter: 'learningWeight', value: 28, reason: '' })
 const savePolicy = async () => { try { await communityAdminApi.updatePolicy(policyForm.parameter, policyForm.value, policyForm.reason, policy.value?.revision); policyForm.reason = ''; await load() } catch (cause) { error.value = cause instanceof Error ? cause.message : '策略保存失败' } }
 const restrictionOpen = ref(false)
-const restrictionForm = reactive({ id: '', userId: '', operations: [] as RestrictableOperation[], startsAt: '', endsAt: '', reason: '', revision: 1 })
+const restrictionForm = reactive({ id: '', userId: '', operations: [] as RestrictableOperation[], startsAt: '', endsAt: '', reason: '', ruleCode: '', revision: 1 })
 const localDateTime = (value: string) => new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 const editRestriction = (row?: CommunityOperationRestrictionDto) => {
+  restrictionForm.ruleCode = ''
   Object.assign(restrictionForm, row
     ? { id: row.id, userId: row.userId, operations: [...row.operations], startsAt: localDateTime(row.startsAt), endsAt: localDateTime(row.endsAt), reason: row.reason, revision: row.revision }
     : { id: '', userId: '', operations: [] as RestrictableOperation[], startsAt: localDateTime(new Date().toISOString()), endsAt: localDateTime(new Date(Date.now() + 86400000).toISOString()), reason: '', revision: 1 })
@@ -143,7 +140,7 @@ const editRestriction = (row?: CommunityOperationRestrictionDto) => {
 }
 const saveRestriction = async () => {
   try {
-    const input = { operations: restrictionForm.operations, startsAt: new Date(restrictionForm.startsAt).toISOString(), endsAt: new Date(restrictionForm.endsAt).toISOString(), reason: restrictionForm.reason }
+    const input = { operations: restrictionForm.operations, startsAt: new Date(restrictionForm.startsAt).toISOString(), endsAt: new Date(restrictionForm.endsAt).toISOString(), reason: restrictionForm.reason, ruleCode: restrictionForm.ruleCode }
     if (restrictionForm.id) await communityAdminApi.updateRestriction(restrictionForm.id, { ...input, expectedRevision: restrictionForm.revision })
     else await communityAdminApi.createRestriction({ ...input, userId: restrictionForm.userId })
     restrictionOpen.value = false; await load()
@@ -205,7 +202,7 @@ onMounted(async () => {
   <section class="kpi-grid community-admin-kpis"><AdminKpiCard icon="article" label="今日发布" :value="summary?.todayPosts ?? '—'" /><AdminKpiCard icon="course" label="待回答问题" :value="summary?.unanswered ?? '—'" color="#9b72db" /><AdminKpiCard icon="shield" label="待处理举报" :value="summary?.pendingReports ?? '—'" color="#e9a651" /><AdminKpiCard icon="growth-user" label="今日活跃用户" :value="summary?.activeUsers ?? '—'" color="#42a87d" /></section>
   <div v-if="error" class="error-banner" role="alert">{{ error }} <button @click="load">重试</button></div>
   <p v-if="contentNotice" class="community-admin-note" role="status">{{ contentNotice }}</p>
-  <form v-if="!['policy', 'eligibility', 'content'].includes(tab)" class="panel community-admin-filter" @submit.prevent="page = 1; load()">
+  <form v-if="!['policy', 'eligibility', 'content', 'reports'].includes(tab)" class="panel community-admin-filter" @submit.prevent="page = 1; load()">
     <input v-model="keyword" aria-label="搜索社区内容" placeholder="关键词" maxlength="120" />
     <input v-model="filters.status" aria-label="状态" placeholder="状态：published / draft / pending" />
     <input v-model="filters.authorId" aria-label="作者ID" placeholder="作者 ID" /><input v-model="filters.schoolId" aria-label="学校ID" placeholder="学校 ID" />
@@ -244,7 +241,7 @@ onMounted(async () => {
     </div>
     <div v-else-if="tab === 'comments'" class="community-admin-section"><article v-for="comment in comments" :key="comment.id" class="community-admin-row"><div><strong>{{ comment.author.displayName }}</strong><p>{{ comment.body }}</p><small>{{ statusLabels[comment.status] }} · {{ new Date(comment.createdAt).toLocaleString('zh-CN') }}</small></div><button v-if="can('community.moderate')" class="admin-secondary" @click="openModeration('comment', comment.id)">处理评论</button></article><AdminPagination :page="page" :page-size="20" :total="total" @change="page = $event" /></div>
     <div v-else-if="tab === 'topics'" class="community-admin-section"><div class="community-admin-filter"><h2>学习话题</h2><button class="admin-primary" @click="editTopic()">创建话题</button></div><div class="community-admin-topic-grid"><article v-for="topic in topics" :key="topic.id"><span class="community-admin-status">{{ topic.status === 'active' ? '开放' : '已关闭' }}{{ topic.recommended ? ' · 推荐' : '' }}</span><h3># {{ topic.name }}</h3><p>{{ topic.description }}</p><small>{{ topic.postCount }} 条内容 · {{ topic.followerCount }} 人关注 · 排序 {{ topic.sortOrder }}</small><button class="admin-text" @click="editTopic(topic)">编辑话题</button></article></div></div>
-    <div v-else-if="tab === 'reports'" class="community-admin-section"><article v-for="report in reports" :key="report.id" class="community-admin-row"><div><strong>{{ report.reason }}</strong><p>{{ report.description || '未补充说明' }}</p><small>{{ statusLabels[report.status] }} · {{ new Date(report.createdAt).toLocaleString('zh-CN') }}</small></div><button v-if="can('community.moderate')" class="admin-primary" @click="openModeration('report', report.id)">处理举报</button></article><p v-if="!reports.length" class="admin-empty">暂无待处理举报</p><AdminPagination :page="page" :page-size="20" :total="total" @change="page = $event" /></div>
+    <CommunityGovernanceWorkbench v-else-if="tab === 'reports'" :target="governanceTarget" @closed="governanceTarget = null" @review="openReview" @inspect="tab = 'posts'; inspect($event)" />
     <div v-else-if="tab === 'official'" class="community-admin-section"><p class="community-admin-note">认证与发布沿用统一用户和 RBAC。认证字段由服务端校验，学生不能自行申领教师或官方身份。</p><article v-for="user in officials" :key="user.id" class="community-admin-row"><div><strong>{{ user.displayName }}</strong><p>{{ user.username }} · {{ user.school }}</p><small>{{ user.verifiedType === 'none' ? '普通学习者' : user.verifiedType }}</small></div><button class="admin-secondary" @click="editOfficial(user)">管理认证</button></article><AdminPagination :page="page" :page-size="20" :total="total" @change="page = $event" /></div>
     <div v-else-if="tab === 'content' && contentPolicy" class="community-admin-section">
       <p class="community-admin-note">检测只处理文字与媒体说明，不代表图片或视频画面已审查。命中不等于违规，反诈引用、技术教程等应结合上下文复核；媒体风险继续使用举报处理。</p>
@@ -277,10 +274,10 @@ onMounted(async () => {
     <AdminPagination v-if="tab === 'topics'" :page="page" :page-size="20" :total="total" @change="page = $event" />
   </section>
   <AdminDialog v-model="postOpen" :title="editingPost ? '编辑社区内容' : '发布官方学习指导'"><form class="admin-form" @submit.prevent="savePost(false)"><label>标题<input v-model="postForm.title" maxlength="160" required /></label><label>正文<textarea v-model="postForm.text" minlength="5" maxlength="20000" rows="8" required /></label><p v-if="editingPost">关联学习内容、代码、图片与引用块保持不变。</p><label>操作理由<textarea v-model="postForm.reason" minlength="4" maxlength="500" required /></label><button :class="editingSnapshot?.status === 'draft' ? 'admin-secondary' : 'admin-primary'" :disabled="postSaving">确认{{ editingSnapshot?.status === 'draft' ? '保存草稿' : editingPost ? '保存' : '发布' }}</button><button v-if="editingSnapshot?.status === 'draft' && editingSnapshot.id.startsWith('community-lcz-')" type="button" class="admin-primary" :disabled="postSaving" @click="savePost(true)">确认发布</button></form></AdminDialog>
-  <AdminDialog v-model="moderationOpen" title="记录社区处理决定"><form class="admin-form" @submit.prevent="handle"><label>操作<select v-model="moderation.action"><option v-if="target.type === 'report'" value="reject">驳回举报</option><option v-if="target.type !== 'comment'" value="limit">限制展示</option><option v-if="target.type !== 'comment'" value="label">添加说明标签</option><option value="hide">隐藏内容</option><option value="remove">软删除内容</option><option value="restore">恢复展示</option><option v-if="can('platform.manage')" value="disable_author">禁用作者</option></select></label><label v-if="moderation.action === 'label'">说明标签<input v-model="moderation.label" maxlength="60" required /></label><label>处理理由<textarea v-model="moderation.reason" required minlength="4" maxlength="500" rows="4" /></label><p>操作将保留审计记录；举报人身份不向作者公开。</p><p v-if="error" class="error-banner" role="alert">{{ error }}</p><button class="admin-primary" :disabled="loading">确认处理</button></form></AdminDialog>
+
   <AdminDialog v-model="topicOpen" :title="topicId ? '编辑学习话题' : '创建学习话题'"><form class="admin-form" @submit.prevent="saveTopic"><label>稳定标识<input v-model="topicForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" /></label><label>名称<input v-model="topicForm.name" required maxlength="60" /></label><label>说明<textarea v-model="topicForm.description" maxlength="500" /></label><label>关联学习主题 ID（选填）<input v-model="topicForm.themeId" /></label><label>色彩<select v-model="topicForm.accent"><option v-for="color in ['purple', 'green', 'blue', 'yellow', 'teal', 'orange']" :key="color">{{ color }}</option></select></label><label>状态<select v-model="topicForm.status"><option value="active">开放</option><option value="closed">关闭</option></select></label><label><input v-model="topicForm.recommended" type="checkbox" />推荐话题</label><label>排序<input v-model.number="topicForm.sortOrder" type="number" min="0" max="9999" /></label><label>操作理由<textarea v-model="topicForm.reason" required minlength="4" maxlength="500" /></label><button class="admin-primary">保存话题</button></form></AdminDialog>
   <AdminDialog v-model="officialOpen" title="管理统一用户认证"><form class="admin-form" @submit.prevent="saveOfficial"><label>认证身份<select v-model="officialForm.verifiedType"><option value="none">普通学习者</option><option value="teacher">认证教师</option><option value="mentor">学习导师</option><option value="official">官方账号</option></select></label><label>专业话题 ID（逗号分隔）<input v-model="officialForm.expertise" /></label><label>认证理由<textarea v-model="officialForm.reason" required minlength="4" maxlength="500" /></label><button class="admin-primary">保存认证与角色</button></form></AdminDialog>
-  <AdminDialog v-model="restrictionOpen" :title="restrictionForm.id ? '调整操作限制' : '新增操作限制'"><form class="admin-form" @submit.prevent="saveRestriction"><label>用户<select v-model="restrictionForm.userId" required :disabled="!!restrictionForm.id"><option value="">选择统一用户</option><option v-for="user in officials" :key="user.id" :value="user.id">{{ user.displayName }}（{{ user.username }}）</option></select></label><fieldset><legend>限制的操作</legend><label v-for="(label, operation) in operationLabels" :key="operation"><input v-model="restrictionForm.operations" type="checkbox" :value="operation" />{{ label }}</label></fieldset><label>开始时间<input v-model="restrictionForm.startsAt" type="datetime-local" required /></label><label>结束时间<input v-model="restrictionForm.endsAt" type="datetime-local" required /></label><label>限制理由<textarea v-model="restrictionForm.reason" required minlength="4" maxlength="500" rows="3" /></label><button class="admin-primary" :disabled="!restrictionForm.operations.length">保存操作限制</button></form></AdminDialog>
+  <AdminDialog v-model="restrictionOpen" :title="restrictionForm.id ? '调整操作限制' : '新增操作限制'"><form class="admin-form" @submit.prevent="saveRestriction"><label>用户<select v-model="restrictionForm.userId" required :disabled="!!restrictionForm.id"><option value="">选择统一用户</option><option v-for="user in officials" :key="user.id" :value="user.id">{{ user.displayName }}（{{ user.username }}）</option></select></label><fieldset><legend>限制的操作</legend><label v-for="(label, operation) in operationLabels" :key="operation"><input v-model="restrictionForm.operations" type="checkbox" :value="operation" />{{ label }}</label></fieldset><label>开始时间<input v-model="restrictionForm.startsAt" type="datetime-local" required /></label><label>结束时间<input v-model="restrictionForm.endsAt" type="datetime-local" required /></label><label>规则依据<input v-model="restrictionForm.ruleCode" required minlength="2" maxlength="100" /></label><label>限制理由<textarea v-model="restrictionForm.reason" required minlength="4" maxlength="500" rows="3" /></label><button class="admin-primary" :disabled="!restrictionForm.operations.length">保存操作限制</button></form></AdminDialog>
   <AdminDialog v-model="ruleOpen" :title="deletingRule ? '删除检测规则' : editingRuleId ? '编辑检测规则' : '新增检测规则'">
     <form v-if="ruleForm" class="admin-form community-content-form" @submit.prevent="saveRule">
       <p v-if="deletingRule">将删除当前规则“{{ ruleForm.content }}”（{{ editingRuleId }}）。此次操作生成新版本，原规则保留在历史版本中，可回退恢复。</p>

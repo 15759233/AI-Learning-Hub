@@ -71,10 +71,11 @@ export class CommunityAdminService {
     const [items, total] = await this.prisma.$transaction([this.prisma.communityTopic.findMany({ where, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], ...this.paging(q) }), this.prisma.communityTopic.count({ where })])
     return this.result(q, items.map((row) => ({ ...row, following: false })), total)
   }
-  async reports(q: AdminCommunityQuery) {
-    const post = await this.visibility.adminWhere()
-    const where: Prisma.CommunityReportWhereInput = { ...(q.status ? { status: q.status } : {}), ...(q.keyword ? { reason: { contains: q.keyword, mode: 'insensitive' } } : {}), createdAt: dateRange(q.createdFrom, q.createdTo), OR: [{ post }, { comment: { post } }] }
-    const [items, total] = await this.prisma.$transaction([this.prisma.communityReport.findMany({ where, select: { id: true, postId: true, commentId: true, reason: true, description: true, status: true, createdAt: true }, orderBy: [{ createdAt: q.sortOrder }, { id: q.sortOrder }], ...this.paging(q) }), this.prisma.communityReport.count({ where })])
+  async reports(actorId: string, q: AdminCommunityQuery) {
+    if (q.status && !['pending', 'reviewing', 'resolved', 'rejected'].includes(q.status)) throw new BadRequestException('举报状态无效')
+    const where: Prisma.CommunityReportWhereInput = { ...(q.status ? { status: q.status } : {}), ...(q.keyword ? { reason: { contains: q.keyword, mode: 'insensitive' } } : {}), createdAt: dateRange(q.createdFrom, q.createdTo) }
+    const [items, total] = await this.prisma.$transaction([this.prisma.communityReport.findMany({ where, select: { id: true, postId: true, commentId: true, collectionId: true, profileId: true, category: true, revision: true, reason: true, description: true, status: true, createdAt: true }, orderBy: [{ createdAt: q.sortOrder }, { id: q.sortOrder }], ...this.paging(q) }), this.prisma.communityReport.count({ where })])
+    await this.visibility.auditAdminRead(actorId, 'report', 'page')
     return this.result(q, items, total)
   }
   async users(q: AdminCommunityQuery) {

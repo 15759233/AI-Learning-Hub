@@ -12,6 +12,7 @@ import { communityApi } from '../services/api/community'
 import CommunityEmptyState from './CommunityEmptyState.vue'
 import CommunityPostCard from './CommunityPostCard.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
+import CommunityReportDialog from './CommunityReportDialog.vue'
 import CommunitySkeleton from './CommunitySkeleton.vue'
 import { badgeLabels, contentDetectionNotice } from './labels'
 import { resourceHubApi } from '../services/api/resourceHub'
@@ -35,7 +36,7 @@ const relationOpen = ref<'followers' | 'following' | null>(null), relationPeople
 const avatarCanvas = ref<HTMLCanvasElement>(), bannerCanvas = ref<HTMLCanvasElement>()
 const avatarFile = ref<File | null>(null), bannerFile = ref<File | null>(null), username = ref('')
 const form = ref<CommunityProfileInput>({ expectedUserRevision: 1, expectedProfileRevision: 1, displayName: '', bio: '', headline: '', location: '', websiteUrl: '', expertiseTopics: [], allowAchievementDrafts: false })
-const topicsText = ref('')
+const topicsText = ref(''), reportOpen = ref(false)
 let loadEpoch = 0
 
 const requestedTab = () => {
@@ -229,10 +230,10 @@ onBeforeUnmount(() => { loadEpoch++ })
         <div class="community-profile-identity">
           <CommunityAvatar class="community-profile-avatar" :src="profile.avatar" :username="profile.username" :name="profile.displayName" size="lg" :verified="profile.verifiedType !== 'none'" />
           <div class="community-profile-actions">
-            <template v-if="profile.isSelf"><RouterLink class="button secondary small" to="/community/drafts">草稿箱</RouterLink><button class="button secondary small" type="button" @click="openEditor">编辑资料</button></template>
+            <template v-if="profile.isSelf"><RouterLink class="button secondary small" to="/community/governance">处理与申诉</RouterLink><RouterLink class="button secondary small" to="/community/drafts">草稿箱</RouterLink><button class="button secondary small" type="button" @click="openEditor">编辑资料</button></template>
             <template v-else>
               <FollowButton v-if="!profile.blocked" :active="profile.following" :pending="store.operations[`follow:user:${profile.id}`]" @click="follow" />
-              <CommunityPostMenu label="个人主页操作"><button type="button" role="menuitem" @click="relationship('mute')">{{ profile.muted ? '取消静音' : '静音该用户' }}</button><button type="button" role="menuitem" @click="relationship('block')">{{ profile.blocked ? '取消拉黑' : '拉黑该用户' }}</button></CommunityPostMenu>
+              <CommunityPostMenu label="个人主页操作"><button type="button" role="menuitem" @click="requireWrite('report') && (reportOpen = true)">举报账号资料</button><button type="button" role="menuitem" @click="relationship('mute')">{{ profile.muted ? '取消静音' : '静音该用户' }}</button><button type="button" role="menuitem" @click="relationship('block')">{{ profile.blocked ? '取消拉黑' : '拉黑该用户' }}</button></CommunityPostMenu>
             </template>
             <button class="button secondary small" type="button" @click="share">分享主页</button>
           </div>
@@ -313,4 +314,5 @@ onBeforeUnmount(() => { loadEpoch++ })
       <form class="dialog-form community-profile-username-form" @submit.prevent="changeUsername"><label>公开用户名（只能修改一次）<input v-model="username" required pattern="(?!_)(?!.*__)[A-Za-z0-9_]{4,24}(?<!_)" minlength="4" maxlength="24" /></label><button class="button secondary" type="submit">单独修改用户名</button></form>
     </AppDialog>
   </section>
+<CommunityReportDialog v-if="profile" v-model="reportOpen" target-type="profile" :target-id="profile.id" @submitted="notice = '举报已提交。'" />
 </template>

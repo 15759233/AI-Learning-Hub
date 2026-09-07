@@ -161,6 +161,7 @@ export interface CommunityFeedPolicyDto {
 }
 export interface CommunityAdminReportDto {
   id: string; postId: string | null; commentId: string | null; reason: string; description: string
+  collectionId?: string | null; profileId?: string | null; category?: string; revision?: number
   status: string; createdAt: string
 }
 export interface CommunityAdminInspectionDto {

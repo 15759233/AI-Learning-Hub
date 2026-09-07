@@ -136,6 +136,9 @@ model User {
   restrictionsRevoked       CommunityOperationRestriction[] @relation("CommunityRestrictionRevoker")
   resourceWatchProgress     ResourceWatchProgress[]
   communityReports          CommunityReport[]
+  profileReports            CommunityReport[] @relation("ReportedProfile")
+  receivedModeration        CommunityModerationAction[] @relation("ModerationSubject")
+  communityAppeals          CommunityAppeal[]
   communityModeration       CommunityModerationAction[]
   communityImpressions      CommunityFeedImpression[]
   communityNotifications    UserNotification[]
@@ -1736,6 +1739,7 @@ model CommunityProfile {
 }
 
 model CommunityPost {
+  moderationActions CommunityModerationAction[]
   id              String                  @id @default(cuid())
   revision        Int                     @default(1)
   authorId        String                  @map("author_id")
@@ -1851,6 +1855,8 @@ model ResourceContribution {
 }
 
 model LearningCollection {
+  reports      CommunityReport[]
+  moderationActions CommunityModerationAction[]
   id           String                       @id @default(cuid())
   ownerId      String                       @map("owner_id")
   name         String
@@ -1945,6 +1951,7 @@ model CommunityQuestionState {
 }
 
 model CommunityComment {
+  moderationActions CommunityModerationAction[]
   id            String                     @id @default(cuid())
   revision      Int                        @default(1)
   postId        String                     @map("post_id")
@@ -2079,6 +2086,17 @@ model CommunityReport {
   reporterId  String            @map("reporter_id")
   postId      String?           @map("post_id")
   commentId   String?           @map("comment_id")
+  profileId   String?           @map("profile_id")
+  collectionId String?          @map("collection_id")
+  category    String            @default("other")
+  evidence    String[]          @default([])
+  contentRevision Int?          @map("content_revision")
+  revision    Int               @default(1)
+  assignedToId String?          @map("assigned_to_id")
+  claimedAt   DateTime?         @map("claimed_at")
+  dueAt       DateTime          @default(dbgenerated("(now() + '2 days'::interval)")) @map("due_at")
+  resultReason String           @default("") @map("result_reason")
+  actionId    String?           @map("action_id")
   targetKey   String            @map("target_key")
   reason      String
   description String            @default("")
@@ -2089,6 +2107,9 @@ model CommunityReport {
   post        CommunityPost?    @relation(fields: [postId], references: [id], onDelete: Cascade)
   comment     CommunityComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
   reporter    User              @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+  profile     User?             @relation("ReportedProfile", fields: [profileId], references: [id], onDelete: Restrict)
+  collection  LearningCollection? @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  moderationAction CommunityModerationAction? @relation(fields: [actionId], references: [id], onDelete: Restrict)
 
   @@unique([reporterId, targetKey])
   @@index([status, createdAt])
@@ -2097,6 +2118,10 @@ model CommunityReport {
 }
 
 model ContentReview {
+  assignedToId String? @map("assigned_to_id")
+  claimedAt DateTime? @map("claimed_at")
+  dueAt DateTime @default(dbgenerated("(now() + '2 days'::interval)")) @map("due_at")
+  appeals CommunityAppeal[]
   id              String   @id @default(cuid())
   targetType      String   @map("target_type")
   targetId        String   @map("target_id")
@@ -2131,13 +2156,37 @@ model CommunityModerationAction {
   reason     String
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at")
+  subjectId  String?  @map("subject_id")
+  postId     String?  @map("post_id")
+  commentId  String?  @map("comment_id")
+  collectionId String? @map("collection_id")
+  contentRevision Int? @map("content_revision")
+  ruleCode   String   @default("") @map("rule_code")
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  revokedById String? @map("revoked_by_id")
+  revokeReason String @default("") @map("revoke_reason")
+  revision   Int @default(1)
   actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  subject    User? @relation("ModerationSubject", fields: [subjectId], references: [id], onDelete: Restrict)
+  post       CommunityPost? @relation(fields: [postId], references: [id], onDelete: Restrict)
+  comment    CommunityComment? @relation(fields: [commentId], references: [id], onDelete: Restrict)
+  collection LearningCollection? @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  reports CommunityReport[]
+  appeals CommunityAppeal[]
+  restriction CommunityOperationRestriction?
 
   @@index([targetType, targetId, createdAt])
+  @@index([subjectId, action, revokedAt, expiresAt])
+  @@index([postId, action, revokedAt, expiresAt])
+  @@index([commentId, action, revokedAt, expiresAt])
+  @@index([collectionId, action, revokedAt, expiresAt])
   @@map("community_moderation_actions")
 }
 
 model CommunityOperationRestriction {
+  moderationActionId String? @unique @map("moderation_action_id")
+  moderationAction CommunityModerationAction? @relation(fields: [moderationActionId], references: [id], onDelete: Restrict)
   id          String    @id @default(cuid())
   userId      String    @map("user_id")
   operations  String[]
@@ -2157,6 +2206,33 @@ model CommunityOperationRestriction {
   @@index([userId, revokedAt, endsAt])
   @@index([endsAt])
   @@map("community_operation_restrictions")
+}
+
+model CommunityAppeal {
+  id String @id @default(cuid())
+  authorId String @map("author_id")
+  actionId String? @map("action_id")
+  reviewId String? @map("review_id")
+  requestHash String @map("request_hash")
+  reason String
+  evidence String[] @default([])
+  status String @default("pending")
+  revision Int @default(1)
+  assignedToId String? @map("assigned_to_id")
+  claimedAt DateTime? @map("claimed_at")
+  dueAt DateTime @default(dbgenerated("(now() + '2 days'::interval)")) @map("due_at")
+  resultReason String @default("") @map("result_reason")
+  handledById String? @map("handled_by_id")
+  handledAt DateTime? @map("handled_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  moderationAction CommunityModerationAction? @relation(fields: [actionId], references: [id], onDelete: Restrict)
+  review ContentReview? @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+
+  @@unique([authorId, requestHash])
+  @@index([status, dueAt, createdAt])
+  @@index([authorId, createdAt])
+  @@map("community_appeals")
 }
 
 model CommunityFeedImpression {
