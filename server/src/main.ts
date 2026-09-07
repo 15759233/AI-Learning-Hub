@@ -15,6 +15,7 @@ import { appValidationPipe } from './common/validation.pipe'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   const config = app.get(ConfigService)
+  app.enableShutdownHooks()
   await app.get(PersistenceService).preflight()
   const trustedProxies = String(config.get('TRUSTED_PROXY_CIDRS') || '').split(',').map((value) => value.trim()).filter(Boolean)
   if (trustedProxies.length) app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies)
@@ -40,4 +41,4 @@ async function bootstrap() {
   await app.listen(Number(config.get('PORT') || 3000), '0.0.0.0')
 }
 
-void bootstrap()
+void bootstrap().catch((error: unknown) => { console.error(error instanceof Error ? error.message : '服务启动失败'); process.exitCode = 1 })

@@ -49,7 +49,7 @@ export class CommunityCommentService {
       const request = await idempotency(tx, userId, `comment:${postId}:${id || 'new'}`, key, input)
       if (request.resourceId) return tx.communityComment.findUniqueOrThrow({ where: { id: request.resourceId } })
       const fileIds = clean.flatMap((block) => block.type === 'image' ? [block.fileId] : [])
-      if (fileIds.length && await tx.fileRecord.count({ where: { id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
+      if (fileIds.length && await tx.fileRecord.count({ where: { quarantinedAt: null, id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
       const detection = await this.detection.check(tx, { commentBody: plainText, mediaCaption: clean.flatMap((block) => block.type === 'image' ? [block.alt || ''] : block.type === 'code' ? [block.language] : []).join('\n') })
       const status = detection.action === 'review' ? 'pending_review' : 'published'
       if (!id) await this.visibility.consumeQuota(tx, userId, 'comment', ip)

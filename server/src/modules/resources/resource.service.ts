@@ -107,7 +107,7 @@ export class ResourceService {
     const data = { coverAssetId: null, ...this.support.pick(input, dataFields) }
     const item = await this.prisma.$transaction(async (tx) => {
       await this.support.binding(tx, input.coverAssetId)
-      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
+      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, quarantinedAt: null, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在、已隔离或无权使用')
       const resource = await tx.resource.create({
         data: {
           coverAssetId: input.coverAssetId || null,
@@ -138,7 +138,7 @@ export class ResourceService {
       const current = await tx.resource.findUnique({ where: { id, deletedAt: null } })
       if (!current) throw new NotFoundException('资源不存在')
       const data = { ...this.support.data(current.payload), ...this.support.pick(input, dataFields) }
-      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在或无权使用')
+      if (input.fileId && !await tx.fileRecord.count({ where: { id: input.fileId, quarantinedAt: null, OR: [{ uploadedBy: actorId }, { resources: { some: {} } }] } })) throw new BadRequestException('资源文件不存在、已隔离或无权使用')
       const resource = await tx.resource.update({
         where: { id },
         data: {

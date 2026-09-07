@@ -129,6 +129,7 @@ model User {
   communityTopicFollows     CommunityTopicFollow[]
   communityFeedback         CommunityFeedback[]
   videoAssets               VideoAsset[]
+  storageReservations       StorageReservation[]
   learningCollections       LearningCollection[]        @relation("LearningCollectionOwner")
   collectionCourseLinks     CollectionCourseReference[] @relation("CollectionCourseCreator")
   communityRestrictions     CommunityOperationRestriction[] @relation("CommunityRestrictionUser")
@@ -859,6 +860,9 @@ model MediaGcJob {
   id        String   @id @default(cuid())
   fileId    String   @unique @map("file_id")
   createdAt DateTime @default(now()) @map("created_at")
+  attempts  Int      @default(0)
+  lastError String?  @map("last_error")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("media_gc_jobs")
 }
@@ -875,6 +879,12 @@ model FileRecord {
   visibility              String                 @default("private")
   uploadedBy              String                 @map("uploaded_by")
   createdAt               DateTime               @default(now()) @map("created_at")
+  reservationId           String?                @map("reservation_id")
+  scanStatus              String                 @default("not_scanned") @map("scan_status")
+  scanMessage             String?                @map("scan_message")
+  scannedAt               DateTime?              @map("scanned_at")
+  quarantinedAt           DateTime?              @map("quarantined_at")
+  reservation             StorageReservation?    @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   uploader                User                   @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
   resources               Resource[]
   mediaAsset              MediaAsset?
@@ -887,7 +897,33 @@ model FileRecord {
   videoPosters            VideoAsset[]           @relation("VideoAssetPoster")
 
   @@index([checksum])
+  @@index([uploadedBy, storageDriver])
+  @@index([reservationId])
+  @@index([quarantinedAt])
   @@map("files")
+}
+
+model StorageReservation {
+  id               String      @id @default(cuid())
+  userId           String      @map("user_id")
+  storageDriver    String      @map("storage_driver")
+  kind             String
+  state            String      @default("uploading")
+  sourceLimit      BigInt      @map("source_limit")
+  playableLimit    BigInt      @default(0) @map("playable_limit")
+  remainingBytes   BigInt      @map("remaining_bytes")
+  temporaryBytes   BigInt      @map("temporary_bytes")
+  claimToken       String      @map("claim_token")
+  expiresAt        DateTime    @map("expires_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  user             User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  files            FileRecord[]
+  videoAsset       VideoAsset?
+
+  @@index([storageDriver, state, expiresAt])
+  @@index([userId, state])
+  @@map("storage_reservations")
 }
 
 model Resource {
@@ -1808,6 +1844,9 @@ model VideoAsset {
   audioCodec       String?                 @map("audio_codec")
   attempts         Int                     @default(0)
   claimedAt        DateTime?               @map("claimed_at")
+  claimToken       String?                 @map("claim_token")
+  leaseExpiresAt   DateTime?               @map("lease_expires_at")
+  reservationId    String?                 @unique @map("reservation_id")
   startedAt        DateTime?               @map("started_at")
   finishedAt       DateTime?               @map("finished_at")
   lastError        String?                 @map("last_error")
@@ -1815,6 +1854,7 @@ model VideoAsset {
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
   uploader         User                    @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  reservation      StorageReservation?     @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   sourceFile       FileRecord              @relation("VideoAssetSource", fields: [sourceFileId], references: [id], onDelete: Restrict)
   playableFile     FileRecord?             @relation("VideoAssetPlayable", fields: [playableFileId], references: [id], onDelete: Restrict)
   posterFile       FileRecord?             @relation("VideoAssetPoster", fields: [posterFileId], references: [id], onDelete: Restrict)
@@ -1822,6 +1862,7 @@ model VideoAsset {
   progress         ResourceWatchProgress[]
 
   @@index([status, claimedAt, createdAt])
+  @@index([status, leaseExpiresAt])
   @@index([uploaderId, createdAt])
   @@map("video_assets")
 }

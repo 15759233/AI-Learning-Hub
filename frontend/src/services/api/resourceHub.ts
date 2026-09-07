@@ -2,6 +2,7 @@ import type { CreatorContentSummaryDto, LearningCollectionDto, LearningCollectio
 import { ApiError, dataMode, request, restoreRefresh, writeRequest } from './client'
 import { mockResourceHub } from './resourceHub.mock'
 import { randomId } from './random-id'
+import type { FileScanDto, StorageCapacityDto } from '@ai-learning-hub/contracts'
 
 const call = <T>(path: string, method = 'GET', body?: unknown) => dataMode === 'api'
   ? method === 'GET' ? request<T>(`/resource-hub${path}`) : writeRequest<T>(`/resource-hub${path}`, method, body)
@@ -52,13 +53,14 @@ export const resourceHubApi = {
   list: (query: { keyword?: string; category?: string; kind?: string; sort?: string; cursor?: string; limit?: number } = {}) => call<ResourceHubListDto>(`/items?${new URLSearchParams(Object.entries(query).flatMap(([key, value]) => value === undefined || value === '' ? [] : [[key, String(value)]]))}`),
   detail: (postId: string) => call<ResourceContributionDetailDto>(`/contributions/${encodeURIComponent(postId)}`),
   studio: () => call<CreatorContentSummaryDto>('/studio'),
+  capacity: () => call<StorageCapacityDto>('/capacity'),
   creator: (userId: string) => call<{ items: ResourceHubListDto['items']; collections: LearningCollectionSummaryDto[] }>(`/creators/${encodeURIComponent(userId)}`),
   video: (assetId: string) => call<VideoAssetDto>(`/videos/${encodeURIComponent(assetId)}`),
   playback: (assetId: string) => call<VideoPlaybackDto>(`/videos/${encodeURIComponent(assetId)}/playback`),
   progress: (assetId: string, input: WatchProgressInput) => call<{ positionSeconds: number; watchedSeconds: number; completed: boolean }>(`/videos/${encodeURIComponent(assetId)}/progress`, 'PUT', input),
   retryVideo: (assetId: string) => call<VideoAssetDto>(`/videos/${encodeURIComponent(assetId)}/retry`, 'POST'),
   uploadVideo: (file: File, progress: (percentage: number) => void) => upload<VideoAssetDto>('/uploads/video', file, progress),
-  uploadDocument: (file: File, progress: (percentage: number) => void) => upload<{ id: string; originalName: string; mimeType: string; size: number }>('/uploads/document', file, progress),
+  uploadDocument: (file: File, progress: (percentage: number) => void) => upload<{ id: string; originalName: string; mimeType: string; size: number; securityScan?: FileScanDto }>('/uploads/document', file, progress),
   collections: () => call<LearningCollectionSummaryDto[]>('/collections'),
   collection: (id: string) => call<LearningCollectionDto>(`/collections/${encodeURIComponent(id)}`),
   createCollection: (input: LearningCollectionInput) => call<LearningCollectionDto>('/collections', 'POST', input),

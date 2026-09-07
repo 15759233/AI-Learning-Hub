@@ -1,7 +1,8 @@
+import { fileQuotaStub } from './storage.fixture'
 import { EventEmitter } from 'node:events'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, open, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import { Readable } from 'node:stream'
@@ -45,6 +46,8 @@ const hub = (prisma: object = {}, visibility: object = {}, detection: object = {
   {} as never,
   {} as never,
   detection as never,
+  {} as never,
+  {} as never,
 )
 
 describe('资源播放交付', () => {
@@ -94,6 +97,7 @@ describe('资源播放交付', () => {
     const service = hub(prisma, { viewer: vi.fn(), where: vi.fn(async () => ({ status: 'published' })) })
     const open = vi.fn(async () => ({ mimeType: 'image/webp' }))
     Object.defineProperty(service, 'storage', { value: { open } })
+    Object.defineProperty(service, 'fileAccess', { value: { assert: vi.fn(async () => { if (!published && !owner) throw new Error('媒体不可见') }) } })
     const token = (service as unknown as { sign(p: string, id: string, user: string, expires: number): string }).sign('media', 'synthetic-cover', 'synthetic-viewer', Math.floor(Date.now() / 1000) + 60)
     await expect(service.mediaFile('synthetic-cover', token)).rejects.toThrow('不可见')
     expect(open).not.toHaveBeenCalled()
@@ -102,7 +106,6 @@ describe('资源播放交付', () => {
     owner = false
     published = true
     await service.mediaFile('synthetic-cover', token)
-    expect(prisma.communityPost.count).toHaveBeenLastCalledWith({ where: { AND: [{ contribution: { isNot: null }, OR: [{ contribution: { is: { coverFileId: 'synthetic-cover' } } }, { contribution: { is: { videoAsset: { is: { posterFileId: 'synthetic-cover' } } } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: 'synthetic-cover' }] } }] }, { status: 'published' }] } })
   })
 
   it('资源后台复用已投稿范围，搜索条件不能覆盖私人草稿隔离', async () => {
@@ -275,18 +278,26 @@ describe('资源持久化边界', () => {
         }),
         delete: vi.fn(),
       }
+      const reservation = { id: `synthetic-reservation-${index}`, state: 'queued', claimToken: 'initial', playableLimit: 1024n ** 3n }
+      Object.assign(asset, { reservation, sourceFile: { id: asset.sourceFileId, size: (await stat(source)).size } })
+      const update = async ({ data }: { data: Record<string, unknown> }) => {
+        const attempts = typeof data.attempts === 'object' ? asset.attempts + Number((data.attempts as { increment: number }).increment) : asset.attempts
+        Object.assign(asset, data, { attempts })
+        return asset
+      }
       const prisma = {
+        $queryRaw: vi.fn(async () => []),
         videoAsset: {
           findFirst: vi.fn(async () => asset.status === 'uploaded' ? asset : null),
-          updateMany: vi.fn(async ({ data }: { data: { status: string; attempts: { increment: number } } }) => {
-            Object.assign(asset, { ...data, attempts: asset.attempts + data.attempts.increment })
-            return { count: 1 }
-          }),
-          findUniqueOrThrow: vi.fn(async () => ({ ...asset, sourceFile: { id: asset.sourceFileId } })),
-          update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(asset, data)),
+          updateMany: vi.fn(async (input: { data: Record<string, unknown> }) => { await update(input); return { count: 1 } }),
+          findUniqueOrThrow: vi.fn(async () => asset), update: vi.fn(update),
         },
+        storageReservation: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(reservation, data)), updateMany: vi.fn(async () => ({ count: 1 })) },
+        mediaGcJob: { upsert: vi.fn() },
+        $transaction: async (work: (tx: unknown) => unknown): Promise<unknown> => work(prisma),
       }
-      const processor = new VideoProcessingService(prisma as never, new ConfigService({ NODE_ENV: 'test', FFMPEG_PATH: ffmpeg, FFPROBE_PATH: ffprobe }), storage as never)
+      const quota = { workspace: (id: string, part: string) => path.join(root, id, part), release: vi.fn() }
+      const processor = new VideoProcessingService(prisma as never, new ConfigService({ NODE_ENV: 'test', FFMPEG_PATH: ffmpeg, FFPROBE_PATH: ffprobe }), storage as never, quota as never)
       await processor.processNext()
       expect(asset.status).toBe('ready')
       expect(stored.has(`playable-${index}`)).toBe(true)
@@ -302,11 +313,11 @@ describe('资源持久化边界', () => {
 
   it('视频处理状态只按上传者读取，并返回真实失败原因', async () => {
     const now = new Date('2026-09-06T00:00:00.000Z')
-    const asset = { id: 'video-a', uploaderId: 'student-a', status: 'failed', originalName: 'demo.webm', originalMimeType: 'video/webm', durationSeconds: null, width: null, height: null, rotation: 0, attempts: 2, lastError: 'FFmpeg unavailable', posterFileId: null, createdAt: now, updatedAt: now }
+    const asset = { id: 'video-a', uploaderId: 'student-a', status: 'failed', originalName: 'demo.webm', originalMimeType: 'video/webm', durationSeconds: null, width: null, height: null, rotation: 0, attempts: 2, lastError: 'FFmpeg unavailable', posterFileId: null, createdAt: now, updatedAt: now, sourceFile: { scanStatus: 'unavailable', scanMessage: '未扫描', scannedAt: null, quarantinedAt: null } }
     const prisma = { videoAsset: { findFirst: vi.fn(async () => asset) } }
     const visibility = { viewer: vi.fn() }
     expect(await hub(prisma, visibility).video('student-a', 'video-a')).toMatchObject({ id: 'video-a', status: 'failed', attempts: 2, lastError: 'FFmpeg unavailable' })
-    expect(prisma.videoAsset.findFirst).toHaveBeenCalledWith({ where: { id: 'video-a', uploaderId: 'student-a' } })
+    expect(prisma.videoAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'video-a', uploaderId: 'student-a' } }))
     expect(visibility.viewer).toHaveBeenCalledWith('student-a')
   })
 
@@ -397,7 +408,7 @@ describe('资源持久化边界', () => {
         findUnique: vi.fn(async () => record),
       },
     }
-    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }))
+    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }), fileQuotaStub(prisma))
     const saved = await storage.uploadPath({ path: source, originalname: 'source.txt', mimetype: 'text/plain', size: bytes.length }, { uploadedBy: 'student-a', visibility: 'private', maxBytes: bytes.length })
     const opened = await storage.open(saved.id, 10, 19)
     const chunks: Buffer[] = []
@@ -421,7 +432,7 @@ describe('资源持久化边界', () => {
         findUnique: vi.fn(),
       },
     }
-    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }))
+    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }), fileQuotaStub(prisma))
     const baseline = process.memoryUsage()
     let peakRss = baseline.rss, peakHeap = baseline.heapUsed
     const sample = setInterval(() => {
@@ -453,7 +464,7 @@ describe('资源持久化边界', () => {
       return { id: `file-${records.length}`, ...data }
     }) } }
     const storageRoot = path.join(root, 'objects')
-    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: storageRoot }))
+    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: storageRoot }), fileQuotaStub(prisma))
     await Promise.all(paths.map((source, index) => storage.uploadPath(
       { path: source, originalname: `video-${index}.mp4`, mimetype: 'video/mp4', size: 1024 * 1024 },
       { uploadedBy: 'student-a', visibility: 'private', maxBytes: 1024 * 1024 },
@@ -468,7 +479,7 @@ describe('资源持久化边界', () => {
     const fakePdf = path.join(root, 'fake.pdf')
     await writeFile(fakePdf, Buffer.from('MZ executable'))
     const prisma = { fileRecord: { create: vi.fn() } }
-    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }))
+    const storage = new LocalStorageAdapter(prisma as never, new ConfigService({ STORAGE_LOCAL_PATH: path.join(root, 'objects') }), fileQuotaStub(prisma))
     await expect(storage.uploadPath({ path: fakePdf, originalname: 'malware.exe', mimetype: 'application/octet-stream', size: 13 }, { uploadedBy: 'student-a', visibility: 'private' })).rejects.toThrow('扩展名或 MIME')
     await expect(storage.uploadPath({ path: fakePdf, originalname: 'notes.pdf', mimetype: 'application/pdf', size: 13 }, { uploadedBy: 'student-a', visibility: 'private' })).rejects.toThrow('内容与文件类型不匹配')
     expect(prisma.fileRecord.create).not.toHaveBeenCalled()
@@ -477,12 +488,14 @@ describe('资源持久化边界', () => {
   it('孤立视频仅清理过期且非处理中的资产，删除失败进入既有 GC 队列', async () => {
     const candidates = [{ id: 'old-a', sourceFileId: 'source-a', playableFileId: 'play-a', posterFileId: 'poster-a' }]
     const prisma = {
+      $queryRaw: vi.fn(async () => [{ found: false }]),
+      $transaction: async (work: (tx: unknown) => unknown): Promise<unknown> => work(prisma),
       videoAsset: { findMany: vi.fn(async () => candidates), deleteMany: vi.fn(async () => ({ count: 1 })) },
       mediaGcJob: { upsert: vi.fn() },
       auditLog: { create: vi.fn() },
     }
     const storage = { delete: vi.fn(async (id: string) => { if (id === 'poster-a') throw new Error('disk unavailable') }) }
-    const service = new VideoProcessingService(prisma as never, new ConfigService({ VIDEO_ORPHAN_RETENTION_HOURS: 168, NODE_ENV: 'test' }), storage as never)
+    const service = new VideoProcessingService(prisma as never, new ConfigService({ VIDEO_ORPHAN_RETENTION_HOURS: 168, NODE_ENV: 'test' }), storage as never, {} as never)
     expect(await service.cleanupOrphans('admin-a')).toEqual({ retentionHours: 168, removedAssets: 1, queuedFiles: ['poster-a'] })
     expect(prisma.videoAsset.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { contribution: null, status: { not: 'processing' }, updatedAt: { lt: expect.any(Date) } }, take: 20 }))
     expect(prisma.mediaGcJob.upsert).toHaveBeenCalledWith({ where: { fileId: 'poster-a' }, create: { fileId: 'poster-a' }, update: {} })

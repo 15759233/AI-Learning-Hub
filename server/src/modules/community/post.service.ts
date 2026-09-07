@@ -61,7 +61,7 @@ export class CommunityPostService {
       return { type: block.type, text: block.text.trim() }
     })
     if (files.length) {
-      const count = await this.prisma.fileRecord.count({ where: { id: { in: [...new Set(files)] }, uploadedBy: userId, mimeType: { in: ['image/png', 'image/jpeg', 'image/webp'] }, size: { lte: 5 * 1024 * 1024 }, extension: { in: ['.png', '.jpg', '.jpeg', '.webp'] } } })
+      const count = await this.prisma.fileRecord.count({ where: { quarantinedAt: null, id: { in: [...new Set(files)] }, uploadedBy: userId, mimeType: { in: ['image/png', 'image/jpeg', 'image/webp'] }, size: { lte: 5 * 1024 * 1024 }, extension: { in: ['.png', '.jpg', '.jpeg', '.webp'] } } })
       if (count !== new Set(files).size) throw new BadRequestException('图片必须由本人上传且为不超过 5MB 的 PNG、JPEG 或 WebP')
     }
     const plainText = clean.map((block) => block.type === 'code' ? block.code : block.type === 'image' ? block.alt || '' : block.type === 'list' ? block.items.join('\n') : block.type === 'rich_text' ? sanitizeHtml(block.text, { allowedTags: [], allowedAttributes: {} }) : block.text).join('\n')
@@ -118,7 +118,7 @@ export class CommunityPostService {
       }
       if (contribution.categoryId && !await this.prisma.resourceCategory.count({ where: { id: contribution.categoryId, active: true } })) throw new BadRequestException('资源分类不存在或已停用')
       if (contribution.videoAssetId) {
-        const video = await this.prisma.videoAsset.findFirst({ where: { id: contribution.videoAssetId, uploaderId: userId } })
+        const video = await this.prisma.videoAsset.findFirst({ where: { sourceFile: { quarantinedAt: null }, id: contribution.videoAssetId, uploaderId: userId } })
         if (!video) throw new ForbiddenException('视频必须由本人上传')
         if (input.status === 'published' && video.status !== 'ready') throw new BadRequestException(video.status === 'failed' ? '视频处理失败，请重试后发布' : '视频尚未处理完成')
       }
@@ -126,7 +126,7 @@ export class CommunityPostService {
       if (contribution.kind === 'document' && !contribution.attachmentFileId) throw new BadRequestException('资料投稿需要附件')
       const fileIds = [contribution.attachmentFileId, contribution.coverFileId].filter((value): value is string => !!value)
       if (fileIds.length) {
-        const files = await this.prisma.fileRecord.findMany({ where: { id: { in: [...new Set(fileIds)] }, uploadedBy: userId }, select: { id: true, mimeType: true, size: true } })
+        const files = await this.prisma.fileRecord.findMany({ where: { quarantinedAt: null, id: { in: [...new Set(fileIds)] }, uploadedBy: userId }, select: { id: true, mimeType: true, size: true } })
         if (files.length !== new Set(fileIds).size) throw new ForbiddenException('封面和附件必须由本人上传')
         const cover = files.find((file) => file.id === contribution.coverFileId)
         if (cover && (!['image/png', 'image/jpeg', 'image/webp'].includes(cover.mimeType) || cover.size > 5 * 1024 * 1024)) throw new BadRequestException('投稿封面仅支持不超过 5MB 的 PNG、JPEG 或 WebP')
@@ -142,7 +142,7 @@ export class CommunityPostService {
       const request = await idempotency(tx, audit?.actorId || userId, scope, key, input)
       if (request.resourceId) return tx.communityPost.findUniqueOrThrow({ where: { id: request.resourceId } })
       const fileIds = clean.flatMap((block) => block.type === 'image' ? [block.fileId] : [])
-      if (fileIds.length && await tx.fileRecord.count({ where: { id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
+      if (fileIds.length && await tx.fileRecord.count({ where: { quarantinedAt: null, id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-write:${userId}`},0))::text`
       const latest = id ? await tx.communityPost.findUnique({ where: { id } }) : null
       if (id && (!latest || latest.deletedAt || latest.authorId !== userId || !['draft', 'published', 'pending_review'].includes(latest.status))) throw new ConflictException('动态状态已变化，请重新读取')

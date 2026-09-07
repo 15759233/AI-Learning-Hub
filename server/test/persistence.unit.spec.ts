@@ -1,3 +1,4 @@
+import { fileQuotaStub } from './storage.fixture'
 import 'reflect-metadata'
 import { describe, expect, it, vi } from 'vitest'
 import { BadRequestException, HttpException } from '@nestjs/common'
@@ -88,7 +89,7 @@ describe('持久化原子职责', () => {
       objectUrl = vi.fn(async () => '/local')
     }
     const db = { fileRecord: { create: vi.fn().mockRejectedValue(new Error('db write failed')) } } as unknown as PrismaService
-    const storage = new MemoryStorage(db, 'local'), options = { uploadedBy: 'owner', visibility: 'private' as const }
+    const storage = new MemoryStorage(db, 'local', new ConfigService({}), fileQuotaStub(db)), options = { uploadedBy: 'owner', visibility: 'private' as const }
     await expect(storage.upload({ originalname: 'fake.png', mimetype: 'image/png', size: 4, buffer: Buffer.from('fake') }, options)).rejects.toThrow()
     expect(storage.putObject).not.toHaveBeenCalled()
     await expect(storage.upload({ originalname: 'safe.txt', mimetype: 'text/plain', size: 4, buffer: Buffer.from('safe') }, options)).rejects.toThrow('db write failed')

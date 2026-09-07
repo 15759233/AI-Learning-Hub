@@ -1,6 +1,6 @@
 import { visibleProfile } from '../community/governance-policy'
 import { BadRequestException, Body, Controller, Delete, Get, Inject, NotFoundException, Param, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { ReservedUpload } from '../storage/reserved-upload.interceptor'
 import type { Response } from 'express'
 import { RawResponse } from '../../common/raw-response.decorator'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -11,15 +11,16 @@ import { PermissionsGuard } from '../auth/permissions.guard'
 import type { AuthUser } from '../auth/auth.types'
 import { STORAGE_SERVICE, type StorageService, type UploadedFile as StoredUpload } from './storage.types'
 import { FileAccessService } from './file-access.service'
+import { CommunityVisibilityPolicyService } from '../community/visibility.service'
 
 @Controller('admin/files')
 @UseGuards(AuthGuard, PermissionsGuard)
 @Permissions('resource.write')
 export class StorageController {
-  constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly fileAccess: FileAccessService) {}
+  constructor(@Inject(STORAGE_SERVICE) private readonly storage: StorageService, private readonly fileAccess: FileAccessService, private readonly prisma: PrismaService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(ReservedUpload('image', 20 * 1024 * 1024))
   upload(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Body('visibility') visibility = 'private') {
     if (!file) throw new BadRequestException('请选择文件')
     if (!['public', 'private'].includes(visibility)) throw new BadRequestException('文件可见性不合法')
@@ -36,6 +37,7 @@ export class StorageController {
   async delete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     await this.fileAccess.assert(user.id, id)
     await this.storage.delete(id)
+    await this.prisma.auditLog.create({ data: { actorId: user.id, action: 'storage_file_delete', targetType: 'file', targetId: id } })
     return { deleted: true }
   }
 }
@@ -46,6 +48,7 @@ export class LocalFileController {
     private readonly prisma: PrismaService,
     private readonly fileAccess: FileAccessService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly visibility: CommunityVisibilityPolicyService,
   ) {}
 
   @Get('profile/:id')
@@ -62,6 +65,7 @@ export class LocalFileController {
       },
     })
     if (!file) throw new NotFoundException('文件不存在')
+    await this.visibility.assertMediaEligibility(file.uploadedBy)
     const opened = await this.storage.open(id)
     response.set({
       'Content-Type': file.mimeType,
@@ -70,6 +74,7 @@ export class LocalFileController {
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     })
+    response.once('close', () => opened.stream.destroy())
     return new StreamableFile(opened.stream)
   }
 
@@ -94,6 +99,7 @@ export class LocalFileController {
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
       })
+      response.once('close', () => file.stream.destroy())
       return new StreamableFile(file.stream)
     } catch (error) {
       file.stream.destroy()

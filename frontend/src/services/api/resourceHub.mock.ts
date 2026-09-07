@@ -96,6 +96,9 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
       likedVideos: entries.filter((entry) => entry.kind === 'video').slice(4, 8),
       liveReplay: entries.filter((entry) => entry.liveReplay),
     } satisfies ResourceHubHomeDto
+  } else if (parts[0] === 'capacity') {
+    const quotaBytes = 10 * 1024 ** 3
+    value = { driver: 'mock', usedBytes: 0, reservedBytes: 0, temporaryReservedBytes: 0, quotaBytes, remainingBytes: quotaBytes, activeUploads: 0, parallelUploadLimit: 2, queuedTasks: 0, queueLimit: 3, site: { usedBytes: 0, reservedBytes: 0, temporaryReservedBytes: 0, capacityBytes: quotaBytes, availableBytes: quotaBytes, temporaryFreeBytes: quotaBytes, minimumFreeBytes: 2 * 1024 ** 3, activeUploads: 0, queuedTasks: 0 }, unavailableReason: 'Mock演示容量，不代表实际存储或扫描结果' }
   } else if (parts[0] === 'categories') value = demoResourceHubCategories
   else if (parts[0] === 'items') {
     const keyword = (url.searchParams.get('keyword') || '').toLowerCase(), kind = url.searchParams.get('kind') || 'all', categoryCode = url.searchParams.get('category') || ''
@@ -169,7 +172,7 @@ export async function mockResourceHub<T>(path: string, method = 'GET', body?: un
     const file = body as File
     const id = `demo-file-${randomId()}`
     uploadedDocuments.set(id, { url: URL.createObjectURL(file), name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size })
-    value = { id, originalName: file.name, mimeType: file.type, size: file.size, checksum: 'demo' }
+    value = { id, originalName: file.name, mimeType: file.type, size: file.size, checksum: 'demo', securityScan: { status: 'unavailable', message: 'Mock未执行恶意文件扫描', scannedAt: null, quarantined: false } }
   } else if (parts[0] === 'collections') {
     const rows = readCollections()
     if (!parts[1] && method === 'GET') value = rows.filter((entry) => entry.owner.id === student.id || entry.visibility === 'community' && (entry.contentStatus || 'published') === 'published').map(summary)

@@ -93,6 +93,11 @@ export class CommunityVisibilityPolicyService {
     const decision = (await this.eligibility(userId, tx)).operations[operation]
     if (!decision.allowed) throw new ForbiddenException({ message: decision.message, errorCode: decision.reasonCode, availableAt: decision.availableAt, nextAction: decision.nextAction })
   }
+  async assertMediaEligibility(userId: string) {
+    const decision = (await this.eligibility(userId)).operations.upload
+    // 限制上传这一单项功能不影响已有内容阅读；账号、邮箱、协议和校园资格仍须有效。
+    if (!decision.allowed && decision.reasonCode !== 'COMMUNITY_OPERATION_RESTRICTED') throw new ForbiddenException({ message: decision.message, errorCode: decision.reasonCode, nextAction: decision.nextAction })
+  }
   async consumeQuota(tx: Prisma.TransactionClient, userId: string, operation: keyof CommunityEligibilityPolicyDto['quotas'], ip?: string) {
     await this.assertOperation(userId, operation, tx)
     const quota = (await this.policy(tx)).quotas[operation]

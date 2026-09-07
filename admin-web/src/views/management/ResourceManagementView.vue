@@ -9,6 +9,7 @@ import { usePagedList } from '../../composables/usePagedList'
 import { usePermissionAction } from '../../composables/usePermissionAction'
 import { usePublishAction } from '../../composables/usePublishAction'
 import { api } from '../../services/api'
+import type { MediaRuntimeDto } from '@ai-learning-hub/contracts'
 
 const list = usePagedList('resources')
 const { result, keyword, status, dataOrigin, loading, error, selected } = list
@@ -32,6 +33,8 @@ const hubExpanded = ref(false)
 const hubCategories = ref<HubCategory[]>([])
 const hubConfig = ref<ResourceHubAdminConfigDto>({ revision: 0, bannerPostIds: [], sectionCategoryCodes: [] })
 const hubFailures = ref<Array<{ id: string; originalName: string; attempts: number; lastError: string | null; contribution: { postId: string; post: { title: string | null } } | null }>>([])
+const mediaRuntime = ref<MediaRuntimeDto | null>(null)
+const sizeLabel = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`
 const hubReports = ref<Array<{ id: string; postId: string | null; reason: string; description: string; status: string; createdAt: string }>>([])
 const hubCollections = ref<HubCollection[]>([])
 const hubReason = ref('资源中心后台整理')
@@ -92,15 +95,17 @@ watch(hubTab, async (tab) => {
   await loadHubItems()
 })
 const loadHub = async () => {
-  const [items, categories, config, failures, reports, collections] = await Promise.all([
+  const [items, categories, config, failures, reports, collections, runtime] = await Promise.all([
     api<Omit<HubItem, 'categoryId'>[]>(hubItemsPath()),
     api<HubCategory[]>('/admin/resource-hub/categories'),
     api<ResourceHubAdminConfigDto>('/admin/resource-hub/config'),
     api<typeof hubFailures.value>('/admin/resource-hub/processing-failures'),
     api<typeof hubReports.value>('/admin/resource-hub/reports').catch(() => []),
     api<HubCollection[]>('/admin/resource-hub/collections'),
+    api<MediaRuntimeDto>('/admin/resource-hub/media-runtime'),
   ])
   hubItems.value = items.map((item) => ({ ...item, categoryId: item.category?.id || '' })); hubCategories.value = categories; hubConfig.value = config; hubFailures.value = failures; hubReports.value = reports; hubCollections.value = collections
+  mediaRuntime.value = runtime
   for (const collection of collections) courseDrafts[collection.id] ||= { title: collection.name, slug: `collection-${collection.id.slice(-8).toLowerCase()}` }
 }
 const updateHubItem = async (item: HubItem) => {
@@ -219,8 +224,15 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
     </template>
 
     <template v-else-if="hubTab === 'processing'">
+      <template v-if="mediaRuntime">
+        <p>存储已用 {{ sizeLabel(mediaRuntime.capacity.site.usedBytes) }} · 已预留 {{ sizeLabel(mediaRuntime.capacity.site.reservedBytes + mediaRuntime.capacity.site.temporaryReservedBytes) }} · 剩余可分配 {{ sizeLabel(mediaRuntime.capacity.site.availableBytes) }} · 安全余量 {{ sizeLabel(mediaRuntime.capacity.site.minimumFreeBytes) }}</p>
+        <p>正在上传 {{ mediaRuntime.capacity.site.activeUploads }} 项；视频排队及处理中 {{ mediaRuntime.capacity.site.queuedTasks }} 项。{{ mediaRuntime.capacity.unavailableReason }}</p>
+        <p>恶意文件扫描：{{ mediaRuntime.scan.configured ? '已配置' : '不可用，未执行扫描' }}；未扫描 {{ mediaRuntime.scan.unavailableFiles }} 个，隔离 {{ mediaRuntime.scan.quarantinedFiles }} 个；安全清理待重试 {{ mediaRuntime.cleanup.pending }} 项。</p>
+        <div class="resource-admin-list"><article v-for="item in mediaRuntime.queue" :key="item.id"><div><strong>{{ item.originalName }}</strong><small>{{ { uploaded: '排队中', processing: '处理中', failed: '失败' }[item.status] || item.status }} · 已尝试 {{ item.attempts }} 次 · {{ item.lastError }}<span v-if="item.leaseExpiresAt"> · 租约至 {{ new Date(item.leaseExpiresAt).toLocaleTimeString('zh-CN') }}</span></small></div><button v-if="item.retryable" class="admin-primary" :disabled="!canWrite" @click="retryHubVideo(item.id)">重试处理</button></article></div>
+        <p v-for="job in mediaRuntime.cleanup.failures" :key="job.id">清理尝试 {{ job.attempts }} 次：{{ job.lastError }}</p>
+      </template>
       <div><button class="admin-secondary" :disabled="!canWrite" @click="cleanupHubVideos">清理超过保留期的孤立上传</button></div>
-      <div class="resource-admin-list"><article v-for="item in hubFailures" :key="item.id"><div><strong>{{ item.contribution?.post.title || item.originalName }}</strong><small>已尝试 {{ item.attempts }} 次 · {{ item.lastError }}</small></div><button class="admin-primary" :disabled="!canWrite" @click="retryHubVideo(item.id)">重试处理</button></article></div><p v-if="!hubFailures.length">当前没有处理失败的视频。</p>
+      <p v-if="!mediaRuntime?.queue.length">当前没有待处理或失败的视频。</p>
     </template>
 
     <template v-else>

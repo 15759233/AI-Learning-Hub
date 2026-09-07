@@ -21,7 +21,8 @@ export async function fileReferenced(tx: Prisma.TransactionClient, id: string) {
     if (!fields.length) continue
     const table = Prisma.raw(`"${model.dbName || model.name}"`)
     const conditions = fields.map((field) => Prisma.sql`${Prisma.raw(`"${field.dbName || field.name}"`)}::text LIKE ${`%${id.replace(/[%_\\]/g, '\\$&')}%`}`)
-    const rows = await tx.$queryRaw<Array<{ found: boolean }>>(Prisma.sql`SELECT EXISTS(SELECT 1 FROM ${table} WHERE ${Prisma.join(conditions, ' OR ')}) AS found`)
+    const active = model.name === 'RequestIdempotency' ? Prisma.sql`expires_at > NOW() AND` : Prisma.empty
+    const rows = await tx.$queryRaw<Array<{ found: boolean }>>(Prisma.sql`SELECT EXISTS(SELECT 1 FROM ${table} WHERE ${active} (${Prisma.join(conditions, ' OR ')})) AS found`)
     if (rows[0].found) return true
   }
   return false

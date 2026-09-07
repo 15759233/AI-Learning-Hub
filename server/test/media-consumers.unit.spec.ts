@@ -90,7 +90,7 @@ describe('资源下载授权只读发布快照', () => {
       return Number(rules.every((rule: { snapshot: { path: string[]; equals: string } }) => snapshot[rule.snapshot.path[0]] === rule.snapshot.equals))
     })
     const prisma = { fileRecord: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, uploadedBy: owner ? 'student' : 'admin' })) }, userRole: { count: vi.fn(async ({ where }) => Number(editor && where.role.permissions.some.permission.code === 'resource.write')) }, resource: { count }, communityPost: { count: vi.fn(async () => 0) }, communityComment: { count: vi.fn(async () => 0) }, communityProfile: { count: vi.fn(async () => 0) } }
-    const visibility = { viewer: vi.fn(), where: vi.fn(async () => ({})), authorExclusions: vi.fn(async () => ({ authors: [] })) }
+    const visibility = { viewer: vi.fn(), assertMediaEligibility: vi.fn(), auditAdminRead: vi.fn(), where: vi.fn(async () => ({})), authorExclusions: vi.fn(async () => ({ authors: [] })) }
     return { access: new FileAccessService(prisma as never, visibility as never), count }
   }
   it('发布A允许、草稿B拒绝，查询不包含当前附件列', async () => {

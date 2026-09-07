@@ -203,6 +203,7 @@ export class CommunityContextService {
     let stored: Awaited<ReturnType<StorageService['upload']>> | null = null
     try {
       stored = await this.storage.upload({ originalname: `community-${kind}.webp`, mimetype: 'image/webp', size: buffer.length, buffer }, { uploadedBy: userId, visibility: 'public' })
+      if (stored.securityScan?.quarantined) throw new BadRequestException(stored.securityScan.message || '图片已隔离')
       await this.prisma.$transaction(async (tx) => {
         await lockFileReferences(tx)
         const profile = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
@@ -216,7 +217,7 @@ export class CommunityContextService {
         await request.complete(tx, stored!.id)
       })
     } catch (error) {
-      if (stored) await releaseUnboundMediaFile(this.prisma, this.storage, stored.id)
+      if (stored && !stored.securityScan?.quarantined) await releaseUnboundMediaFile(this.prisma, this.storage, stored.id)
       await request.cancel()
       throw error
     }

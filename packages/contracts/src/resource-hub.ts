@@ -1,4 +1,5 @@
 import type { CommunityAuthorDto, CommunityPostDetailDto, CommunityPostSummaryDto } from './community'
+import type { FileScanDto } from './media-runtime'
 
 export type ResourceContributionKind = 'video' | 'article' | 'document'
 export type VideoProcessingStatus = 'uploaded' | 'processing' | 'ready' | 'failed'
@@ -27,6 +28,7 @@ export interface VideoAssetDto {
   posterUrl: string | null
   createdAt: string
   updatedAt: string
+  securityScan?: FileScanDto
 }
 
 export interface ResourceContributionInput {
@@ -45,7 +47,7 @@ export interface ResourceContributionDto extends ResourceContributionInput {
   postId: string
   category: ResourceHubCategoryDto | null
   video: VideoAssetDto | null
-  attachment: null | { id: string; name: string; size: number; mimeType: string; downloadUrl?: string }
+  attachment: null | { id: string; name: string; size: number; mimeType: string; downloadUrl?: string; securityScan?: FileScanDto }
   coverUrl: string | null
   featured: boolean
   liveReplay: boolean

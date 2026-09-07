@@ -8,12 +8,13 @@ function fixture() {
   const ownerScope = { OR: [publicScope, { authorId: 'synthetic-viewer', status: { in: ['draft', 'pending_review'] } }] }
   const adminScope = { status: { not: 'draft' }, publishedAt: { not: null } }
   const visibility = {
+    assertMediaEligibility: vi.fn(async () => { if (!state.active) throw new Error('账号不可用') }),
     viewer: vi.fn(async () => { if (!state.active) throw new Error('账号不可用') }),
     where: vi.fn(async (_user: string, own = false) => { await visibility.viewer(); return own ? ownerScope : publicScope }),
     adminWhere: vi.fn(async () => adminScope), auditAdminRead: vi.fn(),
   }
   const prisma = {
-    communityPost: { count: vi.fn(async ({ where }: { where: { AND: object[] } }) => {
+    communityPost: { findFirst: vi.fn(async () => state.status === 'published' || state.owner && ['draft', 'pending_review'].includes(state.status) ? { authorId: 'synthetic-owner' } : null), count: vi.fn(async ({ where }: { where: { AND: object[] } }) => {
       const scope = where.AND[1]
       if (scope === adminScope) return Number(state.submitted && state.status !== 'draft')
       return Number(state.status === 'published' || scope === ownerScope && state.owner && ['draft', 'pending_review'].includes(state.status))
@@ -26,7 +27,13 @@ function fixture() {
     $transaction: vi.fn(),
   }
   const storage = { open: vi.fn(async () => ({ mimeType: 'application/octet-stream' })) }
-  const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-media-review-test-secret' }), {} as never, visibility as never, {} as never, {} as never, {} as never, storage as never, {} as never)
+  const fileAccess = { assert: vi.fn(async () => {
+    await visibility.assertMediaEligibility()
+    if (state.status === 'published' || state.owner && ['draft', 'pending_review'].includes(state.status)) return
+    if (state.status !== 'draft' && state.submitted && ['resource.read', 'community.moderate'].every((permission) => state.permissions.includes(permission))) { await visibility.auditAdminRead('synthetic-viewer', 'resource_media', 'synthetic-file'); return }
+    throw new Error('媒体不可见')
+  }) }
+  const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-media-review-test-secret' }), {} as never, visibility as never, {} as never, {} as never, {} as never, storage as never, {} as never, {} as never, fileAccess as never)
   const token = (purpose: string, target: string) => (service as unknown as { sign(p: string, id: string, user: string, expires: number): string }).sign(purpose, target, 'synthetic-viewer', Math.floor(Date.now() / 1000) + 60)
   return { state, prisma, service, visibility, storage, token }
 }
@@ -51,7 +58,6 @@ describe('资源待复核媒体隔离', () => {
     f.state.permissions = ['resource.read', 'community.moderate']
     await expect(read()).resolves.toBeDefined()
     expect(f.visibility.auditAdminRead).toHaveBeenCalledWith('synthetic-viewer', 'resource_media', target)
-    expect(f.prisma.communityPost.count).toHaveBeenCalledWith({ where: { AND: [purpose === 'play' ? { id: 'synthetic-post' } : purpose === 'attachment' ? { contribution: { is: { attachmentFileId: target } } } : { contribution: { isNot: null }, OR: [{ contribution: { is: { coverFileId: target } } }, { contribution: { is: { videoAsset: { is: { posterFileId: target } } } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: target }] } }] }, expect.any(Object)] } })
     f.state.status = 'draft'; f.state.submitted = false
     await expect(read()).rejects.toThrow()
     f.state.owner = true; f.state.active = false

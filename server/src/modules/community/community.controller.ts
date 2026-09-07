@@ -1,6 +1,6 @@
 import { CommunityGovernanceService } from './governance.service'
 import { BadRequestException, Body, Controller, Delete, Get, Headers, Inject, Ip, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { ReservedUpload } from '../storage/reserved-upload.interceptor'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -117,12 +117,12 @@ export class CommunityController {
   @Patch('profile') profileEdit(@CurrentUser() user: AuthUser, @Body() input: ProfileDto) { return this.context.updateProfile(user.id, input) }
   @Post('profile/avatar')
   @UseGuards(CommunityUploadGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(ReservedUpload('image', 5 * 1024 * 1024))
   avatar(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Body() input: ProfileMediaDto, @Headers('idempotency-key') key?: string) { return this.context.uploadProfileImage(user.id, 'avatar', file, input, key) }
   @Delete('profile/avatar') removeAvatar(@CurrentUser() user: AuthUser, @Body() input: ProfileMediaDto) { return this.context.removeProfileImage(user.id, 'avatar', input) }
   @Post('profile/banner')
   @UseGuards(CommunityUploadGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(ReservedUpload('image', 8 * 1024 * 1024))
   banner(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Body() input: ProfileMediaDto, @Headers('idempotency-key') key?: string) { return this.context.uploadProfileImage(user.id, 'banner', file, input, key) }
   @Delete('profile/banner') removeBanner(@CurrentUser() user: AuthUser, @Body() input: ProfileMediaDto) { return this.context.removeProfileImage(user.id, 'banner', input) }
   @Put('posts/:id/pin') pin(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ProfilePinDto) { return this.context.pinPost(user.id, id, input.expectedProfileRevision) }
@@ -146,7 +146,7 @@ export class CommunityController {
   @Post('notifications/:id/read') read(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.notifications.read(user.id, id) }
   @Post('media')
   @UseGuards(CommunityUploadGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(ReservedUpload('image', 5 * 1024 * 1024))
   async upload(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Headers('idempotency-key') key?: string) {
     if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) throw new BadRequestException('仅支持 PNG、JPEG、WebP 图片')
     const bytes = file.buffer
@@ -161,10 +161,11 @@ export class CommunityController {
     let stored: Awaited<ReturnType<StorageService['upload']>> | null = null
     try {
       stored = await this.storage.upload(file, { uploadedBy: user.id, visibility: 'private' })
+      if (stored.securityScan?.quarantined) throw new BadRequestException(stored.securityScan.message || '图片已隔离')
       await this.prisma.$transaction((tx) => request.complete(tx, stored!.id))
       return stored
     } catch (error) {
-      if (stored) await this.storage.delete(stored.id).catch(() => undefined)
+      if (stored && !stored.securityScan?.quarantined) await this.storage.delete(stored.id).catch(() => undefined)
       await request.cancel()
       throw error
     }

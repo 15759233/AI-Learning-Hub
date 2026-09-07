@@ -25,6 +25,9 @@ import { STORAGE_SERVICE, type StorageService, type UploadedPathFile } from '../
 import { ResourceService } from './resource.service'
 import type { CollectionInputDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubQueryDto } from './resource-hub.dto'
 import { VideoProcessingService } from './video-processing.service'
+import { StorageQuotaService } from '../storage/storage-quota.service'
+import { FileAccessService } from '../storage/file-access.service'
+import { fileScanDto } from '../storage/file-scan'
 import { idempotency, lockFileReferences, reserveIdempotency } from '../../common/persistence'
 import { ContentDetectionService } from '../community/content-detection.service'
 
@@ -82,6 +85,8 @@ export class ResourceHubService {
     private readonly videoProcessing: VideoProcessingService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
     private readonly detection: ContentDetectionService,
+    private readonly quota: StorageQuotaService,
+    private readonly fileAccess: FileAccessService,
   ) {
     this.tokenSecret = String(config.get('VIDEO_PLAYBACK_SECRET') || config.getOrThrow('JWT_SECRET'))
   }
@@ -95,8 +100,12 @@ export class ResourceHubService {
     let stored: Awaited<ReturnType<StorageService['uploadPath']>> | null = null
     try {
       stored = await this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
+      if (stored.securityScan?.quarantined) throw new BadRequestException(stored.securityScan.message || '视频已隔离')
+      const reservation = this.quota.current()
+      if (!reservation) throw new BadRequestException('视频上传缺少容量预留')
       const asset = await this.prisma.$transaction(async (tx) => {
-        const created = await tx.videoAsset.create({ data: { uploaderId: userId, sourceFileId: stored!.id, originalName: stored!.originalName, originalMimeType: stored!.mimeType } })
+        await this.quota.queue(tx, reservation)
+        const created = await tx.videoAsset.create({ data: { uploaderId: userId, sourceFileId: stored!.id, originalName: stored!.originalName, originalMimeType: stored!.mimeType, reservationId: reservation.id } })
         await request.complete(tx, created.id)
         return created
       })
@@ -115,9 +124,10 @@ export class ResourceHubService {
         posterUrl: null,
         createdAt: asset.createdAt.toISOString(),
         updatedAt: asset.updatedAt.toISOString(),
+        securityScan: stored.securityScan,
       }
     } catch (error) {
-      if (stored) await this.storage.delete(stored.id).catch(() => undefined)
+      if (stored && !stored.securityScan?.quarantined) await this.storage.delete(stored.id).catch(() => undefined)
       await request.cancel()
       throw error
     }
@@ -125,7 +135,7 @@ export class ResourceHubService {
 
   async video(userId: string, id: string) {
     await this.visibility.viewer(userId)
-    const asset = await this.prisma.videoAsset.findFirst({ where: { id, uploaderId: userId } })
+    const asset = await this.prisma.videoAsset.findFirst({ where: { id, uploaderId: userId }, include: { sourceFile: true } })
     if (!asset) throw new NotFoundException('视频不存在')
     return {
       id: asset.id,
@@ -141,6 +151,7 @@ export class ResourceHubService {
       posterUrl: asset.posterFileId ? this.mediaUrl(asset.posterFileId, userId) : null,
       createdAt: asset.createdAt.toISOString(),
       updatedAt: asset.updatedAt.toISOString(),
+      securityScan: fileScanDto(asset.sourceFile),
     }
   }
 
@@ -150,7 +161,7 @@ export class ResourceHubService {
     if (request.resourceId) {
       const existing = await this.prisma.fileRecord.findFirst({ where: { id: request.resourceId, uploadedBy: userId } })
       if (!existing) throw new BadRequestException('原上传结果已失效，请重新选择文件')
-      return { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType, size: existing.size, checksum: existing.checksum }
+      return { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType, size: existing.size, checksum: existing.checksum, securityScan: fileScanDto(existing) }
     }
     const maxBytes = Math.max(1, Math.min(500, Number(this.config.get('RESOURCE_ATTACHMENT_MAX_MB') || 100))) * 1024 * 1024
     let stored: Awaited<ReturnType<StorageService['uploadPath']>> | null = null
@@ -477,12 +488,7 @@ export class ResourceHubService {
 
   async mediaFile(fileId: string, token: string) {
     const userId = this.verify('media', fileId, token)
-    await this.visibility.viewer(userId)
-    const ownFile = await this.prisma.fileRecord.count({ where: { id: fileId, uploadedBy: userId } })
-    if (!ownFile) await this.assertMediaPost(userId, {
-      contribution: { isNot: null },
-      OR: [{ contribution: { is: { coverFileId: fileId } } }, { contribution: { is: { videoAsset: { is: { posterFileId: fileId } } } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId }] } }],
-    }, fileId)
+    await this.fileAccess.assert(userId, fileId)
     return this.storage.open(fileId)
   }
 
@@ -612,6 +618,20 @@ export class ResourceHubService {
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: 100,
     })
+  }
+
+  capacity(userId: string) { return this.quota.capacity(userId) }
+
+  async mediaRuntime() {
+    const [capacity, rows, unavailableFiles, quarantinedFiles, pending, failures] = await Promise.all([
+      this.quota.capacity(),
+      this.prisma.videoAsset.findMany({ where: { status: { in: ['uploaded', 'processing', 'failed'] } }, select: { id: true, originalName: true, status: true, attempts: true, lastError: true, leaseExpiresAt: true, sourceFile: { select: { quarantinedAt: true } } }, orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }], take: 100 }),
+      this.prisma.fileRecord.count({ where: { scanStatus: { in: ['unavailable', 'not_scanned'] } } }),
+      this.prisma.fileRecord.count({ where: { quarantinedAt: { not: null } } }),
+      this.prisma.mediaGcJob.count(),
+      this.prisma.mediaGcJob.findMany({ where: { attempts: { gt: 0 } }, select: { id: true, attempts: true, lastError: true }, orderBy: { updatedAt: 'desc' }, take: 20 }),
+    ])
+    return { capacity, queue: rows.map(({ sourceFile, leaseExpiresAt, ...row }) => ({ ...row, leaseExpiresAt: leaseExpiresAt?.toISOString() ?? null, retryable: row.status === 'failed' && !sourceFile.quarantinedAt && row.attempts < Math.max(1, Math.min(5, Number(this.config.get('VIDEO_PROCESSING_MAX_ATTEMPTS') || 3))) })), scan: { configured: !!this.config.get('MEDIA_CLAMSCAN_PATH'), unavailableFiles, quarantinedFiles }, cleanup: { pending, failures } }
   }
 
   resourceReports() {
@@ -748,7 +768,9 @@ export class ResourceHubService {
   }
 
   private async assertMediaPost(userId: string, media: Prisma.CommunityPostWhereInput, targetId: string) {
-    if (await this.prisma.communityPost.count({ where: { AND: [media, await this.visibility.where(userId, true)] } })) return
+    await this.visibility.assertMediaEligibility(userId)
+    const post = await this.prisma.communityPost.findFirst({ where: { AND: [media, await this.visibility.where(userId, true)] }, select: { authorId: true } })
+    if (post) { await this.visibility.assertMediaEligibility(post.authorId); return }
     const reviewer = await this.prisma.user.count({ where: { id: userId, AND: ['community.moderate', 'resource.read'].map((code) => ({ userRoles: { some: { role: { permissions: { some: { permission: { code } } } } } } })) } })
     if (reviewer && await this.prisma.communityPost.count({ where: { AND: [media, await this.visibility.adminWhere()] } })) {
       await this.visibility.auditAdminRead(userId, 'resource_media', targetId)
@@ -758,11 +780,13 @@ export class ResourceHubService {
   }
 
   private async visibleAsset(userId: string, id: string, preview = false) {
+    await this.visibility.assertMediaEligibility(userId)
     const asset = await this.prisma.videoAsset.findFirst({
       where: { id, status: 'ready', playableFileId: { not: null }, durationSeconds: { gt: 0 }, ...(preview ? {} : { contribution: { is: { post: await this.visibility.where(userId) } } }) },
       include: { contribution: true },
     })
     if (!asset?.contribution) throw new NotFoundException('视频不存在、未就绪或不可见')
+    await this.visibility.assertMediaEligibility(asset.uploaderId)
     if (preview) await this.assertMediaPost(userId, { id: asset.contribution.postId }, id)
     return asset
   }
@@ -784,13 +808,15 @@ export class ResourceHubService {
   }
 
   private verify(purpose: string, targetId: string, token: string) {
-    const [payload, received] = token.split('.', 2)
+    if (typeof token !== 'string' || token.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) throw new ForbiddenException('播放凭据无效')
+    const [payload, received] = token.split('.')
     if (!payload || !received) throw new ForbiddenException('播放凭据无效')
     const expected = createHmac('sha256', this.tokenSecret).update(payload).digest()
     const actual = Buffer.from(received, 'base64url')
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new ForbiddenException('播放凭据无效')
-    const [tokenPurpose, tokenTarget, userId, expiresValue] = Buffer.from(payload, 'base64url').toString('utf8').split('\n')
-    if (tokenPurpose !== purpose || tokenTarget !== targetId || Number(expiresValue) < Math.floor(Date.now() / 1000)) throw new ForbiddenException('播放凭据已失效')
+    const fields = Buffer.from(payload, 'base64url').toString('utf8').split('\n')
+    const [tokenPurpose, tokenTarget, userId, expiresValue] = fields
+    if (fields.length !== 4 || !userId || !/^\d+$/.test(expiresValue) || !Number.isSafeInteger(Number(expiresValue)) || tokenPurpose !== purpose || tokenTarget !== targetId || Number(expiresValue) <= Math.floor(Date.now() / 1000)) throw new ForbiddenException('播放凭据已失效')
     return userId
   }
 
