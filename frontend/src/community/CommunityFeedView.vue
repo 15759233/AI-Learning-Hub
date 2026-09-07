@@ -16,7 +16,8 @@ import { postLabels } from './labels'
 import { useCommunityScrollRoot } from './composables/useCommunityScrollRoot'
 import { useCommunityAccess } from './composables/useCommunityAccess'
 const store = useCommunityStore(), route = useRoute(), router = useRouter()
-const { canWrite, requireWrite } = useCommunityAccess()
+const { decision, requireWrite } = useCommunityAccess()
+const canEditProfile = computed(() => decision('profile').allowed)
 const themes = useThemesStore(), demoThemes = computed(() => themes.items)
 const mode = computed<CommunityFeedMode>(() => ['for_you', 'following', 'latest'].includes(String(route.query.mode)) ? route.query.mode as CommunityFeedMode : 'for_you')
 const type = computed<CommunityPostType | 'all'>(() => Object.keys(postLabels).includes(String(route.query.type)) ? route.query.type as CommunityPostType : 'all')
@@ -83,10 +84,10 @@ watch(key, async (_next, previous) => {
   restore(feed.value?.anchor); reportVisible()
 })
 watch(() => store.publishNotice?.id, async (id) => { if (id) { const anchor = visibleAnchor(); await nextTick(); if (anchor) restore(anchor); reportVisible() } }, { flush: 'pre' })
-watch(() => store.context?.needsInterests, async (needs) => { if (needs && canWrite.value) { try { await themes.load(); interestsOpen.value = true } catch (cause) { error.value = cause instanceof Error ? cause.message : '学习方向读取失败' } } }, { immediate: true })
-watch(canWrite, (allowed) => { if (!allowed) interestsOpen.value = false })
-const saveInterests = async () => { if (!requireWrite()) return; const epoch = store.epoch; try { const context = await communityApi.interests(interests.value); if (epoch !== store.epoch) return; store.context = context; store.invalidateFollowing(); interestsOpen.value = false; await load(true) } catch (cause) { error.value = cause instanceof Error ? cause.message : '兴趣保存失败' } }
-const askQuestion = () => { if (requireWrite()) store.openComposer({ type: 'question' }) }
+watch(() => store.context?.needsInterests, async (needs) => { if (needs && canEditProfile.value) { try { await themes.load(); interestsOpen.value = true } catch (cause) { error.value = cause instanceof Error ? cause.message : '学习方向读取失败' } } }, { immediate: true })
+watch(canEditProfile, (allowed) => { if (!allowed) interestsOpen.value = false })
+const saveInterests = async () => { if (!requireWrite('profile')) return; const epoch = store.epoch; try { const context = await communityApi.interests(interests.value); if (epoch !== store.epoch) return; store.context = context; store.invalidateFollowing(); interestsOpen.value = false; await load(true) } catch (cause) { error.value = cause instanceof Error ? cause.message : '兴趣保存失败' } }
+const askQuestion = () => store.openComposer({ type: 'question' })
 const hidden = async () => { await nextTick(); reportVisible() }
 onMounted(async () => {
   impressionObserver = new IntersectionObserver((entries) => {

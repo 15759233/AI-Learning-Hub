@@ -18,11 +18,11 @@ const props = defineProps<{ dialog?: boolean }>()
 const store = useCommunityStore(), auth = useAuthStore(), editor = useCommunityDraft(), panel = ref<HTMLElement>()
 const scrollRoot = useCommunityScrollRoot(), textarea = ref<HTMLTextAreaElement>()
 const { form, body, images, saving, error, savedAt } = storeToRefs(editor)
-const { requireWrite } = useCommunityAccess()
+const { canPost, availability, message, nextAction } = useCommunityAccess()
 const active = computed(() => store.composerOpen && store.composerMode === 'quick' && (props.dialog || store.composerInline))
 const tool = ref<'images' | 'binding' | 'topics' | null>(null)
 const types: Array<[CommunityPostType, string, string]> = [['question', '提出问题', 'question'], ['note', '发布笔记', 'note-edit'], ['lab_result', '分享实训', 'lab-share'], ['project', '展示项目', 'project-folder']]
-const open = (type: CommunityPostType = 'general') => { if (!requireWrite()) return; if (active.value) form.value.type = type; else store.openComposer({ type }) }
+const open = (type: CommunityPostType = 'general') => { if (active.value) form.value.type = type; else store.openComposer({ type }) }
 const resize = () => { const node = textarea.value; if (!node) return; node.style.height = '84px'; node.style.height = `${Math.min(240, Math.max(84, node.scrollHeight))}px` }
 const focus = () => {
   if (!active.value) return
@@ -60,8 +60,8 @@ onBeforeUnmount(() => window.removeEventListener('community-composer-focus', foc
       <label v-if="['question', 'project'].includes(form.type)">标题（必填）<input v-model="form.title" required maxlength="160" placeholder="用一句话说明问题或项目" /></label>
       <textarea ref="textarea" v-model="body" aria-label="正文" maxlength="15000" autofocus required placeholder="分享你今天学到的 AI 知识……" />
       <CommunityComposerTools v-if="tool" :panel="tool" />
-      <p v-if="error" class="community-error" role="alert">{{ error }}</p>
-      <footer class="quick-editor-actions"><button type="button" class="text-link" :aria-expanded="tool === 'images'" @click="tool = tool === 'images' ? null : 'images'"><AppIcon name="image" :size="18" />图片{{ images.length ? ` ${images.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'binding'" @click="tool = tool === 'binding' ? null : 'binding'">关联{{ form.bindings.length ? ` ${form.bindings.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'topics'" @click="tool = tool === 'topics' ? null : 'topics'">话题{{ form.topicIds.length ? ` ${form.topicIds.length}` : '' }}</button><button type="button" class="text-link" @click="advanced">高级编辑</button><button class="button primary small" type="submit" :disabled="saving">{{ saving ? '保存中…' : '发布' }}</button></footer>
+      <p v-if="!canPost" class="community-notice">{{ message }}草稿仍会自动保存。<span v-if="availability()">{{ availability() }}</span><RouterLink v-if="nextAction" class="text-link" :to="nextAction.route">{{ nextAction.label }}</RouterLink></p><p v-if="error" class="community-error" role="alert">{{ error }}</p>
+      <footer class="quick-editor-actions"><button type="button" class="text-link" :aria-expanded="tool === 'images'" @click="tool = tool === 'images' ? null : 'images'"><AppIcon name="image" :size="18" />图片{{ images.length ? ` ${images.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'binding'" @click="tool = tool === 'binding' ? null : 'binding'">关联{{ form.bindings.length ? ` ${form.bindings.length}` : '' }}</button><button type="button" class="text-link" :aria-expanded="tool === 'topics'" @click="tool = tool === 'topics' ? null : 'topics'">话题{{ form.topicIds.length ? ` ${form.topicIds.length}` : '' }}</button><button type="button" class="text-link" @click="advanced">高级编辑</button><button class="button primary small" type="submit" :disabled="saving || !canPost">{{ saving ? '保存中…' : '发布' }}</button></footer>
       <div class="quick-save-state"><small role="status">{{ savedAt || 'Ctrl / ⌘ + Enter 发布' }}</small><RouterLink to="/community/drafts">草稿箱</RouterLink></div>
     </form>
   </section>

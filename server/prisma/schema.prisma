@@ -117,6 +117,9 @@ model User {
   department                Department?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   communityProfile          CommunityProfile?
   communityPosts            CommunityPost[]
+  authoredContentReviews    ContentReview[]             @relation("ContentReviewAuthor")
+  submittedContentReviews   ContentReview[]             @relation("ContentReviewSubmitter")
+  reviewedContentReviews    ContentReview[]             @relation("ContentReviewReviewer")
   communityComments         CommunityComment[]
   communityReactions        CommunityPostReaction[]
   communityCommentReactions CommunityCommentReaction[]
@@ -128,6 +131,9 @@ model User {
   videoAssets               VideoAsset[]
   learningCollections       LearningCollection[]        @relation("LearningCollectionOwner")
   collectionCourseLinks     CollectionCourseReference[] @relation("CollectionCourseCreator")
+  communityRestrictions     CommunityOperationRestriction[] @relation("CommunityRestrictionUser")
+  restrictionsCreated       CommunityOperationRestriction[] @relation("CommunityRestrictionCreator")
+  restrictionsRevoked       CommunityOperationRestriction[] @relation("CommunityRestrictionRevoker")
   resourceWatchProgress     ResourceWatchProgress[]
   communityReports          CommunityReport[]
   communityModeration       CommunityModerationAction[]
@@ -1665,6 +1671,7 @@ enum CommunityPostType {
 
 enum CommunityPostStatus {
   draft
+  pending_review
   published
   limited
   hidden
@@ -1850,6 +1857,7 @@ model LearningCollection {
   description  String                       @default("")
   learningGoal String                       @default("") @map("learning_goal")
   visibility   LearningCollectionVisibility @default(private)
+  contentStatus String                      @default("published") @map("content_status")
   systemKind   String?                      @map("system_kind")
   revision     Int                          @default(1)
   createdAt    DateTime                     @default(now()) @map("created_at")
@@ -2088,6 +2096,32 @@ model CommunityReport {
   @@map("community_reports")
 }
 
+model ContentReview {
+  id              String   @id @default(cuid())
+  targetType      String   @map("target_type")
+  targetId        String   @map("target_id")
+  contentRevision Int      @map("content_revision")
+  ruleVersion     Int      @map("rule_version")
+  authorId        String   @map("author_id")
+  submittedById   String   @map("submitted_by_id")
+  action          String
+  status          String
+  findings        Json
+  payload         Json     @default("{}")
+  reviewedById    String?  @map("reviewed_by_id")
+  reason          String   @default("")
+  createdAt       DateTime @default(now()) @map("created_at")
+  reviewedAt      DateTime? @map("reviewed_at")
+  author          User     @relation("ContentReviewAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  submittedBy     User     @relation("ContentReviewSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  reviewedBy      User?    @relation("ContentReviewReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@unique([targetType, targetId, contentRevision])
+  @@index([status, createdAt, id])
+  @@index([authorId, createdAt])
+  @@map("content_reviews")
+}
+
 model CommunityModerationAction {
   id         String   @id @default(cuid())
   actorId    String   @map("actor_id")
@@ -2101,6 +2135,28 @@ model CommunityModerationAction {
 
   @@index([targetType, targetId, createdAt])
   @@map("community_moderation_actions")
+}
+
+model CommunityOperationRestriction {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  operations  String[]
+  reason      String
+  startsAt    DateTime  @default(now()) @map("starts_at")
+  endsAt      DateTime  @map("ends_at")
+  createdById String    @map("created_by_id")
+  revokedAt   DateTime? @map("revoked_at")
+  revokedById String?   @map("revoked_by_id")
+  revision    Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  user        User      @relation("CommunityRestrictionUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("CommunityRestrictionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy   User?     @relation("CommunityRestrictionRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt, endsAt])
+  @@index([endsAt])
+  @@map("community_operation_restrictions")
 }
 
 model CommunityFeedImpression {

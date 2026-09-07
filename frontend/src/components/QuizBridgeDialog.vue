@@ -5,11 +5,9 @@ import { useAuthStore } from '../stores/auth'
 import { useLearningStore } from '../stores/learning'
 import AppDialog from './base/AppDialog.vue'
 import { useCommunityStore } from '../stores/community'
-import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const auth = useAuthStore()
 const learning = useLearningStore()
-const { requireWrite } = useCommunityAccess()
 const open = ref(false)
 const slug = ref('')
 const questions = ref<QuizQuestion[]>([])
@@ -17,7 +15,7 @@ const answers = ref<Record<string, string | boolean | string[]>>({})
 const loading = ref(false)
 const error = ref('')
 const result = ref<{ score: number; correct: number; total: number; passed: boolean } | null>(null)
-const share = () => { if (!requireWrite()) return; open.value = false; useCommunityStore().openComposer({ type: 'achievement', title: '一次挑战后的学习心得', contentBlocks: [{ type: 'paragraph', text: '完成这次挑战后，我发现自己还需要复习的知识方向是：' }], bindings: [{ type: 'challenge', id: slug.value }], sourceType: 'challenge', sourceId: slug.value }) }
+const share = () => { open.value = false; useCommunityStore().openComposer({ type: 'achievement', title: '一次挑战后的学习心得', contentBlocks: [{ type: 'paragraph', text: '完成这次挑战后，我发现自己还需要复习的知识方向是：' }], bindings: [{ type: 'challenge', id: slug.value }], sourceType: 'challenge', sourceId: slug.value }) }
 const setTextAnswer = (questionId: string, event: Event) => {
   answers.value[questionId] = (event.target as HTMLTextAreaElement).value
 }

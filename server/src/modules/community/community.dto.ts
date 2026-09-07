@@ -1,10 +1,28 @@
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUrl, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import { CommunityPostType as DatabasePostType } from '@prisma/client'
-import type { CommunityPostInput, CommunityCommentInput, CommunityPostType, CommunityVisibility, CommunityContentBlock, CommunityBindingInput, LearningContentType, CommunityFeedMode, CommunitySignalInput, ResourceContributionInput } from '@ai-learning-hub/contracts'
+import { communityOperations, type CommunityPostInput, type CommunityCommentInput, type CommunityPostType, type CommunityVisibility, type CommunityContentBlock, type CommunityBindingInput, type LearningContentType, type CommunityFeedMode, type CommunitySignalInput, type ResourceContributionInput, type CommunityOperation } from '@ai-learning-hub/contracts'
 import type { CommunityProfileInput, CommunityProfileTab, OnboardingInput, UsernameInput, CommunitySearchType } from '@ai-learning-hub/contracts'
+import type { ContentDetectionInput, ContentDetectionRule } from '@ai-learning-hub/contracts'
 import { USERNAME_PATTERN } from '../auth/username'
 const communityPostTypes = Object.values(DatabasePostType)
+
+export class ContentPolicyDto {
+  @IsInt() @Min(1) expectedVersion!: number
+  @IsOptional() @IsArray() @ArrayMaxSize(100) rules?: ContentDetectionRule[]
+  @IsOptional() @IsInt() @Min(1) rollbackVersion?: number
+  @IsString() @Length(1, 500) reason!: string
+}
+export class ContentTrialDto {
+  @IsObject() fields!: ContentDetectionInput
+  @IsOptional() @IsArray() @ArrayMaxSize(100) rules?: ContentDetectionRule[]
+}
+export class ContentReviewDecisionDto {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsInt() @Min(1) ruleVersion!: number
+  @IsIn(['approve', 'reject']) action!: 'approve' | 'reject'
+  @IsString() @Length(1, 500) reason!: string
+}
 
 export class BlockDto {
   @IsIn(['paragraph', 'code', 'image', 'quote']) type!: CommunityContentBlock['type']
@@ -140,6 +158,32 @@ export class PolicyDto {
   @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(['qualityWeight', 'learningWeight', 'explorationWeight', 'limitedPenalty']) parameter!: string
   @IsInt() @Min(0) @Max(40) value!: number
+  @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+}
+const restrictableOperations = communityOperations.filter((operation): operation is Exclude<CommunityOperation, 'read'> => operation !== 'read')
+export class RestrictionCreateDto {
+  @IsString() @Length(1, 100) userId!: string
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(7) @ArrayUnique() @IsIn(restrictableOperations, { each: true }) operations!: Array<typeof restrictableOperations[number]>
+  @IsOptional() @IsDateString() startsAt?: string
+  @IsDateString() endsAt!: string
+  @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+}
+export class RestrictionUpdateDto {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(7) @ArrayUnique() @IsIn(restrictableOperations, { each: true }) operations!: Array<typeof restrictableOperations[number]>
+  @IsOptional() @IsDateString() startsAt?: string
+  @IsDateString() endsAt!: string
+  @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+}
+export class RestrictionRevokeDto {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+}
+export class EligibilityPolicyUpdateDto {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsIn(['post', 'comment', 'upload', 'interaction', 'report']) operation!: 'post' | 'comment' | 'upload' | 'interaction' | 'report'
+  @IsInt() @Min(1) @Max(10000) limit!: number
+  @IsInt() @Min(10) @Max(86400) windowSeconds!: number
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
 }
 export class SignalDto implements CommunitySignalInput {

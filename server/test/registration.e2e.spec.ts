@@ -13,7 +13,7 @@ import { OperationLogInterceptor } from '../src/common/operation-log.interceptor
 import { PrismaService } from '../src/prisma/prisma.service'
 import { AuthGuard } from '../src/modules/auth/auth.guard'
 import { encryptIdentity, identityFingerprint } from '../src/modules/users/identity-data'
-import type { AuthSessionDto, CampusIdentityVerificationDto, CommunityDraftDto, CommunitySearchResultDto } from '@ai-learning-hub/contracts'
+import type { AuthSessionDto, CampusIdentityVerificationDto, CommunityDraftDto, CommunityEligibilityDto, CommunityEligibilityPolicyDto, CommunityOperationRestrictionDto, CommunitySearchResultDto, LearningCollectionDto } from '@ai-learning-hub/contracts'
 if (!process.env.DATABASE_URL?.includes('127.0.0.1:55439/community_')) throw new Error('只允许隔离本地社区数据库')
 const db = new PrismaClient(), prefix = `r2-${Date.now()}`, password = `Verify7${randomBytes(16).toString('hex')}`, messages: string[] = []
 const settings = {
@@ -46,7 +46,7 @@ async function request<T = any>(path: string, token?: string, method = 'GET', in
   }
   const response = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers }, ...(input ? { body: JSON.stringify(input) } : {}) })
   const payload = await response.json()
-  return { status: response.status, data: payload.data as T, message: payload.message as string, cookie: response.headers.getSetCookie() }
+  return { status: response.status, data: payload.data as T, message: payload.message as string, errorCode: payload.errorCode as string | undefined, availableAt: payload.availableAt as string | undefined, retryAfter: response.headers.get('retry-after'), cookie: response.headers.getSetCookie() }
 }
 async function register(name: string, extra = {}) { return request<AuthSessionDto>('/auth/register', undefined, 'POST', { ...body(name), ...extra }) }
 async function approve(userId: string, name: string) {
@@ -102,6 +102,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   vi.restoreAllMocks()
   await db.registrationThrottle.deleteMany({})
+  await db.systemSetting.deleteMany({ where: { key: 'community_eligibility_policy' } })
   await db.systemSetting.upsert({ where: { key: 'registration' }, create: { key: 'registration', value: settings }, update: { value: settings } })
 })
 afterAll(async () => { await app?.close(); await new Promise<void>((resolve) => smtp?.close(() => resolve())); await db.$disconnect() })
@@ -189,10 +190,115 @@ describe('COMM-002 注册、导航配套与社区补全真实回归', () => {
     expect(await db.activityEvent.count({ where: { userId: user.user.id, eventType: 'community_post_publish' } })).toBe(0)
     const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => request('/community/posts', user.accessToken, 'POST', { ...input, status: 'published', contentBlocks: [{ type: 'paragraph', text: `独立并发发布${i}` }] })))
     expect(responses.map((row) => row.status).sort()).toEqual([201, 201, 201, 201, 201, 429])
+    expect(responses.find((row) => row.status === 429)).toMatchObject({ errorCode: 'COMMUNITY_RATE_LIMITED', availableAt: expect.any(String), retryAfter: expect.stringMatching(/^\d+$/) })
     expect(await db.communityPost.count({ where: { authorId: user.user.id, status: 'published' } })).toBe(5)
     expect(await db.activityEvent.count({ where: { userId: user.user.id, eventType: 'community_post_publish' } })).toBe(5)
     expect((await request(`/community/posts/${draft.data.id}`, user.accessToken, 'PATCH', { ...input, status: 'published', contentBlocks: [{ type: 'paragraph', text: '不能借草稿绕过发布门禁' }] })).status).toBe(429)
     expect((await request('/community/drafts', user.accessToken, 'POST', input)).status).toBe(201)
+  })
+  it('未实名直调公开写接口返回分操作原因，但草稿保存和读取继续可用', async () => {
+    expect((await request('/community/eligibility')).status).toBe(401)
+    const account = (await register('direct-eligibility')).data
+    const eligibility = await request<CommunityEligibilityDto>('/community/eligibility', account.accessToken)
+    expect(eligibility.data).toMatchObject({ canRead: true, canPost: false, canComment: false, canUpload: false })
+    expect(eligibility.data.operations).toMatchObject({ read: { allowed: true }, post: { allowed: false }, comment: { allowed: false }, upload: { allowed: false } })
+    expect(eligibility.data.operations.post).toMatchObject({ reasonCode: 'COMMUNITY_VERIFICATION_REQUIRED', nextAction: { route: '/community/verification' } })
+    const draftInput = { type: 'general', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'draft' }
+    expect((await request('/community/drafts', account.accessToken, 'POST', draftInput)).status).toBe(201)
+    const target = await request<{ id: string }>('/community/posts', actor.accessToken, 'POST', { ...draftInput, status: 'published', contentBlocks: [{ type: 'paragraph', text: `直连接口资格目标${prefix}` }] })
+    const deniedPost = await request('/community/posts', account.accessToken, 'POST', { ...draftInput, status: 'published', contentBlocks: [{ type: 'paragraph', text: '未实名不能直接发布' }] })
+    const deniedComment = await request(`/community/posts/${target.data.id}/comments`, account.accessToken, 'POST', { contentBlocks: [{ type: 'paragraph', text: '未实名不能直接评论' }] })
+    const deniedUpload = await request('/community/media', account.accessToken, 'POST', {})
+    for (const response of [deniedPost, deniedComment, deniedUpload]) expect(response).toMatchObject({ status: 403, errorCode: 'COMMUNITY_VERIFICATION_REQUIRED' })
+  })
+  it('资源投稿沿用发布资格，原创内容不要求预建课程、文章或实训', async () => {
+    const account = (await register('resource-contribution')).data
+    await approve(account.user.id, 'resource-contribution')
+    const response = await request<{ bindings: unknown[]; contribution: { kind: string } }>('/community/posts', account.accessToken, 'POST', {
+      type: 'frontier_discussion', title: `原创图文资源${prefix}`, contentBlocks: [{ type: 'paragraph', text: '整理可复现的学习步骤与适用边界。' }], bindings: [], topicIds: [], visibility: 'public', status: 'published',
+      contribution: { kind: 'article', tags: ['原创实践'], teachingReuseConsent: true },
+    })
+    expect(response.status).toBe(201)
+    expect(response.data).toMatchObject({ bindings: [], contribution: { kind: 'article' } })
+  })
+  it('上传配额在文件拦截前生效，同一幂等键重试不重复计数', async () => {
+    const account = (await register('upload-preflight')).data
+    await approve(account.user.id, 'upload-preflight')
+    const current = await request<CommunityEligibilityPolicyDto>('/admin/community/eligibility-policy', admin)
+    expect((await request('/admin/community/eligibility-policy', admin, 'PATCH', { expectedRevision: current.data.revision, operation: 'upload', limit: 1, windowSeconds: 60, reason: '隔离回归上传前置配额' })).status).toBe(200)
+    const headers = { 'idempotency-key': `upload-${sha(prefix).slice(0, 20)}` }
+    expect((await request('/community/media', account.accessToken, 'POST', {}, headers)).status).toBe(400)
+    expect((await request('/community/media', account.accessToken, 'POST', {}, headers)).status).toBe(400)
+    expect(await request('/community/media', account.accessToken, 'POST', {}, { 'idempotency-key': `upload-next-${sha(prefix).slice(0, 20)}` })).toMatchObject({ status: 429, errorCode: 'COMMUNITY_RATE_LIMITED', retryAfter: expect.stringMatching(/^\d+$/) })
+  })
+  it('临时限制只命中指定操作，服务端时间到期后自动恢复且全过程可审计', async () => {
+    const account = (await register('temporary-restriction')).data
+    await approve(account.user.id, 'temporary-restriction')
+    const target = await request<{ id: string }>('/community/posts', actor.accessToken, 'POST', { type: 'general', contentBlocks: [{ type: 'paragraph', text: `临时限制评论目标${prefix}` }], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
+    const created = await request<CommunityOperationRestrictionDto>('/admin/community/restrictions', admin, 'POST', { userId: account.user.id, operations: ['post'], startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 60_000).toISOString(), reason: '隔离回归临时限制' })
+    expect(created.status).toBe(201)
+    expect((await request<CommunityEligibilityDto>('/community/eligibility', account.accessToken)).data.operations.post).toMatchObject({ reasonCode: 'COMMUNITY_OPERATION_RESTRICTED', availableAt: created.data.endsAt })
+    const post = { type: 'general', contentBlocks: [{ type: 'paragraph', text: '受限期间发布' }], bindings: [], topicIds: [], visibility: 'public', status: 'published' }
+    expect((await request('/community/posts', account.accessToken, 'POST', post)).status).toBe(403)
+    expect((await request(`/community/posts/${target.data.id}/comments`, account.accessToken, 'POST', { contentBlocks: [{ type: 'paragraph', text: '发帖限制不应影响评论' }] })).status).toBe(201)
+    await db.communityOperationRestriction.update({ where: { id: created.data.id }, data: { endsAt: new Date(Date.now() - 1_000) } })
+    expect((await request<CommunityEligibilityDto>('/community/eligibility', account.accessToken)).data.operations.post.allowed).toBe(true)
+    expect((await request('/community/posts', account.accessToken, 'POST', post)).status).toBe(201)
+    const profileRestriction = await request<CommunityOperationRestrictionDto>('/admin/community/restrictions', admin, 'POST', { userId: account.user.id, operations: ['profile'], endsAt: new Date(Date.now() + 60_000).toISOString(), reason: '隔离回归公开资料限制' })
+    const profile = await request<{ revision: number; displayName: string }>('/me', account.accessToken)
+    expect(await request('/me', account.accessToken, 'PATCH', { expectedRevision: profile.data.revision, displayName: `${profile.data.displayName}甲` })).toMatchObject({ status: 403, errorCode: 'COMMUNITY_OPERATION_RESTRICTED' })
+    await db.communityOperationRestriction.update({ where: { id: profileRestriction.data.id }, data: { startsAt: new Date(Date.now() - 2_000), endsAt: new Date(Date.now() - 1_000) } })
+    expect((await request('/me', account.accessToken, 'PATCH', { expectedRevision: profile.data.revision, displayName: `${profile.data.displayName}乙` })).status).toBe(200)
+    expect(await db.communityModerationAction.count({ where: { targetType: 'community_restriction', targetId: created.data.id, action: 'create' } })).toBe(1)
+  })
+  it('账号限流不误伤共享出口中的其他账号，同幂等键并发重试只发布一次', async () => {
+    const first = (await register('shared-egress-a')).data, second = (await register('shared-egress-b')).data
+    await approve(first.user.id, 'shared-egress-a'); await approve(second.user.id, 'shared-egress-b')
+    const current = await request<CommunityEligibilityPolicyDto>('/admin/community/eligibility-policy', admin)
+    expect((await request('/admin/community/eligibility-policy', admin, 'PATCH', { expectedRevision: current.data.revision, operation: 'post', limit: 1, windowSeconds: 60, reason: '隔离回归账号阈值' })).status).toBe(200)
+    const input = (text: string) => ({ type: 'general', contentBlocks: [{ type: 'paragraph', text }], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
+    expect((await request('/community/posts', first.accessToken, 'POST', input('共享出口账号一'))).status).toBe(201)
+    expect((await request('/community/posts', second.accessToken, 'POST', input('共享出口账号二'))).status).toBe(201)
+    const limited = await request('/community/posts', first.accessToken, 'POST', input('账号一再次发布'))
+    expect(limited).toMatchObject({ status: 429, errorCode: 'COMMUNITY_RATE_LIMITED', retryAfter: expect.stringMatching(/^\d+$/) })
+
+    await db.registrationThrottle.deleteMany({})
+    const retryAccount = (await register('idempotent-publish')).data
+    await approve(retryAccount.user.id, 'idempotent-publish')
+    const retryInput = input(`并发幂等发布${prefix}`), headers = { 'idempotency-key': `post-${sha(prefix).slice(0, 20)}` }
+    const concurrent = await Promise.all([request<{ id: string }>('/community/posts', retryAccount.accessToken, 'POST', retryInput, headers), request<{ id: string }>('/community/posts', retryAccount.accessToken, 'POST', retryInput, headers)])
+    expect(concurrent.map((row) => row.status)).toEqual([201, 201])
+    expect(new Set(concurrent.map((row) => row.data.id))).toHaveLength(1)
+    expect((await request<{ id: string }>('/community/posts', retryAccount.accessToken, 'POST', retryInput, headers)).data.id).toBe(concurrent[0].data.id)
+    expect(await db.activityEvent.count({ where: { userId: retryAccount.user.id, eventType: 'community_post_publish', targetId: concurrent[0].data.id } })).toBe(1)
+  })
+  it('后台代发按实际作者隔离幂等键，重试不重复发布', async () => {
+    const first = (await register('official-idempotency-a')).data, second = (await register('official-idempotency-b')).data
+    const role = await db.role.findUniqueOrThrow({ where: { code: 'community_official' } })
+    await db.communityProfile.updateMany({ where: { userId: { in: [first.user.id, second.user.id] } }, data: { verifiedType: 'official' } })
+    await db.userRole.createMany({ data: [first.user.id, second.user.id].map((userId) => ({ userId, roleId: role.id })), skipDuplicates: true })
+    const input = { type: 'general', title: '', contentBlocks: [{ type: 'paragraph', text: `后台代发幂等隔离${prefix}` }], bindings: [], topicIds: [], visibility: 'public', status: 'published', reason: '隔离回归后台代发' }
+    const headers = { 'idempotency-key': `official-${sha(prefix).slice(0, 20)}` }
+    const firstPost = await request<{ id: string; author: { id: string } }>(`/admin/community/official/${first.user.id}/posts`, admin, 'POST', input, headers)
+    const secondPost = await request<{ id: string; author: { id: string } }>(`/admin/community/official/${second.user.id}/posts`, admin, 'POST', input, headers)
+    const retry = await request<{ id: string }>(`/admin/community/official/${first.user.id}/posts`, admin, 'POST', input, headers)
+    expect([firstPost.status, secondPost.status, retry.status]).toEqual([201, 201, 201])
+    expect(firstPost.data).toMatchObject({ author: { id: first.user.id } })
+    expect(secondPost.data).toMatchObject({ author: { id: second.user.id } })
+    expect(secondPost.data.id).not.toBe(firstPost.data.id)
+    expect(retry.data.id).toBe(firstPost.data.id)
+    expect(await db.communityPost.count({ where: { id: { in: [firstPost.data.id, secondPost.data.id] } } })).toBe(2)
+  })
+  it('公开合集走独立资格且同一幂等键并发只创建一次', async () => {
+    const account = (await register('collection-idempotency')).data
+    const input = { name: `公开合集${prefix}`, description: '隔离回归', learningGoal: '验证公开合集资格与幂等', visibility: 'community' }
+    expect((await request('/resource-hub/collections', account.accessToken, 'POST', input)).status).toBe(403)
+    await approve(account.user.id, 'collection-idempotency')
+    const headers = { 'idempotency-key': `collection-${sha(prefix).slice(0, 20)}` }
+    const rows = await Promise.all([request<LearningCollectionDto>('/resource-hub/collections', account.accessToken, 'POST', input, headers), request<LearningCollectionDto>('/resource-hub/collections', account.accessToken, 'POST', input, headers)])
+    expect(rows.map((row) => row.status)).toEqual([201, 201])
+    expect(new Set(rows.map((row) => row.data.id))).toHaveLength(1)
+    expect(await db.learningCollection.count({ where: { ownerId: account.user.id, name: input.name } })).toBe(1)
   })
   it('显式受信代理区分客户端，默认不信任任意转发链', async () => {
     const express = app.getHttpAdapter().getInstance()

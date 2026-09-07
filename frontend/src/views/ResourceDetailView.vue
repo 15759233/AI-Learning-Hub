@@ -69,7 +69,7 @@ const ended = () => {
   notice.value = nextItem.value ? `本节已完成，可继续学习“${nextItem.value.title}”` : '本节已完成'
 }
 const add = async (id: string) => {
-  if (collections.value.find((item) => item.id === id)?.visibility === 'community' && !requireWrite()) return
+  if (collections.value.find((item) => item.id === id)?.visibility === 'community' && !requireWrite('collection')) return
   try { await resourceHubApi.addToCollection(id, String(route.params.postId)); collectionOpen.value = false; notice.value = '已加入学习合集' }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '加入合集失败' }
 }

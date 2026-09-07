@@ -161,7 +161,16 @@ const restoreVersion = async (versionId: string) => {
   await list.load(list.result.value.page)
   ElMessage.success('已从历史版本生成新的资源草稿版本')
 }
-const publish = async () => { if (list.selected.value) { await publishing.publish(list.selected.value); await list.load(); ElMessage.success('资源已发布') } }
+const publish = async () => {
+  if (!list.selected.value) return
+  const result = await publishing.publish(list.selected.value)
+  await list.load()
+  if (result.status === 'reviewing') ElMessage.warning('资源已保存，等待人工复核，尚未公开；请到社区运营的内容复核中查看。')
+  else if (result.status === 'published') {
+    ElMessage.success('资源已发布')
+    if (result.detection?.action === 'warn') ElMessage.warning([...new Set(result.detection.hits.map(hit => hit.explanation))].join('；'))
+  } else ElMessage.warning('尚未确认资源发布状态，请刷新核对。')
+}
 const archive = async () => { if (list.selected.value) { await publishing.archive(list.selected.value); await list.load(); ElMessage.success('资源已下架') } }
 </script>
 

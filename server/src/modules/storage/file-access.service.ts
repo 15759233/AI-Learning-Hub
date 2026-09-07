@@ -11,7 +11,7 @@ export class FileAccessService {
     if (!file) throw new NotFoundException('文件不存在')
     if (file.uploadedBy === userId) return file
     const reviewer = await this.prisma.userRole.count({ where: { userId, role: { permissions: { some: { permission: { code: 'community.read' } } } } } })
-    if (reviewer && (await this.prisma.communityPost.count({ where: { ...this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }) || await this.prisma.communityComment.count({ where: { post: this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) {
+    if (reviewer && (await this.prisma.communityPost.count({ where: { ...await this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }) || await this.prisma.communityComment.count({ where: { post: await this.visibility.adminWhere(), contentBlocks: { array_contains: [{ type: 'image', fileId: id }] } } }))) {
       await this.visibility.auditAdminRead(userId, 'file', id)
       return file
     }

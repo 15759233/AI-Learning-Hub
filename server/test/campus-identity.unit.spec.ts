@@ -53,7 +53,7 @@ describe('校园实名、账号和社区写权限', () => {
       counters.set(key, attempts)
       return [{ attempts, expires_at: new Date(Date.now() + 60_000) }]
     }) }
-    const service = new RegistrationService(prisma, new ConfigService({ JWT_SECRET: 'rate-secret' }), {} as never)
+    const service = new RegistrationService(prisma, new ConfigService({ JWT_SECRET: 'rate-secret' }), {} as never, {} as never)
     const settings = { mode: 'open', emailVerification: false, agreementVersion: 'v1', passwordMinLength: 8, schoolRequired: false, registrationRateWindowMinutes: 1, registrationMaxAttemptsPerIp: 10, registrationMaxAttemptsPerIdentifier: 2, registrationMaxSuccessPerIp: 5 } as const
     const registrationAttempt = (service as any).registrationAttempt.bind(service)
     await registrationAttempt(settings, 'same_user', 'first@example.invalid', '10.0.0.1')
@@ -83,25 +83,28 @@ describe('校园实名、账号和社区写权限', () => {
   it('社区读取不依赖实名，所有普通写入按数据库实时 approved 状态判断', async () => {
     let approved = false
     const prisma: any = {
-      user: { findUnique: vi.fn().mockResolvedValue({ id: 'u1', status: 'active', communityProfile: null, school: null, userRoles: [] }), count: vi.fn(async () => approved ? 1 : 0) },
+      $queryRaw: vi.fn().mockResolvedValue([{ now: new Date() }]),
+      user: { findUnique: vi.fn(async () => ({ id: 'u1', status: 'active', profile: {}, agreementVersion: null, emailVerifiedAt: null, communityProfile: null, school: null, userRoles: [], identityVerification: { status: approved ? 'approved' : 'unsubmitted' } })) },
+      systemSetting: { findUnique: vi.fn().mockResolvedValue(null) },
+      communityOperationRestriction: { findMany: vi.fn().mockResolvedValue([]) },
       communityFeedback: { findMany: vi.fn().mockResolvedValue([]) },
     }
     const service = new CommunityVisibilityPolicyService(prisma)
     await expect(service.viewer('u1')).resolves.toMatchObject({ id: 'u1' })
     const where = await service.where('u1')
     expect(JSON.stringify(where)).not.toContain('identityVerification')
-    await expect(service.assertCommunityWrite('u1')).rejects.toSatisfy((error: ForbiddenException) => error.getResponse().toString().includes('COMMUNITY_VERIFICATION_REQUIRED') || JSON.stringify(error.getResponse()).includes('COMMUNITY_VERIFICATION_REQUIRED'))
+    await expect(service.assertOperation('u1', 'post')).rejects.toSatisfy((error: ForbiddenException) => error.getResponse().toString().includes('COMMUNITY_VERIFICATION_REQUIRED') || JSON.stringify(error.getResponse()).includes('COMMUNITY_VERIFICATION_REQUIRED'))
     approved = true
-    await expect(service.assertCommunityWrite('u1')).resolves.toBeUndefined()
+    await expect(service.assertOperation('u1', 'post')).resolves.toBeUndefined()
     approved = false
-    await expect(service.assertCommunityWrite('u1')).rejects.toBeInstanceOf(ForbiddenException)
+    await expect(service.assertOperation('u1', 'post')).rejects.toBeInstanceOf(ForbiddenException)
   })
 
   it('敏感实名详情只有独立权限端点读取，读取审计不含姓名或身份证号', async () => {
     const encryptedName = encryptIdentity('测试同学', identityKey, 'real-name'), idNumber = '11010519491231002X'
     const row = { id: 'iv1', userId: 'u1', realNameEncrypted: encryptedName, idNumberEncrypted: encryptIdentity(idNumber, identityKey, 'id-number'), status: 'pending', submittedAt: new Date('2026-09-01T00:00:00Z'), reviewedAt: null, reviewReason: null, className: '演示一班', studentNo: 'DEMO01', revision: 1, reviewedBy: null }
     const prisma: any = { campusIdentityVerification: { findUnique: vi.fn().mockResolvedValue(row), count: vi.fn().mockResolvedValue(0) }, auditLog: { create: vi.fn() } }
-    const service = new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') }))
+    const service = new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') }), {} as never)
     const detail = await service.identityDetail('reviewer', 'u1')
     expect(detail).toMatchObject({ realName: '测试同学', idNumber, maskedRealName: '测***', studentNo: 'DEMO01' })
     expect(prisma.auditLog.create).toHaveBeenCalledWith({ data: { actorId: 'reviewer', action: 'identity_sensitive_read', targetType: 'identity_verification', targetId: 'iv1' } })
@@ -128,7 +131,7 @@ describe('校园实名、账号和社区写权限', () => {
       activityEvent: { create: vi.fn() }, auditLog: { create: vi.fn() },
     }
     const prisma: any = { ...tx, $transaction: vi.fn(async (callback) => callback(tx)) }
-    const service = new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') }))
+    const service = new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') }), {} as never)
     const input = { realName: '测试同学', idNumber: '11010519491231002X', className: '演示一班', studentNo: ' demo01 ' }
     expect(await service.submitVerification('u1', input as never)).toMatchObject({ status: 'pending', studentNo: 'DEMO01', maskedRealName: '测***' })
     await expect(service.submitVerification('u1', { ...input, expectedRevision: 1 } as never)).rejects.toThrow('审核中')
@@ -151,14 +154,14 @@ describe('校园实名、账号和社区写权限', () => {
         campusIdentityVerification: { findUnique: vi.fn().mockResolvedValue(null), count: vi.fn().mockImplementation(async () => counts.shift() || 0), create: vi.fn() },
       }
       const prisma: any = { ...tx, $transaction: vi.fn(async (callback) => callback(tx)) }
-      return new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') })).submitVerification('u1', input as never)
+      return new UsersService(prisma, {} as never, new ConfigService({ IDENTITY_DATA_KEY: identityKey.toString('hex') }), {} as never).submitVerification('u1', input as never)
     }
     await expect(conflict([1])).rejects.toThrow('身份资料已用于其他账号')
     await expect(conflict([0, 1])).rejects.toThrow('学号已用于其他账号')
   })
 
   it('普通用户管理查询既不返回也不能用学号探测，实名权限才开放该字段', () => {
-    const service = new UsersService({} as never, {} as never, new ConfigService())
+    const service = new UsersService({} as never, {} as never, new ConfigService(), {} as never)
     expect(JSON.stringify(service.where({ keyword: 'DEMO01' } as never))).not.toContain('studentNo')
     expect(JSON.stringify(service.where({ keyword: 'DEMO01' } as never, true))).toContain('studentNo')
   })

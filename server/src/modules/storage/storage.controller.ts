@@ -32,7 +32,7 @@ export class StorageController {
   @Get(':id/url')
   async url(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     await this.fileAccess.assert(user.id, id)
-    return { url: await this.storage.getSignedUrl(id), expiresIn: 300 }
+    return { url: `/api/v1/files/${encodeURIComponent(id)}/download`, expiresIn: 0 }
   }
 
   @Delete(':id')
@@ -91,29 +91,27 @@ export class LocalFileController {
   @RawResponse()
   @UseGuards(AuthGuard)
   async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res({ passthrough: true }) response: Response) {
-    const file = await this.fileAccess.assert(user.id, id)
-    if (!file || file.storageDriver !== 'local') throw new NotFoundException('文件不存在')
-    const target = path.resolve(this.root, file.objectKey)
-    if (!target.startsWith(`${this.root}${path.sep}`)) throw new NotFoundException('文件不存在')
+    await this.fileAccess.assert(user.id, id)
+    const file = await this.storage.open(id)
     try {
-      await access(target)
-    } catch {
-      throw new NotFoundException('文件不存在')
+      const resources = await this.prisma.resource.findMany({ where: { status: 'published', deletedAt: null, publishedVersion: { is: { snapshot: { path: ['fileId'], equals: id } } } }, select: { id: true } })
+      if (resources.length) {
+        await this.prisma.$transaction(resources.flatMap((resource) => [
+          this.prisma.resource.update({ where: { id: resource.id }, data: { downloadCount: { increment: 1 } } }),
+          this.prisma.resourceDownload.create({ data: { resourceId: resource.id, userId: user.id } }),
+        ]))
+      }
+      response.set({
+        'Content-Type': file.mimeType,
+        'Content-Length': String(file.size),
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      })
+      return new StreamableFile(file.stream)
+    } catch (error) {
+      file.stream.destroy()
+      throw error
     }
-    const resources = await this.prisma.resource.findMany({ where: { status: 'published', deletedAt: null, publishedVersion: { is: { snapshot: { path: ['fileId'], equals: id } } } }, select: { id: true } })
-    if (resources.length) {
-      await this.prisma.$transaction(resources.flatMap((resource) => [
-        this.prisma.resource.update({ where: { id: resource.id }, data: { downloadCount: { increment: 1 } } }),
-        this.prisma.resourceDownload.create({ data: { resourceId: resource.id, userId: user.id } }),
-      ]))
-    }
-    response.set({
-      'Content-Type': file.mimeType,
-      'Content-Length': String(file.size),
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
-      'Cache-Control': 'private, no-store',
-      'X-Content-Type-Options': 'nosniff',
-    })
-    return new StreamableFile(createReadStream(target))
   }
 }

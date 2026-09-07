@@ -10,6 +10,11 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it('资格错误保留结构化字段并在人机提示中带出解除时间', () => {
+    const error = new ApiError('发布过于频繁', 429, 'COMMUNITY_RATE_LIMITED', '2026-09-06T12:00:00.000Z')
+    expect(error).toMatchObject({ status: 429, code: 'COMMUNITY_RATE_LIMITED', availableAt: '2026-09-06T12:00:00.000Z' })
+    expect(error.message).toContain('可重试')
+  })
   it.each(['注册', '测评'] as const)('普通HTTP%s可发送请求，丢失响应后同键重试，成功后新操作换键', async (kind) => {
     const source = globalThis.crypto
     vi.stubGlobal('crypto', { getRandomValues: source.getRandomValues.bind(source) })

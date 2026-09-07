@@ -6,13 +6,17 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 interface Envelope<T> {
   code: number
   errorCode?: string
+  availableAt?: string
+  nextAction?: { label: string; route: string }
   message: string
   data: T
   requestId: string
 }
 
 let refreshPromise: Promise<boolean> | null = null
-export class ApiError extends Error { constructor(message: string, public status: number, public code?: string) { super(message) } }
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code?: string, public availableAt?: string, public nextAction?: { label: string; route: string }) { super(availableAt ? `${message}（预计 ${new Date(availableAt).toLocaleString('zh-CN')} 可重试）` : message) }
+}
 export const AUTH_SESSION_CLEARED_EVENT = 'student-auth-session-cleared'
 export const COMMUNITY_VERIFICATION_REQUIRED_EVENT = 'community-verification-required'
 
@@ -59,7 +63,7 @@ export async function request<T>(path: string, init: RequestInit = {}, retry = t
   const body = await response.json().catch(() => null) as Envelope<T> | null
   if (!response.ok || !body || body.code !== 0) {
     if (body?.errorCode === 'COMMUNITY_VERIFICATION_REQUIRED') window.dispatchEvent(new CustomEvent(COMMUNITY_VERIFICATION_REQUIRED_EVENT))
-    throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status, body?.errorCode)
+    throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status, body?.errorCode, body?.availableAt, body?.nextAction)
   }
   return body.data
 }

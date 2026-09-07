@@ -9,7 +9,8 @@ import { PrismaService } from '../../prisma/prisma.service'
 import { AuthService } from './auth.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import type { RegisterDto } from './auth.dto'
-import { actionEvent, idempotency, lockUser } from '../../common/persistence'
+import { actionEvent, idempotency, lockFileReferences, lockUser } from '../../common/persistence'
+import { ContentDetectionService } from '../community/content-detection.service'
 import { normalizeUsername } from './username'
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -20,7 +21,7 @@ const defaults: RegistrationSettingsDto = {
 @Injectable()
 export class RegistrationService {
   private readonly logger = new Logger(RegistrationService.name)
-  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly auth: AuthService) {}
+  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly auth: AuthService, private readonly detection: ContentDetectionService) {}
   mailAvailable() { return !!(this.config.get('SMTP_HOST') && this.config.get('SMTP_FROM') && this.config.get('FRONTEND_URL')) }
   private inviteHashes() { return String(this.config.get('REGISTRATION_INVITE_HASHES') || '').split(',').filter((value) => /^[a-f0-9]{64}$/.test(value)) }
   async settings(tx: Prisma.TransactionClient = this.prisma): Promise<RegistrationSettingsDto> {
@@ -116,18 +117,22 @@ export class RegistrationService {
     try {
       let mail: { token: string; email: string } | undefined
       const result = await this.prisma.$transaction(async (tx) => {
+        await lockFileReferences(tx)
         const request = await idempotency(tx, email, 'register', key, { ...input, password: createHmac('sha256', this.config.getOrThrow<string>('JWT_SECRET')).update(input.password).digest('hex') })
         if (request.resourceId) {
           await lockUser(tx, request.resourceId)
           const user = await tx.user.findUniqueOrThrow({ where: { id: request.resourceId, status: 'active' }, include: authUserInclude })
           if (!user.passwordHash || !await compare(input.password, user.passwordHash)) throw new ConflictException('账号凭证已变化，请重新登录')
-          return { user: authUserDto(user), ...await this.auth.createSession(authUserDto(user), tx) }
+          const contentDetection = await this.detection.result('profile', user.id, user.communityProfile?.revision || 1)
+          return { user: { ...authUserDto(user), contentDetection }, ...await this.auth.createSession(authUserDto(user), tx), contentDetection }
         }
         const settings = await this.settings(tx)
         if (settings.mode === 'closed') throw new BadRequestException('注册已关闭，请联系管理员')
         if (input.password.length < settings.passwordMinLength) throw new BadRequestException(`密码至少${settings.passwordMinLength}位`)
         if (input.agreementVersion !== settings.agreementVersion) throw new BadRequestException('请阅读并同意当前用户协议和隐私政策')
         if (settings.mode === 'invite' && !this.inviteHashes().some((value) => timingSafeEqual(Buffer.from(value, 'hex'), Buffer.from(digest(input.inviteCode || ''), 'hex')))) throw new BadRequestException('邀请码无效')
+        await this.detection.assertUsernameAvailable(tx, username)
+        const contentDetection = await this.detection.check(tx, { username, displayName: input.displayName })
         const existing = await tx.user.findFirst({ where: { OR: [{ email: { equals: email, mode: 'insensitive' } }, { username: { equals: username, mode: 'insensitive' } }] } })
         if (existing) throw new ConflictException('邮箱或账号已被使用')
         const role = await tx.role.findUnique({ where: { code: 'student' } })
@@ -135,13 +140,14 @@ export class RegistrationService {
         await this.consumeRegistrationLimit(tx, 'register:success:ip', ip, settings.registrationMaxSuccessPerIp, settings.registrationRateWindowMinutes)
         const user = await tx.user.create({
           data: {
-            email, passwordHash, username, displayName: input.displayName.trim(),
+            email, passwordHash, username: contentDetection.action === 'review' ? `member_${randomBytes(8).toString('hex')}` : username, displayName: contentDetection.action === 'review' ? '资料待复核' : input.displayName.trim(),
             userType: 'student', agreementVersion: settings.agreementVersion, agreementAcceptedAt: new Date(),
             registrationSource: settings.mode === 'invite' ? 'email_invite' : 'email',
             profile: { emailVerificationRequired: settings.emailVerification },
             userRoles: { create: { roleId: role.id } }, communityProfile: { create: {} },
           }, include: authUserInclude,
         })
+        await this.detection.record(tx, { type: 'profile', id: user.id, revision: user.communityProfile?.revision || 1, authorId: user.id, submittedById: user.id }, contentDetection, { changes: { username, displayName: input.displayName.trim() }, userRevision: user.revision, initialUsername: true })
         await actionEvent(tx, user.id, 'student_register', 'user', user.id, { source: settings.mode })
         const dto = authUserDto(user), session = await this.auth.createSession(dto, tx)
         if (settings.emailVerification) {
@@ -150,14 +156,15 @@ export class RegistrationService {
           mail = { email, token }
         }
         await request.complete(user.id)
-        return { user: dto, ...session }
+        return { user: { ...dto, contentDetection }, ...session, contentDetection }
       }, { timeout: 20000 })
       let notice: string | undefined
       if (mail) {
         try { await this.send(mail.email, mail.token, true) }
         catch { notice = '账号已创建，但验证邮件发送失败。请联系管理员恢复邮件通道后重新发送验证邮件。'; this.logger.warn('注册验证邮件发送失败，账号已保留') }
       }
-      return { ...result, notice }
+      const contentNotice = result.contentDetection?.action === 'review' ? '公开资料已保存待复核，当前暂用中性资料。请先使用邮箱登录，审核通过后启用所选公开用户名。' : result.contentDetection?.action === 'warn' ? [...new Set(result.contentDetection.hits.filter((hit) => hit.action === 'warn').map((hit) => hit.explanation))].join('；') : ''
+      return { ...result, notice: [notice, contentNotice].filter(Boolean).join('；') || undefined }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('邮箱或用户名已被使用，请重试')
       throw error

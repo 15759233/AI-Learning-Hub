@@ -26,9 +26,13 @@ export class AuthService {
     identifier = identifier.trim()
     const normalizedIdentifier = identifier.toLowerCase()
     const identityKey = hashToken(clientKey)
-    await rateLimit(this.prisma, clientKey, 'login_attempt', 30, 15 * 60000)
+    await rateLimit(this.prisma, normalizedIdentifier, 'login:account', 20, 15 * 60000, '该账号登录尝试过于频繁，请稍后再试', 'LOGIN_RATE_LIMITED')
+    await rateLimit(this.prisma, ip, 'login:ip', 300, 15 * 60000, '当前网络登录尝试过于频繁，请稍后再试', 'LOGIN_RATE_LIMITED')
     const current = await this.prisma.loginThrottle.findUnique({ where: { identityKey } })
-    if (current?.blockedUntil && current.blockedUntil > new Date()) throw new HttpException('登录失败次数过多，请稍后再试', 429)
+    if (current?.blockedUntil && current.blockedUntil > new Date()) {
+      const retryAfter = Math.max(1, Math.ceil((current.blockedUntil.getTime() - Date.now()) / 1000))
+      throw new HttpException({ message: '登录失败次数过多，请稍后再试', errorCode: 'LOGIN_RATE_LIMITED', retryAfter, availableAt: current.blockedUntil.toISOString() }, 429)
+    }
     const user = await this.prisma.user.findFirst({
       where: isEmail(identifier) ? { email: { equals: normalizedIdentifier, mode: 'insensitive' } } : { username: { equals: normalizedIdentifier, mode: 'insensitive' } },
       include: authUserInclude,

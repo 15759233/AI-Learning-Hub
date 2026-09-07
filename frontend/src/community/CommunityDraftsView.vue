@@ -5,12 +5,10 @@ import { communityApi } from '../services/api/community'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { postLabels } from './labels'
 import CommunitySkeleton from './CommunitySkeleton.vue'
-import { useCommunityAccess } from './composables/useCommunityAccess'
 const drafts = ref<CommunityDraftDto[]>([]), loading = ref(true), error = ref(''), editor = useCommunityDraft()
-const { requireWrite } = useCommunityAccess()
 const load = async () => { loading.value = true; error.value = ''; try { drafts.value = await communityApi.drafts() } catch (cause) { error.value = cause instanceof Error ? cause.message : '草稿读取失败' } finally { loading.value = false } }
-const restore = (row: CommunityDraftDto) => { if (requireWrite()) editor.restore(row) }
-const remove = async (id: string) => { if (!requireWrite() || !confirm('删除这条草稿？')) return; try { await communityApi.deleteDraft(id); await load() } catch (cause) { error.value = cause instanceof Error ? cause.message : '删除失败' } }
+const restore = (row: CommunityDraftDto) => editor.restore(row)
+const remove = async (id: string) => { if (!confirm('删除这条草稿？')) return; try { await communityApi.deleteDraft(id); await load() } catch (cause) { error.value = cause instanceof Error ? cause.message : '删除失败' } }
 const summary = (row: CommunityDraftDto) => row.input.title || row.input.contentBlocks.map((b) => b.type === 'paragraph' ? b.text : b.type === 'code' ? b.code : b.type === 'quote' ? b.text : b.alt).join(' ').slice(0, 100) || '尚未填写正文'
 onMounted(load)
 </script>

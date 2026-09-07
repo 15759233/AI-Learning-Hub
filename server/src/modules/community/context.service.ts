@@ -10,11 +10,13 @@ import { RegistrationService } from '../auth/registration.service'
 import { normalizeUsername } from '../auth/username'
 import { authUserDto, authUserInclude } from '../auth/auth.mapper'
 import { Prisma } from '@prisma/client'
-import { actionEvent } from '../../common/persistence'
+import { actionEvent, lockFileReferences, reserveIdempotency } from '../../common/persistence'
+import { ContentDetectionService } from './content-detection.service'
 import { CommunityPostService, postInclude } from './post.service'
 import { STORAGE_SERVICE, type StorageService } from '../storage/storage.types'
 import { releaseUnboundMediaFile } from '../media/media-gc'
 import sharp from 'sharp'
+import { createHash } from 'node:crypto'
 
 interface ProfileCursor { scope: string; at: string; id: string }
 const encodeCursor = (scope: string, at: Date, id: string) => Buffer.from(JSON.stringify({ scope, at: at.toISOString(), id })).toString('base64url')
@@ -37,6 +39,7 @@ export class CommunityContextService {
     private readonly registration: RegistrationService,
     private readonly posts: CommunityPostService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly detection: ContentDetectionService,
   ) {}
   async byUsername(userId: string, username: string) {
     const user = await this.prisma.user.findFirst({ where: { username: { equals: username, mode: 'insensitive' } }, select: { id: true } })
@@ -44,14 +47,16 @@ export class CommunityContextService {
     return this.profile(userId, user.id)
   }
   async changeUsername(userId: string, username: string) {
-    await this.visibility.assertCommunityWrite(userId)
+    await this.visibility.assertOperation(userId, 'profile')
     const normalized = normalizeUsername(username)
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { username: normalized, usernameChangedAt: new Date(), revision: { increment: 1 } } })
+        await lockFileReferences(tx)
+        const changed = await tx.user.updateMany({ where: { id: userId, usernameChangedAt: null }, data: { revision: { increment: 1 } } })
         if (!changed.count) throw new BadRequestException('公开用户名只能修改一次')
+        const contentDetection = await this.detection.saveProfile(tx, userId, { username: normalized })
         await actionEvent(tx, userId, 'profile_updated', 'user', userId)
-        return authUserDto(await tx.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
+        return { ...authUserDto(await tx.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude })), contentDetection }
       })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('此用户名已被使用')
@@ -59,7 +64,6 @@ export class CommunityContextService {
     }
   }
   async onboarding(userId: string, input: OnboardingDto) {
-    await this.visibility.assertCommunityWrite(userId)
     await this.visibility.viewer(userId)
     const settings = await this.registration.settings()
     const schoolSetting = await this.prisma.systemSetting.findUnique({ where: { key: 'campus_school_id' } })
@@ -70,11 +74,11 @@ export class CommunityContextService {
     if (schoolId && !await this.prisma.school.count({ where: { id: schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
     if (input.departmentId && (!schoolId || !await this.prisma.department.count({ where: { id: input.departmentId, schoolId } }))) throw new BadRequestException('院系不属于所选学校')
     await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       if (!input.expectedRevision || !input.expectedProfileRevision) throw new BadRequestException('请携带账号与社区资料版本')
       if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedRevision }, data: { schoolId, departmentId: input.departmentId || null, major: input.major, grade: input.grade, onboardingCompletedAt: new Date(), revision: { increment: 1 } } })).count) throw new ConflictException('资料已更新，请重新读取')
       await this.saveInterests(tx, userId, input.themeIds)
-      await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
-      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { headline: input.headline, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已变化，请重新读取')
+      await this.detection.saveProfile(tx, userId, { headline: input.headline }, userId, input.expectedProfileRevision)
       await actionEvent(tx, userId, 'onboarding_completed', 'user', userId)
     })
     return authUserDto(await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: authUserInclude }))
@@ -120,8 +124,12 @@ export class CommunityContextService {
       }) : null,
     ])
     const pinnedPost = pinned ? (await this.posts.mapMany(userId, [pinned]))[0] : null
+    const submission = user.id === userId ? await this.prisma.contentReview.findFirst({ where: { targetType: 'profile', targetId: userId }, orderBy: { contentRevision: 'desc' } }) : null
+    const detection = submission ? await this.detection.result('profile', userId, submission.contentRevision) : undefined
+    const held = submission && ['pending', 'rejected'].includes(submission.status) ? submission : null
     return {
       ...authorDto(user),
+      ...(user.id === userId ? { detection, ...(held ? { pendingChanges: (held.payload as unknown as { changes: CommunityProfileDto['pendingChanges'] }).changes } : {}) } : {}),
       revision: user.communityProfile?.revision || 1,
       userRevision: user.revision,
       bio: user.communityProfile?.bio || '',
@@ -147,7 +155,7 @@ export class CommunityContextService {
     }
   }
   async updateProfile(userId: string, input: ProfileDto) {
-    await this.visibility.assertCommunityWrite(userId)
+    await this.visibility.assertOperation(userId, 'profile')
     const displayName = input.displayName.trim()
     if (!displayName) throw new BadRequestException('显示名不能为空')
     const data = {
@@ -160,10 +168,11 @@ export class CommunityContextService {
     }
     if (new Set(data.expertiseTopics).size !== data.expertiseTopics.length) throw new BadRequestException('擅长话题不能重复')
     await this.prisma.$transaction(async (tx) => {
-      const current = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
-      if (current.revision !== input.expectedProfileRevision) throw new ConflictException('社区资料已更新，请重新读取')
-      if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedUserRevision }, data: { displayName, revision: { increment: 1 } } })).count) throw new ConflictException('账号资料已更新，请重新读取')
-      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { ...data, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已更新，请重新读取')
+      await lockFileReferences(tx)
+      if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedUserRevision }, data: { revision: { increment: 1 } } })).count) throw new ConflictException('账号资料已更新，请重新读取')
+      const { allowAchievementDrafts, ...text } = data
+      await this.detection.saveProfile(tx, userId, { ...text, location: text.location || '', websiteUrl: text.websiteUrl || '', displayName }, userId, input.expectedProfileRevision)
+      await tx.communityProfile.update({ where: { userId }, data: { allowAchievementDrafts } })
       await actionEvent(tx, userId, 'profile_updated', 'user', userId)
     })
     return this.profileUpdateResult(userId)
@@ -175,8 +184,9 @@ export class CommunityContextService {
     ])
     return { user: authUserDto(user), profile }
   }
-  async uploadProfileImage(userId: string, kind: 'avatar' | 'banner', file: Express.Multer.File, input: ProfileMediaDto) {
-    await this.visibility.assertCommunityWrite(userId)
+  async uploadProfileImage(userId: string, kind: 'avatar' | 'banner', file: Express.Multer.File, input: ProfileMediaDto, key?: string) {
+    await this.visibility.assertOperation(userId, 'upload')
+    await this.visibility.assertOperation(userId, 'profile')
     if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) throw new BadRequestException('仅支持 PNG、JPEG、WebP 图片')
     const dimensions = kind === 'avatar' ? { width: 512, height: 512, limit: 5 * 1024 * 1024 } : { width: 1500, height: 500, limit: 8 * 1024 * 1024 }
     if (file.size < 1 || file.size > dimensions.limit || file.buffer.length !== file.size) throw new BadRequestException(`${kind === 'avatar' ? '头像' : '主页封面'}图片大小不合法`)
@@ -187,47 +197,53 @@ export class CommunityContextService {
       if (!metadata.format || !['png', 'jpeg', 'webp'].includes(metadata.format)) throw new Error()
       buffer = await image.rotate().resize(dimensions.width, dimensions.height, { fit: 'cover', position: 'centre' }).webp({ quality: 86 }).toBuffer()
     } catch { throw new BadRequestException('图片内容损坏或格式不受支持') }
-    const stored = await this.storage.upload({
-      originalname: `community-${kind}.webp`,
-      mimetype: 'image/webp',
-      size: buffer.length,
-      buffer,
-    }, { uploadedBy: userId, visibility: 'public' })
+    const request = await reserveIdempotency(this.prisma, userId, `community-profile-${kind}`, key, { ...input, mimeType: file.mimetype, size: file.size, checksum: createHash('sha256').update(file.buffer).digest('hex') })
+    if (request.resourceId) return this.profileUpdateResult(userId)
+    let stored: Awaited<ReturnType<StorageService['upload']>> | null = null
     try {
+      stored = await this.storage.upload({ originalname: `community-${kind}.webp`, mimetype: 'image/webp', size: buffer.length, buffer }, { uploadedBy: userId, visibility: 'public' })
       await this.prisma.$transaction(async (tx) => {
+        await lockFileReferences(tx)
         const profile = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
         if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedUserRevision }, data: { revision: { increment: 1 } } })).count) throw new ConflictException('账号资料已更新，请重新读取')
+        await this.detection.saveProfile(tx, userId, {}, userId, input.expectedProfileRevision)
         const field = kind === 'avatar' ? 'avatarFileId' : 'bannerFileId'
-        if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { [field]: stored.id, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已更新，请重新读取')
+        await tx.communityProfile.update({ where: { userId }, data: { [field]: stored!.id } })
         await actionEvent(tx, userId, 'profile_image_updated', 'user', userId, { kind })
         const previousFileId = kind === 'avatar' ? profile.avatarFileId : profile.bannerFileId
-        if (previousFileId && previousFileId !== stored.id) await tx.mediaGcJob.upsert({ where: { fileId: previousFileId }, create: { fileId: previousFileId }, update: {} })
+        if (previousFileId && previousFileId !== stored!.id) await tx.mediaGcJob.upsert({ where: { fileId: previousFileId }, create: { fileId: previousFileId }, update: {} })
+        await request.complete(tx, stored!.id)
       })
     } catch (error) {
-      await releaseUnboundMediaFile(this.prisma, this.storage, stored.id)
+      if (stored) await releaseUnboundMediaFile(this.prisma, this.storage, stored.id)
+      await request.cancel()
       throw error
     }
     return this.profileUpdateResult(userId)
   }
   async removeProfileImage(userId: string, kind: 'avatar' | 'banner', input: ProfileMediaDto) {
-    await this.visibility.assertCommunityWrite(userId)
+    await this.visibility.viewer(userId)
     await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       const profile = await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
       const previous = kind === 'avatar' ? profile.avatarFileId : profile.bannerFileId
       if (!(await tx.user.updateMany({ where: { id: userId, revision: input.expectedUserRevision }, data: { revision: { increment: 1 } } })).count) throw new ConflictException('账号资料已更新，请重新读取')
+      await this.detection.saveProfile(tx, userId, {}, userId, input.expectedProfileRevision)
       const field = kind === 'avatar' ? 'avatarFileId' : 'bannerFileId'
-      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: input.expectedProfileRevision }, data: { [field]: null, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已更新，请重新读取')
+      await tx.communityProfile.update({ where: { userId }, data: { [field]: null } })
       await actionEvent(tx, userId, 'profile_image_removed', 'user', userId, { kind })
       if (previous) await tx.mediaGcJob.upsert({ where: { fileId: previous }, create: { fileId: previous }, update: {} })
     })
     return this.profileUpdateResult(userId)
   }
   async pinPost(userId: string, postId: string | null, expectedProfileRevision: number) {
-    await this.visibility.assertCommunityWrite(userId)
+    if (postId) await this.visibility.assertOperation(userId, 'profile')
+    else await this.visibility.viewer(userId)
     if (postId && !await this.prisma.communityPost.count({ where: { id: postId, authorId: userId, status: 'published', visibility: 'public', deletedAt: null } })) throw new NotFoundException('只能置顶自己的公开动态')
     await this.prisma.$transaction(async (tx) => {
-      await tx.communityProfile.upsert({ where: { userId }, create: { userId }, update: {} })
-      if (!(await tx.communityProfile.updateMany({ where: { userId, revision: expectedProfileRevision }, data: { pinnedPostId: postId, revision: { increment: 1 } } })).count) throw new ConflictException('社区资料已更新，请重新读取')
+      await lockFileReferences(tx)
+      await this.detection.saveProfile(tx, userId, {}, userId, expectedProfileRevision)
+      await tx.communityProfile.update({ where: { userId }, data: { pinnedPostId: postId } })
       await actionEvent(tx, userId, postId ? 'profile_post_pinned' : 'profile_post_unpinned', 'user', userId, postId ? { postId } : {})
     })
     return this.profile(userId, userId)
@@ -300,7 +316,7 @@ export class CommunityContextService {
     }
   }
   async interests(userId: string, themeIds: string[]) {
-    await this.visibility.assertCommunityWrite(userId)
+    await this.visibility.assertOperation(userId, 'profile')
     await this.prisma.$transaction((tx) => this.saveInterests(tx, userId, themeIds))
     return this.context(userId)
   }

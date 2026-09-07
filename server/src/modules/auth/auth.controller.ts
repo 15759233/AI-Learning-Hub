@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, ForbiddenException, Get, Headers, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
+import { Body, ConflictException, Controller, Get, Headers, Ip, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -9,8 +9,10 @@ import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateProfi
 import { RegistrationService } from './registration.service'
 import type { AuthUser } from './auth.types'
 import { durationMs } from './auth-ttl'
-import { actionEvent } from '../../common/persistence'
+import { actionEvent, lockFileReferences } from '../../common/persistence'
+import { ContentDetectionService } from '../community/content-detection.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
+import { CommunityVisibilityPolicyService } from '../community/visibility.service'
 
 @Controller('auth')
 export class AuthController {
@@ -89,7 +91,7 @@ export class AuthController {
 @Controller()
 @UseGuards(AuthGuard)
 export class MeController {
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly visibility: CommunityVisibilityPolicyService, private readonly detection: ContentDetectionService) {}
 
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
@@ -98,13 +100,14 @@ export class MeController {
 
   @Patch('me')
   async update(@CurrentUser() user: AuthUser, @Body() input: UpdateProfileDto) {
+    await this.visibility.assertOperation(user.id, 'profile')
     return this.prisma.$transaction(async (tx) => {
-      const canWrite = await tx.user.count({ where: { id: user.id, status: 'active', identityVerification: { is: { status: 'approved' } } } })
-      if (!canWrite) throw new ForbiddenException({ message: '需要完成校园实名认证后才能参与社区互动。', errorCode: 'COMMUNITY_VERIFICATION_REQUIRED' })
-      if (!(await tx.user.updateMany({ where: { id: user.id, revision: input.expectedRevision }, data: { displayName: input.displayName, revision: { increment: 1 } } })).count) throw new ConflictException('资料已变化，请重新读取')
+      await lockFileReferences(tx)
+      if (!(await tx.user.updateMany({ where: { id: user.id, revision: input.expectedRevision }, data: { revision: { increment: 1 } } })).count) throw new ConflictException('资料已变化，请重新读取')
+      const contentDetection = await this.detection.saveProfile(tx, user.id, { displayName: input.displayName })
       const row = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: authUserInclude })
       await actionEvent(tx, user.id, 'profile_updated', 'user', user.id)
-      return authUserDto(row)
+      return { ...authUserDto(row), contentDetection }
     })
   }
 

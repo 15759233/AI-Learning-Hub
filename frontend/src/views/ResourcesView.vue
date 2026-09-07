@@ -11,13 +11,11 @@ import { useCommunityStore } from '../stores/community'
 import { useAuthStore } from '../stores/auth'
 import { mapSelectedResource, useResourcesStore } from '../stores/content/resources'
 import { resourceHubApi } from '../services/api/resourceHub'
-import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const route = useRoute()
 const router = useRouter()
 const community = useCommunityStore()
 const auth = useAuthStore()
-const { requireWrite } = useCommunityAccess()
 const legacyResources = useResourcesStore()
 const home = ref<ResourceHubHomeDto | null>(null)
 const results = ref<ResourceHubItemDto[]>([])
@@ -48,7 +46,6 @@ const legacyPreviewOpen = computed({
   },
 })
 const publish = (value: ResourceContributionKind) => {
-  if (!requireWrite()) return
   community.openComposer({
     type: value === 'video' ? 'lab_result' : value === 'article' ? 'frontier_discussion' : 'note',
     title: '',

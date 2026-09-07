@@ -35,7 +35,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-const hub = (prisma: object = {}, visibility: object = {}) => new ResourceHubService(
+const hub = (prisma: object = {}, visibility: object = {}, detection: object = {}) => new ResourceHubService(
   prisma as never,
   new ConfigService({ JWT_SECRET: 'resource-test-secret-with-enough-entropy' }),
   {} as never,
@@ -44,9 +44,76 @@ const hub = (prisma: object = {}, visibility: object = {}) => new ResourceHubSer
   {} as never,
   {} as never,
   {} as never,
+  detection as never,
 )
 
 describe('资源播放交付', () => {
+  it.each([false, true])('后台修改资源属性必须复用已投稿范围：submitted=%s', async (submitted) => {
+    const scope = { status: { not: 'draft' }, OR: [{ publishedAt: { not: null } }, { id: { in: ['synthetic-pending-post'] } }] }
+    const tx = {
+      $queryRaw: vi.fn(),
+      communityPost: { count: vi.fn(async () => Number(submitted)) },
+      resourceContribution: { findUnique: vi.fn(async () => ({ postId: 'synthetic-pending-post' })), update: vi.fn(async () => ({ postId: 'synthetic-pending-post', revision: 2 })) },
+      auditLog: { create: vi.fn() },
+    }
+    const prisma = { resourceCategory: { findFirst: vi.fn(async () => ({ id: 'synthetic-category' })) }, $transaction: (fn: (client: typeof tx) => Promise<unknown>) => fn(tx) }
+    const visibility = { adminWhere: vi.fn(async () => scope) }
+    const service = hub(prisma, visibility)
+    const write = service.updateContribution('synthetic-admin', 'synthetic-pending-post', { categoryId: 'synthetic-category', featured: true, liveReplay: false, reason: '合成分类调整' })
+    if (submitted) {
+      await expect(write).resolves.toMatchObject({ revision: 2 })
+      expect(tx.resourceContribution.update).toHaveBeenCalledOnce()
+      expect(tx.auditLog.create).toHaveBeenCalledOnce()
+    } else {
+      await expect(write).rejects.toThrow('私人草稿')
+      expect(tx.resourceContribution.findUnique).not.toHaveBeenCalled()
+      expect(tx.resourceContribution.update).not.toHaveBeenCalled()
+      expect(tx.auditLog.create).not.toHaveBeenCalled()
+    }
+    expect(visibility.adminWhere).toHaveBeenCalledWith(tx)
+    expect(tx.communityPost.count).toHaveBeenCalledWith({ where: { AND: [{ id: 'synthetic-pending-post' }, scope] } })
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.communityPost.count.mock.invocationCallOrder[0])
+  })
+
+  it('创作工作室将待复核投稿与公开作品、私人草稿分开返回', async () => {
+    const rows = ['published', 'draft', 'pending_review'].map((status) => ({ id: `synthetic-${status}`, status }))
+    const prisma = { communityPost: { findMany: vi.fn(async () => rows) } }
+    const service = hub(prisma)
+    Object.assign(service, { posts: { mapMany: vi.fn(async () => rows) }, mapContributions: vi.fn(async () => rows.map((row) => ({ postId: row.id, mediaStatus: 'ready' }))) })
+    expect(await service.studio('synthetic-owner')).toEqual({ items: [{ postId: 'synthetic-published', mediaStatus: 'ready' }], drafts: [rows[1]], pendingReview: [rows[2]], processing: [] })
+    expect(prisma.communityPost.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { authorId: 'synthetic-owner', deletedAt: null, contribution: { isNot: null } } }))
+  })
+
+  it('待审资源的旧封面令牌不能凭文件 public 标记继续读取，作者仍可预览', async () => {
+    let published = false, owner = false
+    const prisma = {
+      communityPost: { count: vi.fn(async () => Number(published)) },
+      user: { count: vi.fn(async () => 0) },
+      fileRecord: { count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => Number(where.visibility === 'public' || owner && where.uploadedBy === 'synthetic-viewer')) },
+    }
+    const service = hub(prisma, { viewer: vi.fn(), where: vi.fn(async () => ({ status: 'published' })) })
+    const open = vi.fn(async () => ({ mimeType: 'image/webp' }))
+    Object.defineProperty(service, 'storage', { value: { open } })
+    const token = (service as unknown as { sign(p: string, id: string, user: string, expires: number): string }).sign('media', 'synthetic-cover', 'synthetic-viewer', Math.floor(Date.now() / 1000) + 60)
+    await expect(service.mediaFile('synthetic-cover', token)).rejects.toThrow('不可见')
+    expect(open).not.toHaveBeenCalled()
+    owner = true
+    await expect(service.mediaFile('synthetic-cover', token)).resolves.toMatchObject({ mimeType: 'image/webp' })
+    owner = false
+    published = true
+    await service.mediaFile('synthetic-cover', token)
+    expect(prisma.communityPost.count).toHaveBeenLastCalledWith({ where: { AND: [{ contribution: { isNot: null }, OR: [{ contribution: { is: { coverFileId: 'synthetic-cover' } } }, { contribution: { is: { videoAsset: { is: { posterFileId: 'synthetic-cover' } } } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId: 'synthetic-cover' }] } }] }, { status: 'published' }] } })
+  })
+
+  it('资源后台复用已投稿范围，搜索条件不能覆盖私人草稿隔离', async () => {
+    const submitted = { status: { not: 'draft' }, OR: [{ publishedAt: { not: null } }, { id: { in: ['synthetic-pending'] } }] }
+    const prisma = { communityPost: { findMany: vi.fn(async () => []) } }
+    const service = hub(prisma, { adminWhere: vi.fn(async () => submitted) })
+    Object.assign(service, { posts: { mapMany: vi.fn(async () => []) }, mapContributions: vi.fn(async () => []) })
+    await service.adminItems('synthetic-admin', { kind: 'all', keyword: '合成教程', limit: 20 } as ResourceHubQueryDto)
+    expect(prisma.communityPost.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { contribution: { isNot: null }, AND: [submitted], OR: [{ title: { contains: '合成教程', mode: 'insensitive' } }, { plainText: { contains: '合成教程', mode: 'insensitive' } }] } }))
+  })
+
   it('正确解析完整、开放、后缀和越界单范围并拒绝多范围', () => {
     expect(parseSingleRange(undefined, 1000)).toBeNull()
     expect(parseSingleRange('bytes=100-199', 1000)).toEqual({ start: 100, end: 199 })
@@ -107,6 +174,70 @@ describe('资源播放交付', () => {
 })
 
 describe('资源持久化边界', () => {
+  it('公开合集创建复用客户端幂等键且不会重复落库', async () => {
+    let requestRow: Record<string, unknown> | null = null
+    const tx = {
+      $queryRaw: vi.fn(),
+      requestIdempotency: {
+        findUnique: vi.fn(async () => requestRow),
+        upsert: vi.fn(async ({ create, update }: { create: Record<string, unknown>; update: Record<string, unknown> }) => { requestRow = requestRow ? { ...requestRow, ...update } : create }),
+      },
+      learningCollection: { create: vi.fn(async () => ({ id: 'collection-1', ownerId: 'student-a', revision: 1, name: '课程复习', description: '按阶段整理', learningGoal: '完成复习', visibility: 'community' })), update: vi.fn() },
+    }
+    const prisma = { $transaction: vi.fn(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx)) }
+    const visibility = { viewer: vi.fn(), assertOperation: vi.fn() }
+    const detection = { check: vi.fn(async () => ({ action: 'allow', hits: [], ruleVersion: 1, mediaReview: 'not_performed' })), record: vi.fn() }
+    const service = hub(prisma, visibility, detection)
+    Object.defineProperty(service, 'collection', { value: vi.fn(async (_userId: string, id: string) => ({ id })) })
+    const input = { name: '课程复习', description: '按阶段整理', visibility: 'community' as const, learningGoal: '完成复习' }
+    expect(await service.createCollection('student-a', input, 'collection-retry-1')).toEqual({ id: 'collection-1' })
+    expect(await service.createCollection('student-a', input, 'collection-retry-1')).toEqual({ id: 'collection-1' })
+    expect(tx.learningCollection.create).toHaveBeenCalledOnce()
+    expect(visibility.assertOperation).toHaveBeenCalledWith('student-a', 'collection')
+    expect(detection.check).toHaveBeenCalledOnce()
+    expect(detection.record).toHaveBeenCalledOnce()
+  })
+
+  it('合集名称、简介及目标一起检测，待复核不改成私有且绑定保存修订', async () => {
+    const row = { id: 'synthetic-collection', ownerId: 'synthetic-owner', revision: 4, visibility: 'community', name: '合成案例集', description: '案例说明', learningGoal: '学习风险识别' }
+    const tx = { $queryRaw: vi.fn(), learningCollection: { update: vi.fn() } }
+    const detection = { check: vi.fn(async () => ({ action: 'review', ruleVersion: 2, hits: [], mediaReview: 'not_performed' })), record: vi.fn() }
+    const service = hub({}, {}, detection)
+    await (service as unknown as { detectCollection(tx: unknown, row: unknown): Promise<void> }).detectCollection(tx, row)
+    expect(detection.check).toHaveBeenCalledWith(tx, { collectionName: row.name, collectionDescription: row.description, collectionGoal: row.learningGoal })
+    expect(tx.learningCollection.update).toHaveBeenCalledWith({ where: { id: row.id, revision: 4 }, data: { contentStatus: 'pending_review' } })
+    expect(row.visibility).toBe('community')
+    expect(detection.record).toHaveBeenCalledWith(tx, expect.objectContaining({ type: 'collection', revision: 4, authorId: row.ownerId }), expect.objectContaining({ ruleVersion: 2 }), expect.objectContaining({ name: row.name }))
+  })
+
+  it('私人合集不冒充待复核；陈旧合集编辑在检测和记录前被拒绝', async () => {
+    const tx = { $queryRaw: vi.fn(), learningCollection: { update: vi.fn(), updateMany: vi.fn(async () => ({ count: 0 })) }, contentReview: { updateMany: vi.fn() } }
+    const detection = { check: vi.fn(), record: vi.fn() }
+    const prisma = { learningCollection: { findFirst: vi.fn(async () => ({ visibility: 'community' })) }, $transaction: vi.fn(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx)) }
+    const service = hub(prisma, { viewer: vi.fn(), assertOperation: vi.fn() }, detection)
+    await (service as unknown as { detectCollection(tx: unknown, row: unknown): Promise<void> }).detectCollection(tx, { id: 'synthetic-collection', revision: 2, visibility: 'private' })
+    expect(detection.check).not.toHaveBeenCalled()
+    expect(tx.contentReview.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'superseded' } }))
+    await expect(service.updateCollection('synthetic-owner', 'synthetic-collection', { name: '保留本地输入', description: '', visibility: 'community', expectedRevision: 1 })).rejects.toThrow('合集已变化')
+    expect(detection.record).not.toHaveBeenCalled()
+  })
+
+  it('合集详情的他人读取必须同时满足已公开、检测通过和作者有效', async () => {
+    const findFirst = vi.fn(async () => null)
+    const service = hub({ learningCollection: { findFirst } })
+    await expect(service.collection('synthetic-viewer', 'synthetic-collection')).rejects.toThrow('不可见')
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'synthetic-collection', OR: [{ ownerId: 'synthetic-viewer' }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }] } }))
+  })
+
+  it('消融：检测结果不改变合集可见性时不重复写状态，仍记录本修订的检测', async () => {
+    const row = { id: 'synthetic-collection', ownerId: 'synthetic-owner', revision: 2, visibility: 'community', contentStatus: 'published', name: '学习清单', description: '', learningGoal: '' }
+    const tx = { learningCollection: { update: vi.fn() } }
+    const detection = { check: vi.fn(async () => ({ action: 'allow', ruleVersion: 1, hits: [], mediaReview: 'not_performed' })), record: vi.fn() }
+    await (hub({}, {}, detection) as unknown as { detectCollection(tx: unknown, row: unknown): Promise<void> }).detectCollection(tx, row)
+    expect(tx.learningCollection.update).not.toHaveBeenCalled()
+    expect(detection.record).toHaveBeenCalledOnce()
+  })
+
   it.runIf(mediaToolsAvailable)('真实处理兼容 MP4、竖屏 WebM 和带方向元数据的 MOV', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'resource-video-processing-'))
     roots.push(root)
@@ -173,7 +304,7 @@ describe('资源持久化边界', () => {
     const now = new Date('2026-09-06T00:00:00.000Z')
     const asset = { id: 'video-a', uploaderId: 'student-a', status: 'failed', originalName: 'demo.webm', originalMimeType: 'video/webm', durationSeconds: null, width: null, height: null, rotation: 0, attempts: 2, lastError: 'FFmpeg unavailable', posterFileId: null, createdAt: now, updatedAt: now }
     const prisma = { videoAsset: { findFirst: vi.fn(async () => asset) } }
-    const visibility = { viewer: vi.fn(), assertCommunityWrite: vi.fn() }
+    const visibility = { viewer: vi.fn() }
     expect(await hub(prisma, visibility).video('student-a', 'video-a')).toMatchObject({ id: 'video-a', status: 'failed', attempts: 2, lastError: 'FFmpeg unavailable' })
     expect(prisma.videoAsset.findFirst).toHaveBeenCalledWith({ where: { id: 'video-a', uploaderId: 'student-a' } })
     expect(visibility.viewer).toHaveBeenCalledWith('student-a')
@@ -214,8 +345,8 @@ describe('资源持久化边界', () => {
       communityPost: { findUnique: vi.fn(async () => stored) },
       $transaction: vi.fn(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx)),
     }
-    const visibility = { viewer: vi.fn(), assertCommunityWrite: vi.fn() }
-    const service = new CommunityPostService(prisma as never, {} as never, visibility as never, {} as never)
+    const visibility = { viewer: vi.fn() }
+    const service = new CommunityPostService(prisma as never, {} as never, visibility as never, {} as never, {} as never)
     expect(await service.unpublish('student-a', 'post-a')).toEqual({ unpublished: true })
     expect(tx.communityPost.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'post-a', authorId: 'student-a', status: 'published', deletedAt: null }, data: expect.objectContaining({ status: 'draft', publishedAt: null }) }))
     expect(tx.communityProfile.updateMany).toHaveBeenCalledWith({ where: { pinnedPostId: 'post-a' }, data: { pinnedPostId: null, revision: { increment: 1 } } })

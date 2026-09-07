@@ -1,4 +1,5 @@
 export interface AuthUser {
+  contentDetection?: import('./content-detection').ContentDetectionResult
   revision?: number
   profileRevision?: number
   sessionVersion?: number

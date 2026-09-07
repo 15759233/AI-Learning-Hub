@@ -10,9 +10,7 @@ import { useCommunityStore } from '../stores/community'
 import { useLearningStore } from '../stores/learning'
 import { communityApi } from '../services/api/community'
 import CommunityPostCard from './CommunityPostCard.vue'
-import { useCommunityAccess } from './composables/useCommunityAccess'
 const route = useRoute(), store = useCommunityStore(), learning = useLearningStore()
-const { requireWrite } = useCommunityAccess()
 const posts = ref<CommunityPostDetailDto[]>([]), topic = ref<CommunityTopicDto | null>(null), error = ref(''), tab = ref('posts'), loading = ref(false)
 let loadEpoch = 0
 const view = computed(() => String(route.meta.communityView || 'search'))
@@ -43,7 +41,6 @@ const follow = async () => {
   try { await store.follow(target.id, view.value === 'topic', !target.following, target) } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '关注失败' }
 }
 const publishNote = (key: string, note: string) => {
-  if (!requireWrite()) return
   store.openComposer({ type: 'note', contentBlocks: [{ type: 'paragraph', text: note }], bindings: [{ type: 'course', id: key.split(':')[0] }] })
 }
 watch([() => route.path, () => route.query.tab], ([, value]) => { const allowed = view.value === 'bookmarks' ? ['posts', 'notes', 'learning'] : ['posts']; tab.value = allowed.includes(String(value)) ? String(value) : 'posts' }, { immediate: true })

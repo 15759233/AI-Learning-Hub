@@ -14,7 +14,7 @@ import CommunityPostMenu from '../community/CommunityPostMenu.vue'
 import { provideCommunityScrollRoot } from '../community/composables/useCommunityScrollRoot'
 import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 const auth = useAuthStore(), store = useCommunityStore(), router = useRouter(), route = useRoute()
-const { canWrite, requireWrite, message } = useCommunityAccess()
+const { canPost, decision, message, nextAction } = useCommunityAccess()
 const collapsed = ref(false), menuOpen = ref(false)
 const verificationReason = ref('')
 const mainScroll = provideCommunityScrollRoot()
@@ -28,7 +28,11 @@ watch(collapsed, (value) => { try { localStorage.setItem('community-sidebar-coll
 let polling: number | undefined
 const loadUnread = async () => { if (document.visibilityState !== 'visible') return; const epoch = store.epoch; try { const result = await communityApi.unread(); if (epoch === store.epoch) store.unread = result.count } catch { /* 内容区保留可重试错误，不中断正在阅读的页面。 */ } }
 const logout = async () => { await auth.logout(); await router.replace('/') }
-const publish = () => { if (requireWrite()) store.openComposer() }
+const publish = () => { store.openComposer() }
+const postAvailableAt = computed(() => {
+  const value = decision('post').availableAt
+  return value ? `预计 ${new Date(value).toLocaleString('zh-CN')} 后恢复` : ''
+})
 watch(() => auth.user?.identityVerificationStatus, async (status) => {
   verificationReason.value = ''
   if (status !== 'rejected') return
@@ -52,7 +56,7 @@ onBeforeUnmount(() => { window.clearInterval(polling) })
       <img v-bind="communityArt.sidebarPlanet" class="sidebar-decoration" alt="" loading="lazy" />
     </aside>
     <header class="community-mobile-header"><RouterLink class="brand" to="/community"><span class="brand-mark">A</span><strong>AI MAKER CAMPUS</strong></RouterLink><button class="icon-button" aria-label="更多功能" @click="menuOpen = true"><AppIcon name="menu" /></button></header>
-    <main id="main-content" ref="mainScroll" class="community-main" tabindex="-1"><aside v-if="!canWrite && route.path !== '/community/verification'" class="community-verification-banner"><span>{{ message }}<small v-if="verificationReason">审核意见：{{ verificationReason }}</small></span><RouterLink class="button secondary" to="/community/verification">{{ auth.user?.identityVerificationStatus === 'pending' ? '查看状态' : auth.user?.identityVerificationStatus === 'rejected' ? '修改并重新提交' : '立即认证' }}</RouterLink></aside><slot /></main>
+    <main id="main-content" ref="mainScroll" class="community-main" tabindex="-1"><aside v-if="!canPost && route.path !== '/community/verification'" class="community-verification-banner"><span>{{ message }}<small v-if="verificationReason">审核意见：{{ verificationReason }}</small><small v-if="postAvailableAt">{{ postAvailableAt }}</small></span><RouterLink v-if="nextAction" class="button secondary" :to="nextAction.route">{{ nextAction.label }}</RouterLink></aside><slot /></main>
     <CommunityRightRail v-if="!wide" />
     <nav class="community-bottom-nav" aria-label="移动主导航"><RouterLink v-for="item in communityNavigation.filter((item) => item.mobile).sort((a, b) => a.mobileOrder - b.mobileOrder)" :key="item.path" :to="item.path" :class="{ active: communityNavActive(route.path, item.path) }" :style="{ order: item.mobileOrder }"><AppIcon :name="item.icon" :size="21" /><span>{{ item.label.replace('首页', '').replace('主题', '').replace('项目', '').replace('消息', '').replace('成长', '') }}</span></RouterLink><button class="mobile-publish-button" @click="publish"><AppIcon name="plus" :size="24" /><span>发布</span></button></nav>
     <AppDialog v-model="menuOpen" title="学习社区"><nav class="community-more"><RouterLink v-for="item in communityNavigation" :key="item.path" :to="item.path" @click="menuOpen = false">{{ item.label }}</RouterLink><RouterLink to="/welcome" @click="menuOpen = false">品牌门户</RouterLink><button class="text-link" @click="logout">退出登录</button></nav></AppDialog>

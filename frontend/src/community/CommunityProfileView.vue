@@ -13,7 +13,7 @@ import CommunityEmptyState from './CommunityEmptyState.vue'
 import CommunityPostCard from './CommunityPostCard.vue'
 import CommunityPostMenu from './CommunityPostMenu.vue'
 import CommunitySkeleton from './CommunitySkeleton.vue'
-import { badgeLabels } from './labels'
+import { badgeLabels, contentDetectionNotice } from './labels'
 import { resourceHubApi } from '../services/api/resourceHub'
 import ResourceHubCard from '../components/ResourceHubCard.vue'
 import { useCommunityAccess } from './composables/useCommunityAccess'
@@ -98,7 +98,7 @@ const follow = async () => {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '关注失败' }
 }
 const relationship = async (kind: 'mute' | 'block') => {
-  if (!profile.value || !requireWrite()) return
+  if (!profile.value || !requireWrite('read')) return
   const active = kind === 'mute' ? profile.value.muted : profile.value.blocked
   try { await communityApi.feedback(profile.value.id, kind, !active); await load() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败' }
@@ -127,20 +127,21 @@ const moreRelations = async () => {
   relationPeople.value.push(...result.items); relationCursor.value = result.nextCursor
 }
 const openEditor = () => {
-  if (!profile.value?.isSelf || !requireWrite()) return
+  if (!profile.value?.isSelf || !requireWrite('profile')) return
+  const text = { ...profile.value, ...profile.value.pendingChanges }
   form.value = {
     expectedUserRevision: profile.value.userRevision,
     expectedProfileRevision: profile.value.revision,
-    displayName: profile.value.displayName,
-    bio: profile.value.bio,
-    headline: profile.value.headline,
-    location: profile.value.location || '',
-    websiteUrl: profile.value.websiteUrl || '',
-    expertiseTopics: [...profile.value.expertiseTopics],
+    displayName: text.displayName,
+    bio: text.bio,
+    headline: text.headline,
+    location: text.location || '',
+    websiteUrl: text.websiteUrl || '',
+    expertiseTopics: [...text.expertiseTopics],
     allowAchievementDrafts: !!profile.value.allowAchievementDrafts,
   }
-  topicsText.value = profile.value.expertiseTopics.join('、')
-  username.value = profile.value.username
+  topicsText.value = text.expertiseTopics.join('、')
+  username.value = text.username
   avatarFile.value = null; bannerFile.value = null; editOpen.value = true
 }
 const crop = (file: File, canvas: HTMLCanvasElement | undefined, kind: 'avatar' | 'banner') => new Promise<File>((resolve, reject) => {
@@ -173,7 +174,8 @@ const chooseImage = async (event: Event, kind: 'avatar' | 'banner') => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图片处理失败' }
 }
 const save = async () => {
-  if (!profile.value || saving.value || !requireWrite()) return
+  if (!profile.value || saving.value || !requireWrite('profile')) return
+  if ((avatarFile.value || bannerFile.value) && !requireWrite('upload')) return
   saving.value = true; error.value = ''
   try {
     form.value.expertiseTopics = [...new Set(topicsText.value.split(/[、,，]/).map((item) => item.trim()).filter(Boolean))]
@@ -187,7 +189,7 @@ const save = async () => {
   finally { saving.value = false }
 }
 const removeImage = async (kind: 'avatar' | 'banner') => {
-  if (!profile.value || saving.value || !requireWrite()) return
+  if (!profile.value || saving.value || !requireWrite('read')) return
   saving.value = true
   try {
     const result = await communityApi.removeProfileImage(kind, profile.value.userRevision, profile.value.revision)
@@ -196,7 +198,7 @@ const removeImage = async (kind: 'avatar' | 'banner') => {
   finally { saving.value = false }
 }
 const changeUsername = async () => {
-  if (!requireWrite()) return
+  if (!requireWrite('profile')) return
   try {
     auth.user = await communityApi.username(username.value)
     sessionStorage.setItem('student-user', JSON.stringify(auth.user))
@@ -204,7 +206,7 @@ const changeUsername = async () => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '用户名修改失败' }
 }
 const pin = async (id: string | null) => {
-  if (!profile.value || !requireWrite()) return
+  if (!profile.value || !requireWrite(id ? 'profile' : 'read')) return
   try { profile.value = await communityApi.pin(id, profile.value.revision); await loadTimeline() }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '置顶设置失败' }
 }
@@ -221,6 +223,7 @@ onBeforeUnmount(() => { loadEpoch++ })
     <p v-if="error" class="community-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="community-notice" role="status">{{ notice }}</p>
     <template v-if="profile">
+      <p v-if="profile.isSelf && contentDetectionNotice(profile.detection)" class="community-notice" role="status">{{ contentDetectionNotice(profile.detection) }}<template v-if="profile.pendingChanges"> 当前对外仍展示原公开资料；打开编辑可继续修改待审内容。</template></p>
       <article class="community-profile-header">
         <div class="community-profile-banner" :class="{ empty: !profile.bannerUrl }" :style="profile.bannerUrl ? { backgroundImage: `url(${profile.bannerUrl})` } : undefined" />
         <div class="community-profile-identity">

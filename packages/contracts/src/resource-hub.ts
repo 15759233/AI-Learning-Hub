@@ -81,6 +81,8 @@ export interface ResourceHubSectionDto {
 }
 
 export interface LearningCollectionSummaryDto {
+  contentStatus?: 'published' | 'pending_review'
+  detection?: import('./content-detection').ContentDetectionResult
   id: string
   name: string
   description: string
@@ -163,6 +165,7 @@ export interface WatchProgressInput {
 export interface CreatorContentSummaryDto {
   items: ResourceHubItemDto[]
   drafts: CommunityPostSummaryDto[]
+  pendingReview: CommunityPostSummaryDto[]
   processing: ResourceHubItemDto[]
 }
 

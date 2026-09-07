@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockCommunity, resetCommunityMock } from '../services/api/community.mock'
-import type { CampusIdentityVerificationDto, CommunityCommentDto, CommunityFeedDto, CommunityPostDetailDto, CommunityPostInput, CommunityNotificationDto, CommunityProfileDto, CommunityProfileTimelineDto, CommunityProfileUpdateDto } from '@ai-learning-hub/contracts'
+import type { CampusIdentityVerificationDto, CommunityCommentDto, CommunityEligibilityDto, CommunityFeedDto, CommunityPostDetailDto, CommunityPostInput, CommunityNotificationDto, CommunityProfileDto, CommunityProfileTimelineDto, CommunityProfileUpdateDto } from '@ai-learning-hub/contracts'
 
 const values = new Map<string, string>()
 const localStorageStub = {
@@ -15,13 +15,13 @@ describe('显式社区 Mock 与统一 Fixtures', () => {
   it('未认证仍可读取既有公开内容，但所有社区关系写入均返回稳定门禁', async () => {
     await mockCommunity('/verification/demo-review', 'POST', { status: 'revoked', reason: '演示撤销' })
     expect((await mockCommunity<CommunityPostDetailDto[]>('/posts', 'GET')).length).toBeGreaterThan(0)
+    expect(await mockCommunity<CommunityEligibilityDto>('/eligibility', 'GET')).toMatchObject({ canRead: true, canPost: false, canComment: false, canUpload: false })
     for (const [path, method, body] of [
       ['/posts', 'POST', { type: 'note', contentBlocks: [{ type: 'paragraph', text: '不应发布' }], bindings: [], topicIds: [], visibility: 'public', status: 'published' }],
       ['/posts/community-note-1/comments', 'POST', { contentBlocks: [{ type: 'paragraph', text: '不应评论' }] }],
       ['/posts/community-note-1/reactions/like', 'PUT'],
       ['/posts/community-note-1/bookmark', 'PUT'],
       ['/topics/community-topic-rag/follow', 'PUT'],
-      ['/posts/community-note-1/hide', 'POST'],
       ['/posts/community-note-1/report', 'POST', { reason: '测试', description: '' }],
     ] as const) {
       await expect(mockCommunity(path, method, body)).rejects.toMatchObject({ code: 'COMMUNITY_VERIFICATION_REQUIRED' })
@@ -40,7 +40,8 @@ describe('显式社区 Mock 与统一 Fixtures', () => {
     expect(state.status).toBe('approved')
     await expect(mockCommunity('/posts/community-note-1/reactions/like', 'PUT')).resolves.toMatchObject({ active: true })
     await mockCommunity('/verification/demo-review', 'POST', { status: 'revoked', reason: '演示撤销' })
-    await expect(mockCommunity('/posts/community-note-1/reactions/like', 'DELETE')).rejects.toMatchObject({ code: 'COMMUNITY_VERIFICATION_REQUIRED' })
+    await expect(mockCommunity('/posts/community-note-1/reactions/like', 'DELETE')).resolves.toMatchObject({ active: false })
+    await expect(mockCommunity('/posts/community-note-1/hide', 'POST')).resolves.toBeTruthy()
     expect(localStorage.getItem('community-demo-user')).not.toContain('11010519491231002X')
   })
   it('普通HTTP缺少randomUUID时仍可分页、发布与评论', async () => {

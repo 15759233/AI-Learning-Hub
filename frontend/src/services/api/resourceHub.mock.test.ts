@@ -64,6 +64,8 @@ describe('资源共创 Mock 与正式契约语义', () => {
     expect(video).toMatchObject({ status: 'ready', originalMimeType: 'video/mp4' })
     expect(await mockResourceHub<VideoAssetDto>(`/videos/${video.id}`)).toEqual(video)
     expect(document.mimeType).toBe('text/plain')
+    await expect(mockResourceHub(`/videos/${video.id}/playback`)).rejects.toThrow('不可见')
+    await mockCommunity('/posts', 'POST', { type: 'note', title: '合成视频投稿', contentBlocks: [{ type: 'paragraph', text: '用于验证观看进度的合成教程' }], bindings: [], topicIds: [], visibility: 'public', status: 'published', contribution: { kind: 'video', categoryId: 'ai-foundation', tags: [], videoAssetId: video.id } })
     const playback = await mockResourceHub<VideoPlaybackDto>(`/videos/${video.id}/playback`)
     expect(playback.sources[0]).toMatchObject({ type: 'video/mp4', src: expect.stringMatching(/^blob:/) })
     await mockResourceHub(`/videos/${video.id}/progress`, 'PUT', { positionSeconds: 24, watchedSeconds: 18, completed: false, eventKey: 'mock-watch-1' })
@@ -76,6 +78,7 @@ describe('资源共创 Mock 与正式契约语义', () => {
     expect((await mockResourceHub<ResourceHubListDto>('/items?kind=all')).items.some((entry) => entry.postId === id)).toBe(false)
     const studio = await mockResourceHub<CreatorContentSummaryDto>('/studio')
     expect(studio.drafts.some((post) => post.id === id)).toBe(true)
+    expect(studio.pendingReview).toEqual([])
   })
 
   it('详情、作者、互动与社区帖子共用同一份数据', async () => {

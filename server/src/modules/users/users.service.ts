@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { AdminIdentityVerificationDto, AdminUserSummaryDto, AdminUserDetailDto, AuthUser, CampusIdentityVerificationDto, PageResult } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
-import { actionEvent, lockUser } from '../../common/persistence'
+import { actionEvent, lockFileReferences, lockUser } from '../../common/persistence'
+import { ContentDetectionService } from '../community/content-detection.service'
 import { CampusIdentityVerificationInputDto, IdentityReviewDto, UserQuery, UserStatusUpdateDto, UserUpdateDto } from './users.dto'
 import { RegistrationService } from '../auth/registration.service'
 import { decryptIdentity, encryptIdentity, identityFingerprint, maskIdNumber, maskRealName, normalizeIdNumber, normalizeStudentNo, parseIdentityDataKey } from './identity-data'
@@ -37,7 +38,7 @@ const emptyVerification = (): CampusIdentityVerificationDto => ({ status: 'unsub
 export const dateRange = (from?: string, to?: string) => ({ ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to.length === 10 ? `${to}T23:59:59.999Z` : to) } : {}) })
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService, private readonly registration: RegistrationService, private readonly config: ConfigService) {}
+  constructor(private readonly prisma: PrismaService, private readonly registration: RegistrationService, private readonly config: ConfigService, private readonly detection: ContentDetectionService) {}
   private identityKey() {
     try { return parseIdentityDataKey(this.config.get<string>('IDENTITY_DATA_KEY')) }
     catch { throw new ServiceUnavailableException('校园实名认证能力尚未配置，请联系管理员') }
@@ -207,15 +208,17 @@ export class UsersService {
     return this.registration.forgot(target.email, `admin:${actor.id}`)
   }
   async update(actor: AuthUser, id: string, input: UserUpdateDto, allowStudentNo = false) {
-    const { expectedRevision, reason, ...data } = input
+    const { expectedRevision, reason, displayName, ...data } = input
     if (data.studentNo !== undefined && !allowStudentNo) throw new ForbiddenException('缺少实名资料读取权限')
     if (data.schoolId && !await this.prisma.school.count({ where: { id: data.schoolId, status: 'active' } })) throw new BadRequestException('学校不存在')
     if (data.departmentId && !await this.prisma.department.count({ where: { id: data.departmentId, schoolId: data.schoolId } })) throw new BadRequestException('院系与学校不匹配')
     await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       await this.assertTarget(actor, id, tx)
       const verification = await tx.campusIdentityVerification.findUnique({ where: { userId: id }, select: { status: true, studentNo: true } })
       if (verification?.status === 'approved' && data.studentNo !== undefined && normalizeStudentNo(data.studentNo) !== verification.studentNo) throw new ConflictException('已认证学号只能先撤销认证后修改')
       if (!(await tx.user.updateMany({ where: { id, revision: expectedRevision }, data: { ...data, schoolId: data.schoolId || null, departmentId: data.departmentId || null, revision: { increment: 1 } } })).count) throw new ConflictException('资料已变化，请刷新')
+      await this.detection.saveProfile(tx, id, { displayName }, actor.id)
       await this.audit(tx, actor.id, id, 'profile_updated', reason)
     })
     return this.detail(id)

@@ -72,16 +72,17 @@ export class ContentReferenceService {
       const rows = type === 'theme' ? await this.prisma.theme.findMany({ where, include })
         : type === 'course' ? await this.prisma.course.findMany({ where, include })
           : type === 'lab' ? await this.prisma.lab.findMany({ where, include })
-            : type === 'resource' ? await this.prisma.resource.findMany({ where: { ...where, visibility: 'public' }, include })
+            : type === 'resource' ? await this.prisma.resource.findMany({ where: { ...where, publishedVersion: { is: { snapshot: { path: ['visibility'], equals: 'public' } } } }, include })
               : type === 'article' ? await this.prisma.article.findMany({ where, include })
                 : await this.prisma.challenge.findMany({ where, include })
       const covers = await this.media.prepare(rows, true)
       for (const row of rows) {
         if (!row.publishedVersion) continue
         const snapshot = object(row.publishedVersion.snapshot)
-        const data = await this.media.data(type, row, object(snapshot.data || snapshot.payload), true, covers)
+        const title = String(snapshot.title ?? (type === 'resource' ? '' : row.title)), summary = String(snapshot.summary ?? (type === 'resource' ? '' : row.summary))
+        const data = await this.media.data(type, { ...row, title, summary }, object(snapshot.data || snapshot.payload), true, covers)
         const routes = { theme: `/topics?theme=${row.slug}`, course: `/courses/${row.slug}`, lab: `/labs/${row.slug}`, resource: `/resources?resource=${row.slug}`, article: `/frontier?article=${row.slug}`, challenge: `/assessments?challenge=${row.slug}` }
-        const ref: LearningContentReferenceDto = { type, id: row.id, slug: row.slug, title: String(snapshot.title || row.title), summary: String(snapshot.summary || row.summary), route: routes[type], status: 'published', ...(typeof data.cover === 'string' ? { cover: data.cover } : {}), ...(typeof data.category === 'string' ? { category: data.category } : {}) }
+        const ref: LearningContentReferenceDto = { type, id: row.id, slug: row.slug, title, summary, route: routes[type], status: 'published', ...(typeof data.cover === 'string' ? { cover: data.cover } : {}), ...(typeof data.category === 'string' ? { category: data.category } : {}) }
         result.set(`${type}:${row.id}`, ref)
         result.set(`${type}:${row.slug}`, ref)
       }
