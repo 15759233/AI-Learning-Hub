@@ -14,7 +14,7 @@ import { setupComponent } from '../src/community/test-renderer'
 import { communityScrollRoot } from '../src/community/composables/useCommunityScrollRoot'
 import { ApiError } from '../src/services/api/client'
 
-const account = reactive({ user: { id: 'owner-a' } as { id: string } | null, dataMode: 'mock' })
+const account = reactive({ user: { id: 'owner-a', communityWriteEnabled: true } as { id: string; communityWriteEnabled: boolean } | null, dataMode: 'mock' })
 vi.mock('../src/stores/auth', () => ({ useAuthStore: () => account }))
 vi.mock('../src/services/api/community', () => ({ communityApi: { topics: vi.fn(), save: vi.fn(), saveDraft: vi.fn(), upload: vi.fn(), bindingContext: vi.fn(), post: vi.fn() } }))
 const storage = new Map<string, string>()
@@ -23,7 +23,7 @@ const settle = async () => { await nextTick(); await Promise.resolve(); await ne
 const post = { id: 'saved-post', type: 'general', status: 'published', topics: [], viewerState: {} } as CommunityPostDetailDto
 beforeEach(() => {
   vi.useFakeTimers(); vi.resetAllMocks(); storage.clear(); setActivePinia(createPinia())
-  account.user = { id: 'owner-a' }
+  account.user = { id: 'owner-a', communityWriteEnabled: true }
   account.dataMode = 'mock'
   vi.stubGlobal('localStorage', { getItem: (name: string) => storage.get(name) || null, setItem: (name: string, value: string) => storage.set(name, value), removeItem: (name: string) => storage.delete(name) })
   vi.stubGlobal('window', new EventTarget())
@@ -325,13 +325,30 @@ describe('共享发布器与草稿账号隔离', () => {
     editor.discard(); store.openComposer(); await settle()
     expect(editor.form.visibility).toBe('public')
   })
-  it('发布成功胶囊展示三位真实社区用户并返回主滚动区顶部', async () => {
+  it('首屏直接展示投稿检测结果，不依赖滚动且不误报已发布', async () => {
+    const pinia = getActivePinia()!
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/community', component: { render: () => null } }] })
+    await router.push('/community')
+    const store = useCommunityStore()
+    const root = ref({ scrollTop: 0, scrollHeight: 1400, clientHeight: 400 } as HTMLElement)
+    for (const text of ['内容已保存，等待人工复核，尚未公开。', '发布成功。提醒：请确认资源授权']) {
+      store.publishNotice = { id: 'synthetic-result', text }
+      const app = createSSRApp(CommunityComposer)
+      app.use(pinia); app.use(router); app.provide(communityScrollRoot, root)
+      const html = await renderToString(app)
+      expect(html).toContain(`<span>${text}</span>`)
+      expect(html).toContain('role="status"')
+      expect(html).toContain('/community/post/synthetic-result')
+      expect(html).not.toContain('community-publish-feedback')
+      expect(html).not.toContain('<strong>已发布</strong>')
+    }
+  })
+  it('返回顶部胶囊展示三位真实社区用户并返回主滚动区顶部', async () => {
     const pinia = getActivePinia()!
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/community', component: { render: () => null } }] })
     await router.push('/community')
     const users: CommunityAuthorDto[] = ['林宇', '周楠', '陈曦'].map((displayName, index) => ({ id: `user-${index}`, username: `user-${index}`, displayName, avatar: null, school: null, major: null, verifiedType: 'none' }))
     const store = useCommunityStore()
-    store.publishNotice = { id: 'published-post', text: '发布成功，已插入当前列表顶部' }
     store.context = { todayPlan: null, continueCourse: null, continueLab: null, currentChallenge: null, trendingTopics: [], suggestedUsers: users, needsInterests: false }
     const scrollTo = vi.fn(), scrollElement = Object.assign(new EventTarget(), { scrollTop: 251, scrollHeight: 1400, clientHeight: 400, scrollTo })
     const root = ref(scrollElement as unknown as HTMLElement)

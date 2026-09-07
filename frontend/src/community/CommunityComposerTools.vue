@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import { storeToRefs } from 'pinia'
 import { useCommunityDraft } from './composables/useCommunityDraft'
+import { useCommunityAccess } from './composables/useCommunityAccess'
 const props = defineProps<{ panel: 'images' | 'binding' | 'topics' }>()
 const editor = useCommunityDraft()
+const { availability, decision } = useCommunityAccess()
+const uploadDecision = computed(() => decision('upload'))
 const { images, saving, form, topics, topicsLoading, advanced, bindingType, source, bindingSearch, bindingLoading, bindingId, bindingOptions, bindingTitles } = storeToRefs(editor)
 watch(() => props.panel, (panel) => { if (panel === 'topics') void editor.loadTopics(); if (panel === 'binding') void editor.loadOptions() }, { immediate: true })
 </script>
 <template>
   <div class="composer-tool-panel">
     <template v-if="panel === 'images'">
-      <label>学习图片（最多 4 张，每张 5MB）<input type="file" multiple accept="image/png,image/jpeg,image/webp" :disabled="saving" @change="editor.upload" /></label>
+      <label>学习图片（最多 4 张，每张 5MB）<input type="file" multiple accept="image/png,image/jpeg,image/webp" :disabled="saving || !uploadDecision.allowed" @change="editor.upload" /></label>
+      <p v-if="!uploadDecision.allowed" class="community-notice">{{ uploadDecision.message }}<span v-if="availability('upload')">{{ availability('upload') }}</span><RouterLink v-if="uploadDecision.nextAction" class="text-link" :to="uploadDecision.nextAction.route">{{ uploadDecision.nextAction.label }}</RouterLink></p>
       <div v-for="(image, index) in images" :key="image.fileId" class="composer-row"><input v-model="image.alt" aria-label="图片说明" maxlength="200" /><button class="text-link" type="button" @click="images.splice(index, 1)">移除</button></div>
     </template>
     <template v-else-if="panel === 'binding'">

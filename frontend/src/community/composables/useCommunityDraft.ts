@@ -78,6 +78,8 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   }
   const uploadFiles = async (files: File[]) => {
     const epoch = store.epoch, owner = auth.user?.id
+    const uploadDecision = store.eligibility?.operations.upload
+    if (uploadDecision && !uploadDecision.allowed) { error.value = uploadDecision.message || '当前不能上传文件'; localSave(); return }
     if (saving.value) { error.value = '正在保存或上传，请完成后再添加图片'; return }
     if (files.length + images.value.length > 4) { error.value = '最多 4 张图片'; return }
     saving.value = true
@@ -99,6 +101,8 @@ export const useCommunityDraft = defineStore('community-draft', () => {
       if (owner !== auth.user?.id || epoch !== store.epoch) return false
       saving.value = true; error.value = ''
       try {
+        const postDecision = store.eligibility?.operations.post
+        if (!asDraft && postDecision && !postDecision.allowed) throw new ApiError(postDecision.message || '当前不能发布内容', 403, postDecision.reasonCode || undefined, postDecision.availableAt || undefined, postDecision.nextAction || undefined)
         if (conflict.value || draftUnavailable.value) throw new Error(draftUnavailable.value ? '原草稿不可用，请保留当前副本后另存，或放弃修改' : '已有较新的服务端版本，请先读取服务器版本或保留当前副本')
         if (!asDraft && !blocks.value.length && (!form.value.contribution || form.value.contribution.kind === 'article')) throw new Error('请填写正文')
         if (!asDraft && form.value.contribution && !form.value.title?.trim()) throw new Error('资源作品需要标题')
@@ -139,7 +143,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
           clearTimeout(timer); clearTimeout(remoteTimer); requestKey = ''; requestBody = ''; draftId.value = undefined; store.published(post, changed)
           if (changed) {
             hydrating = true; store.editingId = post.id; form.value.expectedRevision = post.revision; dirty.value = true
-            localSave(); savedAt.value = '已发布提交版本，后续输入尚未同步'; queueMicrotask(() => { hydrating = false })
+            localSave(); savedAt.value = post.status === 'pending_review' ? '提交版本已保存待复核，后续输入尚未同步' : '已发布提交版本，后续输入尚未同步'; queueMicrotask(() => { hydrating = false })
           } else { clearLocal(); hydrate({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }) }
         }
         return !changed

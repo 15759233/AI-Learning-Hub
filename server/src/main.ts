@@ -1,5 +1,4 @@
 import 'reflect-metadata'
-import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
@@ -11,6 +10,7 @@ import { ApiExceptionFilter } from './common/api-exception.filter'
 import { ApiResponseInterceptor } from './common/api-response.interceptor'
 import { OperationLogInterceptor } from './common/operation-log.interceptor'
 import { PersistenceService } from './modules/persistence/persistence.service'
+import { appValidationPipe } from './common/validation.pipe'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
@@ -25,7 +25,7 @@ async function bootstrap() {
   app.use(cookieParser())
   app.enableCors({ origin: origins, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] })
   app.setGlobalPrefix('api/v1')
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  app.useGlobalPipes(appValidationPipe)
   app.useGlobalFilters(new ApiExceptionFilter())
   app.useGlobalInterceptors(app.get(OperationLogInterceptor), new ApiResponseInterceptor(app.get(Reflector)))
 

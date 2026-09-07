@@ -4,8 +4,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { resourceHubApi } from '../services/api/resourceHub'
+import { useCommunityAccess } from './composables/useCommunityAccess'
 
 const editor = useCommunityDraft()
+const { availability, decision, requireWrite } = useCommunityAccess()
+const uploadDecision = computed(() => decision('upload'))
 const { form, saving, error } = storeToRefs(editor)
 const categories = ref<ResourceHubCategoryDto[]>([])
 const tags = ref(form.value.contribution?.tags.join('、') || '')
@@ -64,6 +67,7 @@ watch(() => contribution.value.kind, (kind) => {
 const choose = async (event: Event) => {
   const target = event.target as HTMLInputElement, file = target.files?.[0]
   if (!file) return
+  if (!requireWrite('upload')) { target.value = ''; return }
   stopVideoStatus()
   const version = operationVersion
   saving.value = true
@@ -126,7 +130,8 @@ onMounted(async () => {
       <label>资源分类<select v-model="contribution.categoryId"><option v-for="item in categories" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
     </div>
     <label>教学标签（最多 8 个）<input v-model="tags" maxlength="160" placeholder="例如：RAG、模型部署、课堂实训" /></label>
-    <label v-if="contribution.kind !== 'article'">{{ contribution.kind === 'video' ? '视频文件（MP4、MOV、WebM，最大 1GB）' : '资料文件（PDF、DOCX、PPTX、ZIP、TXT，最大 100MB）' }}<input type="file" :accept="contribution.kind === 'video' ? 'video/mp4,video/quicktime,video/webm' : '.pdf,.docx,.pptx,.zip,.txt'" :disabled="saving || !!cancelUpload" @change="choose" /></label>
+    <label v-if="contribution.kind !== 'article'">{{ contribution.kind === 'video' ? '视频文件（MP4、MOV、WebM，最大 1GB）' : '资料文件（PDF、DOCX、PPTX、ZIP、TXT，最大 100MB）' }}<input type="file" :accept="contribution.kind === 'video' ? 'video/mp4,video/quicktime,video/webm' : '.pdf,.docx,.pptx,.zip,.txt'" :disabled="saving || !!cancelUpload || !uploadDecision.allowed" @change="choose" /></label>
+    <p v-if="contribution.kind !== 'article' && !uploadDecision.allowed" class="community-notice">{{ uploadDecision.message }}<span v-if="availability('upload')">{{ availability('upload') }}</span><RouterLink v-if="uploadDecision.nextAction" class="text-link" :to="uploadDecision.nextAction.route">{{ uploadDecision.nextAction.label }}</RouterLink></p>
     <div v-if="uploadStatus" class="resource-upload-state" role="status"><progress :value="uploadProgress" max="100" /><span>{{ uploadStatus }}</span><button v-if="cancelUpload" type="button" class="text-link" @click="cancelUpload()">取消上传</button></div>
     <template v-if="contribution.kind === 'article'">
       <label>参考来源名称（选填）<input v-model="contribution.sourceName" maxlength="120" placeholder="原创内容可留空" /></label>

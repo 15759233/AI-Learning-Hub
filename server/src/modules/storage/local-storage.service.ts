@@ -62,7 +62,9 @@ export class LocalStorageAdapter extends StorageBase {
   }
 
   protected async openObject(objectKey: string, start?: number, end?: number) {
-    return createReadStream(this.target(objectKey), start === undefined ? undefined : { start, end })
+    const target = this.target(objectKey)
+    try { await access(target) } catch { throw new NotFoundException('文件不存在') }
+    return createReadStream(target, start === undefined ? undefined : { start, end })
   }
 
   async getSignedUrl(fileId: string, _expiresIn = 300) {

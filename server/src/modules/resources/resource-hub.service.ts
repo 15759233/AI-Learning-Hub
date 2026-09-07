@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { createHmac, timingSafeEqual } from 'node:crypto'
-import type { Prisma } from '@prisma/client'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import type { LearningCollection, Prisma } from '@prisma/client'
 import type {
   CommunityContentBlock,
   LearningCollectionDto,
@@ -23,12 +24,20 @@ import { STORAGE_SERVICE, type StorageService, type UploadedPathFile } from '../
 import { ResourceService } from './resource.service'
 import type { CollectionInputDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubQueryDto } from './resource-hub.dto'
 import { VideoProcessingService } from './video-processing.service'
+import { idempotency, lockFileReferences, reserveIdempotency } from '../../common/persistence'
+import { ContentDetectionService } from '../community/content-detection.service'
 
 type HubConfig = { bannerPostIds: string[]; sectionCategoryCodes: string[] }
 
 const defaultConfig: HubConfig = {
   bannerPostIds: [],
   sectionCategoryCodes: ['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice'],
+}
+
+const fileChecksum = async (path: string) => {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
+  return hash.digest('hex')
 }
 
 const cursorOffset = (cursor: string) => {
@@ -71,18 +80,24 @@ export class ResourceHubService {
     private readonly courses: CourseService,
     private readonly videoProcessing: VideoProcessingService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly detection: ContentDetectionService,
   ) {
     this.tokenSecret = String(config.get('VIDEO_PLAYBACK_SECRET') || config.getOrThrow('JWT_SECRET'))
   }
 
-  async uploadVideo(userId: string, file: UploadedPathFile) {
-    await this.visibility.viewer(userId)
+  async uploadVideo(userId: string, file: UploadedPathFile, key?: string) {
+    await this.visibility.assertOperation(userId, 'upload')
     if (!['video/mp4', 'video/quicktime', 'video/webm'].includes(file.mimetype)) throw new BadRequestException('仅支持 MP4、MOV、WebM 视频')
+    const request = await reserveIdempotency(this.prisma, userId, 'resource-video-upload', key, { name: file.originalname, mimeType: file.mimetype, size: file.size, checksum: await fileChecksum(file.path) })
+    if (request.resourceId) return this.video(userId, request.resourceId)
     const maxBytes = Math.max(1, Math.min(1024, Number(this.config.get('VIDEO_UPLOAD_MAX_MB') || 1024))) * 1024 * 1024
-    const stored = await this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
+    let stored: Awaited<ReturnType<StorageService['uploadPath']>> | null = null
     try {
-      const asset = await this.prisma.videoAsset.create({
-        data: { uploaderId: userId, sourceFileId: stored.id, originalName: stored.originalName, originalMimeType: stored.mimeType },
+      stored = await this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
+      const asset = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.videoAsset.create({ data: { uploaderId: userId, sourceFileId: stored!.id, originalName: stored!.originalName, originalMimeType: stored!.mimeType } })
+        await request.complete(tx, created.id)
+        return created
       })
       void this.videoProcessing.processNext()
       return {
@@ -101,7 +116,8 @@ export class ResourceHubService {
         updatedAt: asset.updatedAt.toISOString(),
       }
     } catch (error) {
-      await this.storage.delete(stored.id).catch(() => undefined)
+      if (stored) await this.storage.delete(stored.id).catch(() => undefined)
+      await request.cancel()
       throw error
     }
   }
@@ -127,13 +143,29 @@ export class ResourceHubService {
     }
   }
 
-  async uploadDocument(userId: string, file: UploadedPathFile) {
-    await this.visibility.viewer(userId)
+  async uploadDocument(userId: string, file: UploadedPathFile, key?: string) {
+    await this.visibility.assertOperation(userId, 'upload')
+    const request = await reserveIdempotency(this.prisma, userId, 'resource-document-upload', key, { name: file.originalname, mimeType: file.mimetype, size: file.size, checksum: await fileChecksum(file.path) })
+    if (request.resourceId) {
+      const existing = await this.prisma.fileRecord.findFirst({ where: { id: request.resourceId, uploadedBy: userId } })
+      if (!existing) throw new BadRequestException('原上传结果已失效，请重新选择文件')
+      return { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType, size: existing.size, checksum: existing.checksum }
+    }
     const maxBytes = Math.max(1, Math.min(500, Number(this.config.get('RESOURCE_ATTACHMENT_MAX_MB') || 100))) * 1024 * 1024
-    return this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
+    let stored: Awaited<ReturnType<StorageService['uploadPath']>> | null = null
+    try {
+      stored = await this.storage.uploadPath(file, { uploadedBy: userId, visibility: 'private', maxBytes })
+      await this.prisma.$transaction((tx) => request.complete(tx, stored!.id))
+      return stored
+    } catch (error) {
+      if (stored) await this.storage.delete(stored.id).catch(() => undefined)
+      await request.cancel()
+      throw error
+    }
   }
 
-  retryVideo(userId: string, id: string, administrative = false) {
+  async retryVideo(userId: string, id: string, administrative = false) {
+    if (!administrative) await this.visibility.assertOperation(userId, 'upload')
     return this.videoProcessing.retry(userId, id, administrative)
   }
 
@@ -224,7 +256,7 @@ export class ResourceHubService {
     const coverFileId = stored.coverFileId || stored.videoAsset?.posterFileId || post.contentBlocks.find((block) => block.type === 'image')?.fileId
     const coverUrl = coverFileId ? this.mediaUrl(coverFileId, userId) : null
     const collection = await this.prisma.learningCollectionItem.findFirst({
-      where: { contributionPostId: postId, collection: { OR: [{ ownerId: userId }, { visibility: 'community' }] } },
+      where: { contributionPostId: postId, collection: { OR: [{ ownerId: userId }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }] } },
       orderBy: { createdAt: 'asc' },
       select: { collectionId: true },
     })
@@ -257,6 +289,7 @@ export class ResourceHubService {
     return {
       items: items.filter((item) => rows.find((row) => row.id === item.postId)?.status === 'published'),
       drafts: posts.filter((post) => post.status === 'draft'),
+      pendingReview: posts.filter((post) => post.status === 'pending_review'),
       processing: items.filter((item) => item.mediaStatus === 'uploaded' || item.mediaStatus === 'processing' || item.mediaStatus === 'failed'),
     }
   }
@@ -266,7 +299,7 @@ export class ResourceHubService {
     const [items, collections] = await Promise.all([
       this.allItems(viewerId),
       this.prisma.learningCollection.findMany({
-        where: { ownerId: userId, ...(viewerId === userId ? {} : { visibility: 'community' }) },
+        where: { ownerId: userId, ...(viewerId === userId ? {} : { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }) },
         include: { owner: { include: authorInclude }, items: { where: { contribution: { post: visiblePost } }, include: { contribution: { include: { videoAsset: true } } } } },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       }),
@@ -291,7 +324,7 @@ export class ResourceHubService {
     const row = await this.prisma.learningCollection.findFirst({
       where: {
         ...(id === 'watch-later' ? { ownerId: userId, systemKind: 'watch_later' } : { id }),
-        OR: [{ ownerId: userId }, { visibility: 'community' }],
+        OR: [{ ownerId: userId }, { visibility: 'community', contentStatus: 'published', owner: { status: 'active' } }],
       },
       include: {
         owner: { include: authorInclude },
@@ -317,6 +350,7 @@ export class ResourceHubService {
     const videos = items.filter((item) => item.contribution.kind === 'video')
     return {
       ...this.collectionSummary(row, userId),
+      ...(row.ownerId === userId ? { detection: await this.detection.result('collection', row.id, row.revision) } : {}),
       itemCount: items.length,
       videoCount: videos.length,
       durationSeconds: videos.reduce((total, item) => total + (item.contribution.durationSeconds || 0), 0),
@@ -324,18 +358,36 @@ export class ResourceHubService {
     }
   }
 
-  async createCollection(userId: string, input: CollectionInputDto) {
+  async createCollection(userId: string, input: CollectionInputDto, key?: string) {
     await this.visibility.viewer(userId)
-    const row = await this.prisma.learningCollection.create({ data: { ownerId: userId, name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal.trim() } })
-    return this.collection(userId, row.id)
+    if (input.visibility === 'community') await this.visibility.assertOperation(userId, 'collection')
+    const id = await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const request = await idempotency(tx, userId, 'resource-collection-create', key, input)
+      if (request.resourceId) return request.resourceId
+      const row = await tx.learningCollection.create({ data: { ownerId: userId, name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal.trim() } })
+      await this.detectCollection(tx, row)
+      await request.complete(row.id)
+      return row.id
+    })
+    return this.collection(userId, id)
   }
 
   async updateCollection(userId: string, id: string, input: LearningCollectionInput) {
-    const changed = await this.prisma.learningCollection.updateMany({
-      where: { id, ownerId: userId, systemKind: null, revision: input.expectedRevision },
-      data: { name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal?.trim() || '', revision: { increment: 1 } },
+    if (!Number.isSafeInteger(input.expectedRevision) || Number(input.expectedRevision) < 1) throw new BadRequestException('编辑合集必须提供当前修订号')
+    await this.visibility.viewer(userId)
+    const current = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId, systemKind: null }, select: { visibility: true } })
+    if (!current) throw new ConflictException('合集已变化、不可编辑或不存在')
+    if (current.visibility === 'community' || input.visibility === 'community') await this.visibility.assertOperation(userId, 'collection')
+    await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const changed = await tx.learningCollection.updateMany({
+        where: { id, ownerId: userId, systemKind: null, revision: input.expectedRevision },
+        data: { name: input.name.trim(), description: input.description.trim(), visibility: input.visibility, learningGoal: input.learningGoal?.trim() || '', revision: { increment: 1 } },
+      })
+      if (!changed.count) throw new ConflictException('合集已变化、不可编辑或不存在')
+      await this.detectCollection(tx, await tx.learningCollection.findUniqueOrThrow({ where: { id } }))
     })
-    if (!changed.count) throw new ConflictException('合集已变化、不可编辑或不存在')
     return this.collection(userId, id)
   }
 
@@ -350,33 +402,55 @@ export class ResourceHubService {
       })
       : await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId } })
     if (!collection) throw new ForbiddenException('只能修改自己的合集')
-    const max = await this.prisma.learningCollectionItem.aggregate({ where: { collectionId: collection.id }, _max: { sortOrder: true } })
-    await this.prisma.learningCollectionItem.createMany({ data: [{ collectionId: collection.id, contributionPostId: postId, sortOrder: (max._max.sortOrder || 0) + 1 }], skipDuplicates: true })
-    await this.prisma.learningCollection.update({ where: { id: collection.id }, data: { revision: { increment: 1 } } })
+    if (collection.visibility === 'community') await this.visibility.assertOperation(userId, 'collection')
+    await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const max = await tx.learningCollectionItem.aggregate({ where: { collectionId: collection.id }, _max: { sortOrder: true } })
+      await tx.learningCollectionItem.createMany({ data: [{ collectionId: collection.id, contributionPostId: postId, sortOrder: (max._max.sortOrder || 0) + 1 }], skipDuplicates: true })
+      await this.detectCollection(tx, await tx.learningCollection.update({ where: { id: collection.id }, data: { revision: { increment: 1 } } }))
+    })
     return this.collection(userId, collection.id)
   }
 
   async removeFromCollection(userId: string, id: string, itemId: string) {
-    const changed = await this.prisma.learningCollectionItem.deleteMany({ where: { id: itemId, collection: { id, ownerId: userId } } })
-    if (!changed.count) throw new ForbiddenException('只能修改自己的合集')
-    await this.prisma.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } })
+    const collection = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId }, select: { visibility: true } })
+    if (!collection) throw new ForbiddenException('只能修改自己的合集')
+    if (collection.visibility === 'community') await this.visibility.assertOperation(userId, 'collection')
+    await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const changed = await tx.learningCollectionItem.deleteMany({ where: { id: itemId, collection: { id, ownerId: userId } } })
+      if (!changed.count) throw new ForbiddenException('只能修改自己的合集')
+      await this.detectCollection(tx, await tx.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } }))
+    })
     return this.collection(userId, id)
   }
 
   async reorderCollection(userId: string, id: string, expectedRevision: number, itemIds: string[]) {
+    const visible = await this.prisma.learningCollection.findFirst({ where: { id, ownerId: userId }, select: { visibility: true } })
+    if (!visible) throw new ConflictException('合集已变化、不可编辑或不存在')
+    if (visible.visibility === 'community') await this.visibility.assertOperation(userId, 'collection')
     await this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
       await tx.$queryRaw`SELECT id FROM learning_collections WHERE id = ${id} FOR UPDATE`
       const collection = await tx.learningCollection.findFirst({ where: { id, ownerId: userId, revision: expectedRevision }, include: { items: true } })
       if (!collection) throw new ConflictException('合集已变化、不可编辑或不存在')
       if (collection.items.length !== itemIds.length || collection.items.some((item) => !itemIds.includes(item.id))) throw new BadRequestException('排序项必须与合集当前内容一致')
       for (const [sortOrder, itemId] of itemIds.entries()) await tx.learningCollectionItem.update({ where: { id: itemId }, data: { sortOrder } })
-      await tx.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } })
+      await this.detectCollection(tx, await tx.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } }))
     })
     return this.collection(userId, id)
   }
 
+  private async detectCollection(tx: Prisma.TransactionClient, row: LearningCollection) {
+    const result = row.visibility === 'community' ? await this.detection.check(tx, { collectionName: row.name, collectionDescription: row.description, collectionGoal: row.learningGoal }) : null
+    const contentStatus = result?.action === 'review' ? 'pending_review' : 'published'
+    if (row.contentStatus !== contentStatus) await tx.learningCollection.update({ where: { id: row.id, revision: row.revision }, data: { contentStatus } })
+    if (result) await this.detection.record(tx, { type: 'collection', id: row.id, revision: row.revision, authorId: row.ownerId, submittedById: row.ownerId }, result, { name: row.name, description: row.description, learningGoal: row.learningGoal, visibility: row.visibility })
+    else await tx.contentReview.updateMany({ where: { targetType: 'collection', targetId: row.id, status: 'pending' }, data: { status: 'superseded' } })
+  }
+
   async playback(userId: string, assetId: string) {
-    const asset = await this.visibleAsset(userId, assetId)
+    const asset = await this.visibleAsset(userId, assetId, true)
     const expires = Math.floor(Date.now() / 1000) + 6 * 60 * 60
     const token = this.sign('play', assetId, userId, expires)
     const poster = asset.posterFileId ? this.mediaUrl(asset.posterFileId, userId) : null
@@ -395,31 +469,24 @@ export class ResourceHubService {
 
   async playbackFile(assetId: string, token: string, start?: number, end?: number) {
     const userId = this.verify('play', assetId, token)
-    const asset = await this.visibleAsset(userId, assetId)
+    const asset = await this.visibleAsset(userId, assetId, true)
     return this.storage.open(asset.playableFileId!, start, end)
   }
 
   async mediaFile(fileId: string, token: string) {
     const userId = this.verify('media', fileId, token)
-    const [allowed, publicFile] = await Promise.all([
-      this.prisma.resourceContribution.count({
-        where: {
-          OR: [{ coverFileId: fileId }, { videoAsset: { is: { posterFileId: fileId } } }],
-          post: await this.visibility.where(userId),
-        },
-      }),
-      this.prisma.fileRecord.count({ where: { id: fileId, visibility: 'public' } }),
-    ])
-    if (!allowed && !publicFile) throw new NotFoundException('媒体不存在或不可见')
+    await this.visibility.viewer(userId)
+    const ownFile = await this.prisma.fileRecord.count({ where: { id: fileId, uploadedBy: userId } })
+    if (!ownFile) await this.assertMediaPost(userId, {
+      contribution: { isNot: null },
+      OR: [{ contribution: { is: { coverFileId: fileId } } }, { contribution: { is: { videoAsset: { is: { posterFileId: fileId } } } } }, { contentBlocks: { array_contains: [{ type: 'image', fileId }] } }],
+    }, fileId)
     return this.storage.open(fileId)
   }
 
   async attachmentFile(fileId: string, token: string) {
     const userId = this.verify('attachment', fileId, token)
-    const allowed = await this.prisma.resourceContribution.count({
-      where: { attachmentFileId: fileId, post: await this.visibility.where(userId) },
-    })
-    if (!allowed) throw new NotFoundException('附件不存在或不可见')
+    await this.assertMediaPost(userId, { contribution: { is: { attachmentFileId: fileId } } }, fileId)
     return this.storage.open(fileId)
   }
 
@@ -485,6 +552,7 @@ export class ResourceHubService {
     const rows = await this.prisma.communityPost.findMany({
       where: {
         contribution: Object.keys(contribution).length ? { is: contribution } : { isNot: null },
+        AND: [await this.visibility.adminWhere()],
         ...(query.keyword ? { OR: [{ title: { contains: query.keyword, mode: 'insensitive' } }, { plainText: { contains: query.keyword, mode: 'insensitive' } }] } : {}),
       },
       include: { ...postInclude, _count: { select: { reports: true } } },
@@ -503,6 +571,7 @@ export class ResourceHubService {
     if (!category) throw new BadRequestException('资源分类不存在或已停用')
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM community_posts WHERE id = ${postId} FOR UPDATE`
+      if (!await tx.communityPost.count({ where: { AND: [{ id: postId }, await this.visibility.adminWhere(tx)] } })) throw new NotFoundException('资源作品不存在或为私人草稿')
       const current = await tx.resourceContribution.findUnique({ where: { postId } })
       if (!current) throw new NotFoundException('资源作品不存在')
       const updated = await tx.resourceContribution.update({
@@ -561,6 +630,7 @@ export class ResourceHubService {
         description: true,
         learningGoal: true,
         revision: true,
+        contentStatus: true,
         updatedAt: true,
         owner: { select: { id: true, username: true, displayName: true } },
         _count: { select: { items: true, courseLinks: true } },
@@ -641,7 +711,7 @@ export class ResourceHubService {
   }
 
   private collectionSummary(row: {
-    id: string; name: string; description: string; learningGoal: string; visibility: 'private' | 'community'; systemKind: string | null; revision: number; updatedAt: Date
+    id: string; name: string; description: string; learningGoal: string; visibility: 'private' | 'community'; contentStatus: string; systemKind: string | null; revision: number; updatedAt: Date
     ownerId: string; owner: Parameters<typeof authorDto>[0]
     items: Array<{ contribution: { videoAsset: { durationSeconds: number | null } | null } }>
   }, userId: string): LearningCollectionSummaryDto {
@@ -651,6 +721,7 @@ export class ResourceHubService {
       name: row.name,
       description: row.description,
       visibility: row.visibility,
+      contentStatus: row.contentStatus as LearningCollectionSummaryDto['contentStatus'],
       systemKind: row.systemKind === 'watch_later' ? 'watch_later' : null,
       learningGoal: row.learningGoal,
       itemCount: row.items.length,
@@ -674,12 +745,23 @@ export class ResourceHubService {
     return [...items].sort((a, b) => (counts.get(b.postId || b.id) || 0) - (counts.get(a.postId || a.id) || 0) || b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)).slice(0, 5)
   }
 
-  private async visibleAsset(userId: string, id: string) {
+  private async assertMediaPost(userId: string, media: Prisma.CommunityPostWhereInput, targetId: string) {
+    if (await this.prisma.communityPost.count({ where: { AND: [media, await this.visibility.where(userId, true)] } })) return
+    const reviewer = await this.prisma.user.count({ where: { id: userId, AND: ['community.moderate', 'resource.read'].map((code) => ({ userRoles: { some: { role: { permissions: { some: { permission: { code } } } } } } })) } })
+    if (reviewer && await this.prisma.communityPost.count({ where: { AND: [media, await this.visibility.adminWhere()] } })) {
+      await this.visibility.auditAdminRead(userId, 'resource_media', targetId)
+      return
+    }
+    throw new NotFoundException('媒体不存在或不可见')
+  }
+
+  private async visibleAsset(userId: string, id: string, preview = false) {
     const asset = await this.prisma.videoAsset.findFirst({
-      where: { id, status: 'ready', playableFileId: { not: null }, durationSeconds: { gt: 0 }, contribution: { is: { post: await this.visibility.where(userId) } } },
+      where: { id, status: 'ready', playableFileId: { not: null }, durationSeconds: { gt: 0 }, ...(preview ? {} : { contribution: { is: { post: await this.visibility.where(userId) } } }) },
       include: { contribution: true },
     })
-    if (!asset) throw new NotFoundException('视频不存在、未就绪或不可见')
+    if (!asset?.contribution) throw new NotFoundException('视频不存在、未就绪或不可见')
+    if (preview) await this.assertMediaPost(userId, { id: asset.contribution.postId }, id)
     return asset
   }
 

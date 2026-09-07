@@ -9,6 +9,7 @@ import { RawResponse } from '../../common/raw-response.decorator'
 import { AuthGuard } from '../auth/auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import type { AuthUser } from '../auth/auth.types'
+import { CommunityUploadGuard } from '../community/visibility.service'
 import { Permissions } from '../auth/permissions.decorator'
 import { PermissionsGuard } from '../auth/permissions.guard'
 import { CollectionCourseDto, CollectionInputDto, CollectionItemDto, CollectionReorderDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubConfigDto, ResourceHubQueryDto, WatchProgressDto } from './resource-hub.dto'
@@ -34,18 +35,20 @@ export class ResourceHubController {
   @Get('contributions/:postId') detail(@CurrentUser() user: AuthUser, @Param('postId') postId: string) { return this.hub.detail(user.id, postId) }
 
   @Post('uploads/video')
+  @UseGuards(CommunityUploadGuard)
   @UseInterceptors(videoUpload)
-  async video(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
+  async video(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Headers('idempotency-key') key?: string) {
     if (!file?.path) throw new BadRequestException('请选择视频文件')
-    try { return await this.hub.uploadVideo(user.id, file) }
+    try { return await this.hub.uploadVideo(user.id, file, key) }
     finally { await rm(file.path, { force: true }) }
   }
 
   @Post('uploads/document')
+  @UseGuards(CommunityUploadGuard)
   @UseInterceptors(documentUpload)
-  async document(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
+  async document(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Headers('idempotency-key') key?: string) {
     if (!file?.path) throw new BadRequestException('请选择资料文件')
-    try { return await this.hub.uploadDocument(user.id, file) }
+    try { return await this.hub.uploadDocument(user.id, file, key) }
     finally { await rm(file.path, { force: true }) }
   }
 
@@ -55,7 +58,7 @@ export class ResourceHubController {
   @Put('videos/:id/progress') progress(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: WatchProgressDto) { return this.hub.progress(user.id, id, input) }
 
   @Get('collections') collections(@CurrentUser() user: AuthUser) { return this.hub.collections(user.id) }
-  @Post('collections') createCollection(@CurrentUser() user: AuthUser, @Body() input: CollectionInputDto) { return this.hub.createCollection(user.id, input) }
+  @Post('collections') createCollection(@CurrentUser() user: AuthUser, @Body() input: CollectionInputDto, @Headers('idempotency-key') key?: string) { return this.hub.createCollection(user.id, input, key) }
   @Get('collections/:id') collection(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.hub.collection(user.id, id) }
   @Patch('collections/:id') updateCollection(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CollectionInputDto) { return this.hub.updateCollection(user.id, id, input) }
   @Post('collections/:id/items') add(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CollectionItemDto) { return this.hub.addToCollection(user.id, id, input.postId) }
@@ -139,7 +142,7 @@ export class ResourceHubMediaController {
       'Content-Type': file.mimeType,
       'Content-Length': String(file.size),
       'Content-Disposition': 'inline',
-      'Cache-Control': 'private, max-age=300',
+      'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     })
     response.once('close', () => file.stream.destroy())

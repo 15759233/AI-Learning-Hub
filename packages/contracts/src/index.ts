@@ -1,4 +1,5 @@
 import type { CatalogCoverData } from './media'
+export * from './content-detection'
 
 export enum PublishStatus {
   DRAFT = 'draft',
@@ -47,6 +48,7 @@ export enum QuestionType {
 
 export interface ApiEnvelope<T> {
   code: number
+  errorCode?: string
   message: string
   data: T
   requestId: string
