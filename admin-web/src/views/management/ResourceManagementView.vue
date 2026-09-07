@@ -37,7 +37,7 @@ const mediaRuntime = ref<MediaRuntimeDto | null>(null)
 const sizeLabel = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`
 const hubReports = ref<Array<{ id: string; postId: string | null; reason: string; description: string; status: string; createdAt: string }>>([])
 const hubCollections = ref<HubCollection[]>([])
-const hubReason = ref('资源中心后台整理')
+const hubReason = ref('教程中心后台整理')
 const newCategory = reactive({ code: '', name: '', description: '', icon: 'resource', sortOrder: 100, active: true })
 const courseDrafts = reactive<Record<string, { title: string; slug: string }>>({})
 const themeOptions = ref<Array<{ databaseId: string; title: string }>>([])
@@ -115,7 +115,7 @@ const updateHubItem = async (item: HubItem) => {
 }
 const saveHubConfig = async () => {
   hubConfig.value = await api<ResourceHubAdminConfigDto>('/admin/resource-hub/config', { method: 'PATCH', body: JSON.stringify(hubConfig.value) })
-  ElMessage.success('资源中心首页配置已保存')
+  ElMessage.success('教程中心首页配置已保存')
 }
 const createHubCategory = async () => {
   await api('/admin/resource-hub/categories', { method: 'POST', body: JSON.stringify(newCategory) })
@@ -180,8 +180,8 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
 </script>
 
 <template><div class="resource-admin-page">
-  <nav class="resource-admin-tabs" aria-label="资源中心管理工作区"><button v-for="item in ([['legacy','旧资源'],['content','共创内容'],['home','首页配置'],['categories','分类'],['collections','合集与课程'],['processing','处理异常'],['reports','举报']] as const)" :key="item[0]" :class="{ active: hubTab === item[0] }" @click="hubTab = item[0]">{{ item[1] }}</button></nav>
-  <DomainPageShell v-if="hubTab === 'legacy'" content-type="resource" :category-key="fields.category" :data-origin="dataOrigin" @update:data-origin="list.dataOrigin.value = $event" @remove="drafts.removeDraft(selected, () => list.load())" v-model:dialog="dialog" title="资源中心管理" description="维护旧版资源文件、元数据、可见范围与关联内容" noun="资源" icon="resource" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
+  <nav class="resource-admin-tabs" aria-label="教程中心管理工作区"><button v-for="item in ([['legacy','旧资源'],['content','共创内容'],['home','首页配置'],['categories','分类'],['collections','合集与课程'],['processing','处理异常'],['reports','举报']] as const)" :key="item[0]" :class="{ active: hubTab === item[0] }" @click="hubTab = item[0]">{{ item[1] }}</button></nav>
+  <DomainPageShell v-if="hubTab === 'legacy'" content-type="resource" :category-key="fields.category" :data-origin="dataOrigin" @update:data-origin="list.dataOrigin.value = $event" @remove="drafts.removeDraft(selected, () => list.load())" v-model:dialog="dialog" title="教程中心管理" description="维护旧版资源文件、元数据、可见范围与关联内容" noun="资源" icon="resource" :result="result" :selected="selected" :keyword="keyword" :status="status" :loading="loading" :error="error" :can-write="canWrite" :can-publish="canPublish" @update:keyword="list.keyword.value = $event" @update:status="list.status.value = $event" @select="list.select" @page="list.load" @retry="list.load()" @create="create" @save="save" @publish="publish" @archive="archive">
     <template #kpis><div class="kpi-grid"><AdminKpiCard icon="resource" label="资源总数" :value="result.total" color="#ff4d1f" /><AdminKpiCard icon="check" label="已发布" :value="result.items.filter((item) => item.status === 'published').length" color="#22b66c" /><AdminKpiCard icon="download" label="当前下载" :value="detail?.downloads ?? '—'" color="#7c4dff" /><AdminKpiCard icon="chart" label="当前浏览" :value="detail?.views ?? '—'" color="#3478f6" /></div></template>
     <template #detail><p v-if="detail?.file">{{ detail.file.name }} · {{ (detail.file.size / 1024 / 1024).toFixed(2) }} MB · {{ detail.file.mimeType }} · 上传人 {{ detail.uploadedBy?.displayName || '—' }}</p><p v-else>尚未绑定文件。</p></template>
     <template #editor>

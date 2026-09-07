@@ -66,6 +66,6 @@ const bindingClick = (binding: CommunityBindingDto) => {
     <button :class="{ selected: post.viewerState.bookmarked }" :aria-pressed="post.viewerState.bookmarked" :aria-label="`收藏 ${post.stats.bookmarks}`" :disabled="store.operations[`${post.id}:bookmark`]" @click="reaction('bookmark')"><AppIcon name="bookmark" :size="18" /><span>{{ post.stats.bookmarks || '收藏' }}</span></button>
   </footer><p v-if="error" class="community-error" role="alert">{{ error }}</p>
   <CommunityReportDialog v-model="reportOpen" :target-type="post.contribution ? 'resource' : 'post'" :target-id="post.id" @submitted="emit('changed')" />
-  <AppDialog v-model="unpublishOpen" title="下架自己的资源作品"><p>作品将从资源中心、社区、作者页和合集公开入口撤下，并保留为私人草稿，之后仍可编辑并重新发布。</p><button class="button primary" :disabled="pending" @click="unpublish">确认下架</button></AppDialog>
+  <AppDialog v-model="unpublishOpen" title="下架自己的资源作品"><p>作品将从教程中心、社区、作者页和合集公开入口撤下，并保留为私人草稿，之后仍可编辑并重新发布。</p><button class="button primary" :disabled="pending" @click="unpublish">确认下架</button></AppDialog>
   <AppDialog v-model="deleteOpen" title="删除自己的动态"><p>动态将不再对社区显示，讨论记录保留用于审计。</p><button class="button primary" :disabled="pending" @click="remove">确认删除</button></AppDialog>
 </article></template>

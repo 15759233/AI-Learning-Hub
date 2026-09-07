@@ -66,7 +66,7 @@ const publish = (value: ResourceContributionKind) => {
 const load = async () => {
   loading.value = true; error.value = ''
   try { home.value = await resourceHubApi.home() }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : '资源中心读取失败' }
+  catch (cause) { error.value = cause instanceof Error ? cause.message : '教程中心读取失败' }
   finally { loading.value = false }
 }
 const syncFilters = async () => {
@@ -130,7 +130,7 @@ watch(legacySlug, async (slug) => {
 <template>
   <div class="page-container resource-hub-page">
     <header class="resource-hub-heading">
-      <div><h1>资源中心</h1><p>分享实践过程，沉淀可复用的高校 AI 学习资源</p></div>
+      <div><h1>教程中心</h1><p>分享实践过程，沉淀可复用的高校 AI 学习资源</p></div>
       <form class="resource-hub-search" role="search" @submit.prevent="search()">
         <AppIcon name="search" :size="17" />
         <input v-model="keyword" aria-label="搜索资源" placeholder="搜索视频、图文或资料…" />

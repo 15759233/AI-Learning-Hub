@@ -23,7 +23,7 @@ const registrationError = ref('')
 const canWrite = usePermissionAction('settings.write')
 const canReadMedia = usePermissionAction('media.read'), canManageVisuals = usePermissionAction('media.default.manage')
 const visuals = ref<AdminPageVisualsDto>(), visualError = ref(''), visualBusy = ref(false)
-const visualLabels: Record<PublicPageVisualKey, string> = { topicsHeroAssetId: '学习主题', labsHeroAssetId: '实训工坊', resourcesHeroAssetId: '资源中心', frontierHeroAssetId: 'AI 前沿', assessmentsHeroAssetId: '挑战测评', profileHeroAssetId: '个人中心' }
+const visualLabels: Record<PublicPageVisualKey, string> = { topicsHeroAssetId: '通识基础', labsHeroAssetId: '实训工坊', resourcesHeroAssetId: '教程中心', frontierHeroAssetId: 'AI 前沿', assessmentsHeroAssetId: '挑战测评', profileHeroAssetId: '个人中心' }
 const loadVisuals = async () => {
   if (!canReadMedia.value) return
   visualError.value = ''
