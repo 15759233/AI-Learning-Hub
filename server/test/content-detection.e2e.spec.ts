@@ -90,6 +90,43 @@ beforeEach(async () => { student = await account() })
 afterAll(async () => { await app?.close(); await db.$disconnect() })
 
 describe('内容检测增量真实HTTP与数据库验收', () => {
+  it('资源富文本真实发布：文件落库、格式净化、幂等、待审隔离与拒绝保留', async () => {
+    const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#ff552d' } }).png().toBuffer()
+    const fileId = await upload('/community/media', image, 'image/png', 'synthetic-rich.png')
+    const input = postInput('unused', {
+      title: '合成图文课程实践', type: 'frontier_discussion',
+      contribution: { kind: 'article', tags: ['课堂实践'], teachingReuseConsent: false },
+      contentBlocks: [{ type: 'rich_text', text: '<h2>学习背景</h2><p onclick="alert(1)"><strong>实践结论</strong></p>' }, { type: 'image', fileId, alt: '合成实验截图' }, { type: 'rich_text', text: '<p>图片后的说明</p>' }],
+    })
+    const key = randomUUID()
+    const send = async () => {
+      const response = await fetch(`${base}/community/posts`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${student.token}`, 'idempotency-key': key }, body: JSON.stringify(input) })
+      expect(response.status).toBe(201)
+      return (await response.json()).data
+    }
+    const created = await send()
+    expect((await send()).id).toBe(created.id)
+    expect(created.contentBlocks[0].text).toBe('<h2>学习背景</h2><p><strong>实践结论</strong></p>')
+    const persisted = await db.communityPost.findUniqueOrThrow({ where: { id: created.id }, include: { contribution: true } })
+    expect(persisted.contribution?.kind).toBe('article')
+    expect(persisted.contentBlocks).toEqual(created.contentBlocks)
+    expect(JSON.stringify(persisted.contentBlocks)).not.toContain('blob:')
+    expect(await db.fileRecord.findUnique({ where: { id: fileId } })).toMatchObject({ uploadedBy: student.id, mimeType: 'image/png' })
+    const imageUrl = await request(`/community/media/${fileId}/url`, viewer.token)
+    expect(imageUrl.status).toBe(200)
+    expect(await mediaStatus(imageUrl.data.url, viewer.token)).toBe(200)
+    expect((await request(`/community/posts/${created.id}`, viewer.token)).data.contentBlocks).toEqual(created.contentBlocks)
+    const pending = await request(`/community/posts/${created.id}`, student.token, 'PATCH', { ...input, expectedRevision: created.revision, contentBlocks: [{ type: 'rich_text', text: '<p>合成<strong>待审</strong>：请复核</p>' }, input.contentBlocks[1]] })
+    expect(pending.data.status).toBe('pending_review')
+    expect((await request(`/community/posts/${created.id}`, viewer.token)).status).toBe(404)
+    expect((await decide(await review('post', created.id))).status).toBe(201)
+    const approved = await request(`/community/posts/${created.id}`, student.token)
+    const rejected = await request(`/community/posts/${created.id}`, student.token, 'PATCH', { ...input, expectedRevision: approved.data.revision, contentBlocks: [{ type: 'rich_text', text: '<p>合成<strong>拒绝</strong></p>' }] })
+    expect(rejected.status).toBe(400)
+    expect((await db.communityPost.findUniqueOrThrow({ where: { id: created.id } })).revision).toBe(approved.data.revision)
+    const foreign = await request('/community/posts', viewer.token, 'POST', input)
+    expect(foreign.status).toBe(400)
+  })
   it('allow/warn/reject保留原文，拒绝编辑回滚原投稿和复核记录', async () => {
     const created = await request('/community/posts', student.token, 'POST', postInput('LLM、RAG 与 Transformer 正常教程'))
     expect(created.status).toBe(201); expect(created.data.detection.action).toBe('allow')

@@ -33,6 +33,39 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
+  it('图文复用真实发布：失败保稿、同键重试、待复核不声称公开', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    const blocks = [{ type: 'rich_text' as const, text: '<h2>实践记录</h2><p><strong>核心结论</strong></p>' }, { type: 'image' as const, fileId: 'owned-file', alt: '实验截图' }]
+    store.openComposer({ title: '课程实践', contentBlocks: blocks, visibility: 'school', contribution: { kind: 'article', tags: [], teachingReuseConsent: false } })
+    await settle()
+    expect(store.composerMode).toBe('rich')
+    expect(editor.blocks).toEqual(blocks)
+    vi.mocked(communityApi.save).mockRejectedValueOnce(new ApiError('网络断开', 0)).mockResolvedValueOnce({ ...post, status: 'pending_review' })
+    expect(await editor.save()).toBe(false)
+    expect(store.composerOpen).toBe(true)
+    expect(editor.blocks).toEqual(blocks)
+    expect(JSON.parse(storage.get(key('owner-a'))!).input.contentBlocks).toEqual(blocks)
+    expect(await editor.save()).toBe(true)
+    const calls = vi.mocked(communityApi.save).mock.calls
+    expect(calls[0][2]).toBe(calls[1][2])
+    expect(calls[1][0]).toMatchObject({ visibility: 'school', contentBlocks: blocks, contribution: { kind: 'article' } })
+    expect(storage.has(key('owner-a'))).toBe(false)
+    expect(store.publishNotice?.text).toContain('尚未公开')
+    expect(store.publishNotice?.text).not.toContain('发布成功')
+  })
+  it('图文输入错误不发送；草稿恢复不丢失格式、文件ID或覆盖可见范围', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    const blocks = [{ type: 'rich_text' as const, text: '<p>保留正文</p>' }]
+    store.openComposer({ title: '图文草稿', status: 'draft', visibility: 'school', contentBlocks: blocks, expectedRevision: 2, contribution: { kind: 'article', tags: [], teachingReuseConsent: false } }, 'existing-draft')
+    await settle()
+    editor.richError = '图片未上传'
+    expect(await editor.save()).toBe(false)
+    expect(communityApi.save).not.toHaveBeenCalled()
+    expect(editor.blocks).toEqual(blocks)
+    editor.richError = ''
+    await editor.save(true)
+    expect(communityApi.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ contentBlocks: blocks, visibility: 'school', expectedRevision: 2 }), 'existing-draft', expect.any(String))
+  })
   it.each(['inline', 'quick-dialog', 'advanced-dialog'])('%s 冲突恢复控件位于实际编辑表单内，不被原生模态弹窗隔离', async (mode) => {
     const pinia = createPinia()
     setActivePinia(pinia)

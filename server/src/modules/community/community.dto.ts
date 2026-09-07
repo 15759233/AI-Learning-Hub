@@ -25,7 +25,10 @@ export class ContentReviewDecisionDto {
 }
 
 export class BlockDto {
-  @IsIn(['paragraph', 'code', 'image', 'quote']) type!: CommunityContentBlock['type']
+  @IsIn(['paragraph', 'rich_text', 'heading', 'list', 'code', 'image', 'quote']) type!: CommunityContentBlock['type']
+  @IsOptional() @IsInt() @Min(1) @Max(6) level?: number
+  @IsOptional() @IsBoolean() ordered?: boolean
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) @MaxLength(1000, { each: true }) items?: string[]
   @IsOptional() @IsString() @MaxLength(10000) text?: string
   @IsOptional() @IsString() @MaxLength(12000) code?: string
   @IsOptional() @Matches(/^[a-z0-9+#.-]{0,30}$/i) language?: string

@@ -176,7 +176,7 @@ const savePost = async (publish = false) => {
   postSaving.value = true
   try {
     const original = editingSnapshot.value
-    const input = { type: original?.type || 'general' as const, title: postForm.title, contentBlocks: [{ type: 'paragraph' as const, text: postForm.text }, ...(original?.contentBlocks.filter((b) => b.type !== 'paragraph') || [])], bindings: original?.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })) || [], topicIds: original?.topics.map((t) => t.id) || [], visibility: original?.visibility || 'public' as const, status: publish ? 'published' as const : original?.status === 'draft' ? 'draft' as const : 'published' as const, reason: postForm.reason }
+    const input = { type: original?.type || 'general' as const, title: postForm.title, contentBlocks: [...(postForm.text.trim() ? [{ type: 'paragraph' as const, text: postForm.text }] : []), ...(original?.contentBlocks.filter((b) => b.type !== 'paragraph') || [])], bindings: original?.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })) || [], topicIds: original?.topics.map((t) => t.id) || [], visibility: original?.visibility || 'public' as const, status: publish ? 'published' as const : original?.status === 'draft' ? 'draft' as const : 'published' as const, reason: postForm.reason }
     const body = JSON.stringify(input)
     if (body !== postRequestBody.value) { postRequestBody.value = body; postRequestKey.value = crypto.randomUUID() }
     const saved = editingPost.value ? await communityAdminApi.editPost(postTarget.value, { ...input, expectedRevision: original?.revision }, postRequestKey.value) : await communityAdminApi.officialPost(postTarget.value, input, postRequestKey.value)
@@ -223,6 +223,9 @@ onMounted(async () => {
             <template v-for="(block, index) in selected.post.contentBlocks" :key="index">
               <pre v-if="block.type === 'code'"><code>{{ block.code }}</code></pre>
               <figure v-else-if="block.type === 'image'"><img v-if="images[block.fileId]" :src="images[block.fileId]" :alt="block.alt || '学习图片'" /><figcaption v-else>图片不可用或正在读取</figcaption></figure>
+              <!-- rich_text 仅接受经 API 白名单净化、无图片和样式的正文。 -->
+              <div v-else-if="block.type === 'rich_text'" v-html="block.text" />
+              <ul v-else-if="block.type === 'list'"><li v-for="(item, i) in block.items" :key="i">{{ item }}</li></ul>
               <blockquote v-else-if="block.type === 'quote'">{{ block.text }}</blockquote><p v-else>{{ block.text }}</p>
             </template>
             <h3>关联学习内容</h3><p v-for="binding in selected.post.bindings" :key="binding.id">{{ binding.title }}</p>

@@ -16,6 +16,8 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   const store = useCommunityStore(), auth = useAuthStore()
   const form = ref<CommunityPostInput>({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
   const body = ref(''), code = ref(''), language = ref('text'), quote = ref(''), images = ref<Array<{ fileId: string; alt: string }>>([])
+  const richBlocks = ref<CommunityContentBlock[] | null>(null)
+  const richError = ref('')
   const topics = ref<CommunityTopicDto[]>([]), bindingType = ref<LearningContentType>('course'), bindingId = ref(''), bindingSearch = ref(''), bindingTitles = ref<Record<string, string>>({})
   const preview = ref(false), saving = ref(false), bindingLoading = ref(false), topicsLoading = ref(false), error = ref(''), savedAt = ref(''), closePrompt = ref(false), dirty = ref(false), draftId = ref<string>()
   const conflict = ref(false), draftUnavailable = ref(false)
@@ -26,8 +28,8 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   const sources = { course: useCoursesStore(), lab: useLabsStore(), article: useArticlesStore(), resource: useResourcesStore(), theme: useThemesStore(), challenge: useChallengesStore() }
   const source = computed(() => bindingType.value in sources ? sources[bindingType.value as keyof typeof sources] : null)
   const bindingOptions = computed(() => source.value?.items.map((item) => ({ id: 'slug' in item ? String(item.slug) : item.id, title: item.title })) || [])
-  const advanced = computed(() => store.composerMode === 'advanced')
-  const blocks = computed<CommunityContentBlock[]>(() => [...(body.value.trim() ? [{ type: 'paragraph' as const, text: body.value.trim() }] : []), ...(quote.value.trim() ? [{ type: 'quote' as const, text: quote.value.trim() }] : []), ...(code.value.trim() ? [{ type: 'code' as const, language: language.value, code: code.value }] : []), ...images.value.map((image) => ({ type: 'image' as const, ...image }))])
+  const advanced = computed(() => store.composerMode !== 'quick')
+  const blocks = computed<CommunityContentBlock[]>(() => richBlocks.value ?? [...(body.value.trim() ? [{ type: 'paragraph' as const, text: body.value.trim() }] : []), ...(quote.value.trim() ? [{ type: 'quote' as const, text: quote.value.trim() }] : []), ...(code.value.trim() ? [{ type: 'code' as const, language: language.value, code: code.value }] : []), ...images.value.map((image) => ({ type: 'image' as const, ...image }))])
   const input = () => ({ ...form.value, contentBlocks: blocks.value })
   const hasContent = () => !!(blocks.value.length || form.value.title?.trim() || form.value.bindings.length || form.value.topicIds.length || form.value.contribution)
   const key = () => `community-draft:${auth.dataMode}:${auth.user?.id || 'anonymous'}`
@@ -45,6 +47,9 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   const hydrate = (value: CommunityPostInput) => {
     hydrating = true
     form.value = JSON.parse(JSON.stringify(value)); preview.value = false; error.value = ''; savedAt.value = ''; dirty.value = false; conflict.value = false; draftUnavailable.value = false
+    richError.value = ''
+    richBlocks.value = value.contribution?.kind === 'article' || value.contentBlocks.some((block) => ['rich_text', 'heading', 'list'].includes(block.type)) ? JSON.parse(JSON.stringify(value.contentBlocks)) : null
+    if (richBlocks.value !== null) { store.composerMode = 'rich'; store.composerInline = false }
     body.value = value.contentBlocks.filter((b) => b.type === 'paragraph').map((b) => b.text).join('\n\n')
     code.value = value.contentBlocks.filter((b) => b.type === 'code').map((b) => b.code).join('\n')
     quote.value = value.contentBlocks.filter((b) => b.type === 'quote').map((b) => b.text).join('\n')
@@ -101,6 +106,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
       if (owner !== auth.user?.id || epoch !== store.epoch) return false
       saving.value = true; error.value = ''
       try {
+        if (richError.value) throw new Error(richError.value)
         const postDecision = store.eligibility?.operations.post
         if (!asDraft && postDecision && !postDecision.allowed) throw new ApiError(postDecision.message || '当前不能发布内容', 403, postDecision.reasonCode || undefined, postDecision.availableAt || undefined, postDecision.nextAction || undefined)
         if (conflict.value || draftUnavailable.value) throw new Error(draftUnavailable.value ? '原草稿不可用，请保留当前副本后另存，或放弃修改' : '已有较新的服务端版本，请先读取服务器版本或保留当前副本')
@@ -153,7 +159,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     pending = operation
     return pending
   }
-  watch([form, body, code, quote, language, images], () => {
+  watch([form, body, code, quote, language, images, richBlocks], () => {
     if (hydrating || !store.composerOpen) return
     dirty.value = dirty.value || hasContent() || !!draftId.value || !!store.editingId; clearTimeout(timer); clearTimeout(remoteTimer)
     if (!dirty.value) return
@@ -164,8 +170,9 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   }, { deep: true })
   watch([() => auth.user?.id, () => store.epoch], () => {
     clearTimeout(timer); clearTimeout(remoteTimer); hydrating = true
-    body.value = ''; code.value = ''; quote.value = ''; images.value = []; topics.value = []; bindingTitles.value = {}; bindingLoading.value = false; topicsLoading.value = false; draftId.value = undefined; dirty.value = false; saving.value = false; error.value = ''; closePrompt.value = false; pending = null; requestKey = ''; requestBody = ''; conflict.value = false
+    body.value = ''; code.value = ''; quote.value = ''; images.value = []; richBlocks.value = null; topics.value = []; bindingTitles.value = {}; bindingLoading.value = false; topicsLoading.value = false; draftId.value = undefined; dirty.value = false; saving.value = false; error.value = ''; closePrompt.value = false; pending = null; requestKey = ''; requestBody = ''; conflict.value = false
     savedAt.value = ''; unconfirmed = undefined; draftUnavailable.value = false
+    richError.value = ''
     form.value = { type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }
     queueMicrotask(() => { hydrating = false })
   }, { flush: 'sync' })
@@ -186,5 +193,5 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   }
   const keepCopy = () => { store.editingId = undefined; draftId.value = undefined; form.value.expectedRevision = undefined; conflict.value = false; draftUnavailable.value = false; requestKey = ''; requestBody = ''; unconfirmed = undefined; error.value = ''; dirty.value = true; localSave() }
   onScopeDispose(() => { clearTimeout(timer); clearTimeout(remoteTimer) })
-  return { form, body, code, language, quote, images, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, draftUnavailable, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
+  return { form, body, code, language, quote, images, richBlocks, richError, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, draftUnavailable, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
 })

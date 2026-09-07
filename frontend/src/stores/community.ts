@@ -8,7 +8,7 @@ interface FeedState {
   pageCursors: Record<string, string | undefined>; resumeCursor?: string; anchor?: { id: string; offset: number }; evicted?: boolean
 }
 export const useCommunityStore = defineStore('community', {
-  state: () => ({ feeds: {} as Record<string, FeedState>, feedOrder: [] as string[], operations: {} as Record<string, boolean>, authorFollowing: {} as Record<string, boolean>, context: null as CommunityContextDto | null, eligibility: null as CommunityEligibilityDto | null, unread: 0, composerOpen: false, composerMode: 'quick' as 'quick' | 'advanced', composerInline: false, draft: null as CommunityPostInput | null, editingId: undefined as string | undefined, publishNotice: null as { id: string; text: string } | null, error: '', epoch: 0, lastFeedLocation: '/community' }),
+  state: () => ({ feeds: {} as Record<string, FeedState>, feedOrder: [] as string[], operations: {} as Record<string, boolean>, authorFollowing: {} as Record<string, boolean>, context: null as CommunityContextDto | null, eligibility: null as CommunityEligibilityDto | null, unread: 0, composerOpen: false, composerMode: 'quick' as 'quick' | 'advanced' | 'rich', composerInline: false, draft: null as CommunityPostInput | null, editingId: undefined as string | undefined, publishNotice: null as { id: string; text: string } | null, error: '', epoch: 0, lastFeedLocation: '/community' }),
   actions: {
     clear() { const epoch = this.epoch + 1; this.$reset(); this.epoch = epoch },
     openComposer(input?: Partial<CommunityPostInput>, id?: string) {

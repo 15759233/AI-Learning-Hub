@@ -133,6 +133,8 @@ export function detectContent(input: ContentDetectionInput, policy: ContentDetec
 
 // 正常投稿和后台恢复必须检查同一份公开文字，不另造管理员豁免路径。
 export function postDetectionInput(title: string | null | undefined, body: string, blocks: CommunityContentBlock[], contribution?: { tags: string[]; sourceName?: string | null; sourceUrl?: string | null } | null, labels: string[] = []): ContentDetectionInput {
+  // 正文纯文本之外也检测富文本链接目标，避免用链接文字掩盖敏感地址。
+  body = [body, ...blocks.flatMap((block) => block.type === 'rich_text' ? [block.text] : [])].join('\n')
   return {
     ...(contribution ? { resourceTitle: title || '', resourceDescription: [body, contribution.sourceName, contribution.sourceUrl].filter(Boolean).join('\n'), resourceTags: contribution.tags.join('\n') } : { postTitle: title || '', postBody: body }),
     postLabels: labels.join('\n'),
