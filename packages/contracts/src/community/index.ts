@@ -45,6 +45,8 @@ export interface CommunityEligibilityPolicyDto {
 export type LearningContentType = 'theme' | 'course' | 'lesson' | 'lab' | 'resource' | 'article' | 'challenge' | 'lab_run'
 export type CommunityContentBlock =
   | { type: 'paragraph'; text: string }
+  | { type: 'heading'; text: string; level: number }
+  | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'code'; language: string; code: string }
   | { type: 'image'; fileId: string; alt?: string }
   | { type: 'quote'; text: string }
