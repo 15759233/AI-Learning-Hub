@@ -13,6 +13,7 @@ vi.mock('../src/stores/auth', () => ({ useAuthStore: () => ({ user: null }) }))
 vi.mock('../src/stores/content/resources', () => ({ useResourcesStore: () => ({ items: [], load: async () => {} }), mapSelectedResource: () => null }))
 vi.mock('../src/services/api/client', () => ({ dataMode: 'mock' }))
 vi.mock('../src/services/api/behavior', () => ({ behaviorApi: {} }))
+vi.mock('../src/community/coop/RichEditPanel.vue', () => ({ default: { render: () => null } }))
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
