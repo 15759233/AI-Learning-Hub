@@ -1,7 +1,8 @@
 // 仅由 drill.py 通过 stdin 在独立 API 容器中执行；不输出账号、令牌或媒体签名。
 import assert from 'node:assert/strict'
 import { PrismaClient } from '@prisma/client'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 const prisma = new PrismaClient()
 const base = 'http://127.0.0.1:3000/api/v1'
@@ -97,6 +98,33 @@ try {
   // 真正解码一秒媒体，不能只凭 Range 206 判定可播放。URL 不进入任何日志。
   execFileSync('ffmpeg', ['-v', 'error', '-i', playbackUrl.href, '-t', '1', '-f', 'null', '-'], { timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] })
   checks.push('video-range-and-decode')
+  if (!input.previous) {
+    const { cleanExpiredCredentials } = createRequire(import.meta.url)(process.cwd() + '/dist/modules/persistence/maintenance.js')
+    const nonce = 'drill-' + randomUUID()
+    const samples = []
+    const protectedBefore = await Promise.all([prisma.user.count(), prisma.auditLog.count(), prisma.communityModerationAction.count()])
+    try {
+      for (const model of ['passwordResetToken', 'emailVerificationToken', 'refreshToken', 'requestIdempotency', 'registrationThrottle', 'loginThrottle']) {
+        for (const expired of [true, false]) {
+          const key = nonce + '-' + model + '-' + expired
+          const expiresAt = new Date(expired ? 1 : Date.now() + 86400000)
+          const data = model.endsWith('Throttle') ? { identityKey: key, expiresAt }
+            : model === 'requestIdempotency' ? { principalKey: nonce, scope: 'operations-drill', idempotencyKey: key, requestHash: key, resourceId: nonce, expiresAt }
+            : { userId: student.user.id, tokenHash: createHash('sha256').update(key).digest('hex'), expiresAt }
+          const row = await prisma[model].create({ data })
+          samples.push({ model, expired, where: model.endsWith('Throttle') ? { identityKey: row.identityKey } : { id: row.id } })
+        }
+      }
+      const result = await cleanExpiredCredentials(prisma)
+      assert.equal(result.skipped, false)
+      assert(Object.values(result.deleted).every(count => count >= 1 && count <= 1000))
+      for (const sample of samples) assert.equal(Boolean(await prisma[sample.model].findUnique({ where: sample.where })), !sample.expired)
+      assert.deepEqual(await Promise.all([prisma.user.count(), prisma.auditLog.count(), prisma.communityModerationAction.count()]), protectedBefore)
+      checks.push('expired-records-removed-valid-and-protected-data-retained')
+    } finally {
+      for (const sample of samples) await prisma[sample.model].deleteMany({ where: sample.where })
+    }
+  }
   console.log(JSON.stringify({ passed: true, checks }))
 } catch {
   console.log(JSON.stringify({ passed: false, checks, reason: '恢复验证未覆盖全部要求或断言失败' }))
