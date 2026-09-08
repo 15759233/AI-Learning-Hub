@@ -1,4 +1,7 @@
 export interface AuthUser {
+  sessionId?: string
+  sessionClient?: import('./account-security').SessionClient
+  mfaVerified?: boolean
   contentDetection?: import('./content-detection').ContentDetectionResult
   revision?: number
   profileRevision?: number

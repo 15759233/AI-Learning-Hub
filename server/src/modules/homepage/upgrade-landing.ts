@@ -42,11 +42,11 @@ export async function upgradeLanding(prisma: PrismaClient) {
       const publishedFifth = publishedItems.find((item) => Number(item.sortOrder) === 4)
       const preferredId = liveFifth?.targetType === 'community_post' ? liveFifth.targetId : publishedFifth?.targetType === 'community_post' ? String(publishedFifth.targetId) : ''
       const preferred = preferredId && !earlierPostIds.includes(preferredId) ? await tx.communityPost.findFirst({
-        where: { id: preferredId, status: 'published', visibility: 'public', deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } },
+        where: { id: preferredId, status: 'published', visibility: 'public', portalConsent: true, deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } },
         select: { id: true },
       }) : null
       const candidate = preferred || await tx.communityPost.findFirst({
-        where: { id: { notIn: earlierPostIds }, status: 'published', visibility: 'public', deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } },
+        where: { id: { notIn: earlierPostIds }, status: 'published', visibility: 'public', portalConsent: true, deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } },
         orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
         select: { id: true },
       })
@@ -87,11 +87,11 @@ export async function upgradeLanding(prisma: PrismaClient) {
       return { changed: true, version, repairedPostId: candidate?.id || null }
     }
     if (existing.length || hasPublication) throw new Error('发现未完成的落地页升级或既有草稿，停止自动升级以保护人工编辑')
-    const posts = await tx.communityPost.findMany({ where: { status: 'published', visibility: 'public', deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } }, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], take: 3, select: { id: true } })
+    const posts = await tx.communityPost.findMany({ where: { status: 'published', visibility: 'public', portalConsent: true, deletedAt: null, publishedAt: { not: null }, author: { status: 'active' } }, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], take: 3, select: { id: true } })
     const labs = await tx.lab.findMany({ where: { status: 'published', deletedAt: null }, orderBy: { sortOrder: 'asc' }, take: 2, select: { id: true } })
     const resources = await tx.resource.findMany({ where: { status: 'published', deletedAt: null, visibility: 'public' }, orderBy: { sortOrder: 'asc' }, take: 1, select: { id: true } })
     const topics = await tx.communityTopic.findMany({ where: { status: 'active' }, orderBy: [{ recommended: 'desc' }, { sortOrder: 'asc' }], take: 5, select: { id: true } })
-    const creators = await tx.user.findMany({ where: { status: 'active', communityProfile: { isNot: null }, communityPosts: { some: { status: 'published', visibility: 'public', deletedAt: null } }, userRoles: { none: { role: { code: { in: ['admin', 'super_admin'] } } } } }, orderBy: { createdAt: 'asc' }, take: 4, select: { id: true } })
+    const creators = await tx.user.findMany({ where: { status: 'active', communityProfile: { isNot: null }, communityPosts: { some: { status: 'published', visibility: 'public', portalConsent: true, deletedAt: null } }, userRoles: { none: { role: { code: { in: ['admin', 'super_admin'] } } } } }, orderBy: { createdAt: 'asc' }, take: 4, select: { id: true } })
     const now = new Date()
     for (const [sortOrder, key] of LANDING_MODULE_KEYS.entries()) {
       const refs = key === 'landing_hero' ? [

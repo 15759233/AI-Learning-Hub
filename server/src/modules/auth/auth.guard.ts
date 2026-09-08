@@ -5,6 +5,7 @@ import type { AuthRequest, AuthUser } from './auth.types'
 import { PrismaService } from '../../prisma/prisma.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { availableAccount } from '../community/governance-policy'
+import { assertAdminNetwork } from '../../common/deployment-security'
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -16,8 +17,8 @@ export class AuthGuard implements CanActivate {
     if (!token) throw new UnauthorizedException('请先登录')
     let payload: AuthUser
     try {
-      payload = await this.jwt.verifyAsync<AuthUser>(token, { secret: this.config.getOrThrow('JWT_SECRET') })
-      if (!payload.id) throw new UnauthorizedException()
+      payload = await this.jwt.verifyAsync<AuthUser>(token, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'] })
+      if (!payload.id || !payload.sessionId || !['student', 'admin'].includes(payload.sessionClient || '')) throw new UnauthorizedException()
     } catch {
       throw new UnauthorizedException('登录状态已失效')
     }
@@ -25,7 +26,14 @@ export class AuthGuard implements CanActivate {
     if (!user) throw new UnauthorizedException('登录状态已失效')
     if (user.status !== 'active') throw new UnauthorizedException('账号已禁用，请联系管理员')
     if ((payload.sessionVersion || 0) !== user.sessionVersion) throw new UnauthorizedException('会话已撤销，请重新登录')
-    request.user = authUserDto(user)
+    if (payload.sessionClient === 'student' && authUserDto(user).permissions.length) throw new UnauthorizedException('权限已变化，请通过管理后台完成 MFA')
+    const session = await this.prisma.refreshToken.findUnique({ where: { id: payload.sessionId } })
+    if (!session || session.userId !== user.id || session.client !== payload.sessionClient || session.revokedAt || session.expiresAt <= new Date()) throw new UnauthorizedException('设备会话已撤销，请重新登录')
+    if (session.client === 'admin') {
+      assertAdminNetwork(this.config, request.ip)
+      if (!session.mfaVerified || !payload.mfaVerified || !user.mfaEnabledAt) throw new UnauthorizedException('管理员需要重新完成 MFA')
+    }
+    request.user = { ...authUserDto(user), sessionId: session.id, sessionClient: payload.sessionClient, mfaVerified: session.mfaVerified }
     return true
   }
 }

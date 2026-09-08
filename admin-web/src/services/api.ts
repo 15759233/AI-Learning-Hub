@@ -11,7 +11,8 @@ export class ApiError extends Error {
 let refreshPromise: Promise<boolean> | null = null
 
 const refresh = async () => {
-  const response = await fetch(`${baseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' })
+  const previous = sessionStorage.getItem('admin-access-token')
+  const response = await fetch(baseUrl + '/admin-auth/refresh', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...(previous ? { authorization: 'Bearer ' + previous } : {}) } })
   if (!response.ok) return false
   const body = await response.json() as ApiEnvelope<{ accessToken: string }>
   sessionStorage.setItem('admin-access-token', body.data.accessToken)

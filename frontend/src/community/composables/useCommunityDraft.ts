@@ -14,7 +14,7 @@ import { ApiError } from '../../services/api/client'
 import { randomId } from '../../services/api/random-id'
 export const useCommunityDraft = defineStore('community-draft', () => {
   const store = useCommunityStore(), auth = useAuthStore()
-  const form = ref<CommunityPostInput>({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' })
+  const form = ref<CommunityPostInput>({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', portalConsent: false, status: 'published' })
   const body = ref(''), code = ref(''), language = ref('text'), quote = ref(''), images = ref<Array<{ fileId: string; alt: string }>>([])
   const richBlocks = ref<CommunityContentBlock[] | null>(null)
   const richError = ref('')
@@ -150,7 +150,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
           if (changed) {
             hydrating = true; store.editingId = post.id; form.value.expectedRevision = post.revision; dirty.value = true
             localSave(); savedAt.value = post.status === 'pending_review' ? '提交版本已保存待复核，后续输入尚未同步' : '已发布提交版本，后续输入尚未同步'; queueMicrotask(() => { hydrating = false })
-          } else { clearLocal(); hydrate({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }) }
+          } else { clearLocal(); hydrate({ type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', portalConsent: false, status: 'published' }) }
         }
         return !changed
       } catch (cause) { if (epoch === store.epoch && owner === auth.user?.id) { error.value = cause instanceof Error ? cause.message : '保存失败'; if (cause instanceof ApiError) { conflict.value = cause.status === 409; draftUnavailable.value = !!draftId.value && (cause.status === 404 || (cause.status === 400 && cause.message === '草稿不存在或无权操作')); if (cause.status >= 400 && cause.status < 500) unconfirmed = undefined }; localSave() }; return false }
@@ -173,7 +173,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     body.value = ''; code.value = ''; quote.value = ''; images.value = []; richBlocks.value = null; topics.value = []; bindingTitles.value = {}; bindingLoading.value = false; topicsLoading.value = false; draftId.value = undefined; dirty.value = false; saving.value = false; error.value = ''; closePrompt.value = false; pending = null; requestKey = ''; requestBody = ''; conflict.value = false
     savedAt.value = ''; unconfirmed = undefined; draftUnavailable.value = false
     richError.value = ''
-    form.value = { type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', status: 'published' }
+    form.value = { type: 'general', title: '', contentBlocks: [], bindings: [], topicIds: [], visibility: 'public', portalConsent: false, status: 'published' }
     queueMicrotask(() => { hydrating = false })
   }, { flush: 'sync' })
   const close = () => { if (saving.value) { error.value = '正在保存或上传，请稍后再关闭'; return }; if (dirty.value) closePrompt.value = true; else store.composerOpen = false }
@@ -187,7 +187,7 @@ export const useCommunityDraft = defineStore('community-draft', () => {
     try {
       const post = await communityApi.post(id)
       if (!current()) return
-      hydrate({ type: post.type, title: post.title || '', coverFileId: post.coverFileId, contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, status: post.status === 'draft' ? 'draft' : 'published', expectedRevision: post.revision, contribution: post.contribution ? { kind: post.contribution.kind, categoryId: post.contribution.categoryId, tags: post.contribution.tags, teachingReuseConsent: post.contribution.teachingReuseConsent, sourceName: post.contribution.sourceName, sourceUrl: post.contribution.sourceUrl, videoAssetId: post.contribution.videoAssetId, attachmentFileId: post.contribution.attachmentFileId, coverFileId: post.contribution.coverFileId } : undefined })
+      hydrate({ type: post.type, title: post.title || '', coverFileId: post.coverFileId, contentBlocks: post.contentBlocks, bindings: post.bindings.filter((b) => b.status !== 'unavailable').map((b) => ({ type: b.type, id: b.id })), topicIds: post.topics.map((t) => t.id), visibility: post.visibility, portalConsent: post.portalConsent === true, status: post.status === 'draft' ? 'draft' : 'published', expectedRevision: post.revision, contribution: post.contribution ? { kind: post.contribution.kind, categoryId: post.contribution.categoryId, tags: post.contribution.tags, teachingReuseConsent: post.contribution.teachingReuseConsent, sourceName: post.contribution.sourceName, sourceUrl: post.contribution.sourceUrl, videoAssetId: post.contribution.videoAssetId, attachmentFileId: post.contribution.attachmentFileId, coverFileId: post.contribution.coverFileId } : undefined })
       requestKey = ''; requestBody = ''; unconfirmed = undefined; localSave(); savedAt.value = '已读取服务器版本'; dirty.value = false
     } catch (cause) { if (current()) { error.value = cause instanceof Error ? cause.message : '服务端版本读取失败'; if (cause instanceof ApiError && cause.status === 404 && draftId.value) draftUnavailable.value = true } }
   }

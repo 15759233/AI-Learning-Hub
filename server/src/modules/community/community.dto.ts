@@ -45,12 +45,13 @@ export class ContributionDto implements ResourceContributionInput {
   @IsArray() @ArrayMaxSize(8) @ArrayUnique() @IsString({ each: true }) @MaxLength(30, { each: true }) tags!: string[]
   @IsBoolean() teachingReuseConsent!: boolean
   @IsOptional() @IsString() @MaxLength(120) sourceName?: string
-  @ValidateIf((input: ContributionDto) => !!input.sourceUrl) @IsUrl({ protocols: ['http', 'https'], require_protocol: true }) @MaxLength(500) sourceUrl?: string
+  @ValidateIf((input: ContributionDto) => !!input.sourceUrl) @IsUrl({ protocols: ['http', 'https'], require_protocol: true, disallow_auth: true }) @MaxLength(500) sourceUrl?: string
   @IsOptional() @IsString() @Length(1, 100) videoAssetId?: string
   @IsOptional() @IsString() @Length(1, 100) attachmentFileId?: string
   @IsOptional() @IsString() @Length(1, 100) coverFileId?: string
 }
 export class PostDto implements CommunityPostInput {
+  @IsOptional() @IsBoolean() portalConsent?: boolean
   @IsOptional() @IsString() @Length(1, 100) coverFileId?: string | null
   @IsOptional() @IsInt() @Min(1) expectedRevision?: number
   @IsIn(communityPostTypes) type!: CommunityPostType
@@ -97,7 +98,7 @@ export class ProfileDto implements CommunityProfileInput {
   @IsString() @MaxLength(500) @Matches(safeProfileText) bio!: string
   @IsString() @MaxLength(120) @Matches(safeProfileText) headline!: string
   @IsString() @MaxLength(60) @Matches(safeProfileText) location!: string
-  @ValidateIf((input: ProfileDto) => !!input.websiteUrl) @IsUrl({ protocols: ['http', 'https'], require_protocol: true }) @MaxLength(300) websiteUrl!: string
+  @ValidateIf((input: ProfileDto) => !!input.websiteUrl) @IsUrl({ protocols: ['http', 'https'], require_protocol: true, disallow_auth: true }) @MaxLength(300) websiteUrl!: string
   @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(40, { each: true }) @Matches(safeProfileText, { each: true }) expertiseTopics!: string[]
   @IsBoolean() allowAchievementDrafts!: boolean
 }

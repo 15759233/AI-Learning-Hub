@@ -1,5 +1,6 @@
 import { activeSanction, availableAccount, visibleCollection } from '../community/governance-policy'
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common'
+import { REQUEST } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -30,6 +31,9 @@ import { FileAccessService } from '../storage/file-access.service'
 import { fileScanDto } from '../storage/file-scan'
 import { idempotency, lockFileReferences, reserveIdempotency } from '../../common/persistence'
 import { ContentDetectionService } from '../community/content-detection.service'
+import type { AuthRequest } from '../auth/auth.types'
+import { authUserDto, authUserInclude } from '../auth/auth.mapper'
+import { assertAdminNetwork } from '../../common/deployment-security'
 
 type HubConfig = { bannerPostIds: string[]; sectionCategoryCodes: string[] }
 
@@ -87,6 +91,7 @@ export class ResourceHubService {
     private readonly detection: ContentDetectionService,
     private readonly quota: StorageQuotaService,
     private readonly fileAccess: FileAccessService,
+    @Optional() @Inject(REQUEST) private readonly request?: AuthRequest,
   ) {
     this.tokenSecret = String(config.get('VIDEO_PLAYBACK_SECRET') || config.getOrThrow('JWT_SECRET'))
   }
@@ -481,19 +486,19 @@ export class ResourceHubService {
   }
 
   async playbackFile(assetId: string, token: string, start?: number, end?: number) {
-    const userId = this.verify('play', assetId, token)
+    const userId = await this.verify('play', assetId, token)
     const asset = await this.visibleAsset(userId, assetId, true)
     return this.storage.open(asset.playableFileId!, start, end)
   }
 
   async mediaFile(fileId: string, token: string) {
-    const userId = this.verify('media', fileId, token)
+    const userId = await this.verify('media', fileId, token)
     await this.fileAccess.assert(userId, fileId)
     return this.storage.open(fileId)
   }
 
   async attachmentFile(fileId: string, token: string) {
-    const userId = this.verify('attachment', fileId, token)
+    const userId = await this.verify('attachment', fileId, token)
     await this.assertMediaPost(userId, { contribution: { is: { attachmentFileId: fileId } } }, fileId)
     return this.storage.open(fileId)
   }
@@ -802,12 +807,14 @@ export class ResourceHubService {
   }
 
   private sign(purpose: string, targetId: string, userId: string, expires: number) {
-    const payload = Buffer.from(`${purpose}\n${targetId}\n${userId}\n${expires}`).toString('base64url')
+    const user = this.request?.user
+    if (user?.id !== userId || !user.sessionId) throw new ForbiddenException('媒体授权需要有效设备会话')
+    const payload = Buffer.from(`${purpose}\n${targetId}\n${userId}\n${expires}\n${user.sessionId}\n${user.sessionVersion || 0}`).toString('base64url')
     const signature = createHmac('sha256', this.tokenSecret).update(payload).digest('base64url')
     return `${payload}.${signature}`
   }
 
-  private verify(purpose: string, targetId: string, token: string) {
+  private async verify(purpose: string, targetId: string, token: string) {
     if (typeof token !== 'string' || token.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) throw new ForbiddenException('播放凭据无效')
     const [payload, received] = token.split('.')
     if (!payload || !received) throw new ForbiddenException('播放凭据无效')
@@ -815,8 +822,15 @@ export class ResourceHubService {
     const actual = Buffer.from(received, 'base64url')
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new ForbiddenException('播放凭据无效')
     const fields = Buffer.from(payload, 'base64url').toString('utf8').split('\n')
-    const [tokenPurpose, tokenTarget, userId, expiresValue] = fields
-    if (fields.length !== 4 || !userId || !/^\d+$/.test(expiresValue) || !Number.isSafeInteger(Number(expiresValue)) || tokenPurpose !== purpose || tokenTarget !== targetId || Number(expiresValue) <= Math.floor(Date.now() / 1000)) throw new ForbiddenException('播放凭据已失效')
+    const [tokenPurpose, tokenTarget, userId, expiresValue, sessionId, sessionVersion] = fields
+    if (fields.length !== 6 || !userId || !sessionId || !/^\d+$/.test(sessionVersion) || !/^\d+$/.test(expiresValue) || !Number.isSafeInteger(Number(expiresValue)) || tokenPurpose !== purpose || tokenTarget !== targetId || Number(expiresValue) <= Math.floor(Date.now() / 1000)) throw new ForbiddenException('播放凭据已失效')
+    const session = await this.prisma.refreshToken.findUnique({ where: { id: sessionId }, include: { user: { include: authUserInclude } } })
+    if (!session || session.userId !== userId || session.revokedAt || session.expiresAt <= new Date() || session.user.status !== 'active' || session.user.sessionVersion !== Number(sessionVersion)) throw new ForbiddenException('媒体所属设备会话已失效')
+    const administrative = authUserDto(session.user).permissions.length > 0
+    if (session.client === 'admin' || administrative) {
+      assertAdminNetwork(this.config, this.request?.ip)
+      if (session.client !== 'admin' || !session.mfaVerified || !session.user.mfaEnabledAt) throw new ForbiddenException('管理媒体需要后台 MFA 会话')
+    }
     return userId
   }
 

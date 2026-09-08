@@ -9,7 +9,7 @@ export const authApi = {
     return result.user
   },
   async logout() {
-    await request('/auth/logout', { method: 'POST' }).catch(() => undefined)
+    await request('/auth/logout', { method: 'POST' }, false)
     sessionStorage.removeItem('student-access-token')
   },
   me: () => request<StudentUser>('/me'),
@@ -22,5 +22,5 @@ export const authApi = {
   },
   forgotPassword: (email: string) => request<{ message: string }>('/auth/password/forgot', { method: 'POST', body: JSON.stringify({ email }) }, false),
   resetPassword: (token: string, password: string) => request('/auth/password/reset', { method: 'POST', body: JSON.stringify({ token, password }) }, false),
-  verifyEmail: (token: string) => request('/auth/email/verify', { method: 'POST', body: JSON.stringify({ token }) }, false),
+  verifyEmail: (token: string) => request<{ emailChanged?: boolean; message?: string }>('/auth/email/verify', { method: 'POST', body: JSON.stringify({ token }) }, false),
 }

@@ -1,5 +1,6 @@
 import type { CatalogCoverData } from './media'
 export * from './content-detection'
+export * from './account-security'
 
 export enum PublishStatus {
   DRAFT = 'draft',

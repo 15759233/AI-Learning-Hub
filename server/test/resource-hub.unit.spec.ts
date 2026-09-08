@@ -36,8 +36,8 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-const hub = (prisma: object = {}, visibility: object = {}, detection: object = {}) => new ResourceHubService(
-  prisma as never,
+const hub = (prisma: object = {}, visibility: object = {}, detection: object = {}, userId = 'student-a') => new ResourceHubService(
+  { refreshToken: { findUnique: vi.fn(async () => ({ userId, client: 'student', revokedAt: null, expiresAt: new Date(Date.now() + 3600000), user: { id: userId, status: 'active', sessionVersion: 0, userRoles: [] } })) }, ...prisma } as never,
   new ConfigService({ JWT_SECRET: 'resource-test-secret-with-enough-entropy' }),
   {} as never,
   visibility as never,
@@ -48,9 +48,31 @@ const hub = (prisma: object = {}, visibility: object = {}, detection: object = {
   detection as never,
   {} as never,
   {} as never,
+  { user: { id: userId, sessionId: 'synthetic-session', sessionVersion: 0 }, ip: '127.0.0.1' } as never,
 )
 
 describe('资源播放交付', () => {
+  it.each(['revoked', 'expired', 'foreign', 'version', 'disabled', 'admin_without_mfa', 'admin_network'])('媒体凭据拒绝失效设备及后台旁路：%s', async (failure) => {
+    const session = {
+      userId: 'student-a', client: 'student', revokedAt: null as Date | null, expiresAt: new Date(Date.now() + 60000), mfaVerified: false,
+      user: { id: 'student-a', status: 'active', sessionVersion: 0, userRoles: [], mfaEnabledAt: null as Date | null },
+    }
+    const service = hub({ refreshToken: { findUnique: vi.fn(async () => session) } })
+    const signing = service as unknown as { sign(p: string, id: string, user: string, expires: number): string; verify(p: string, id: string, token: string): Promise<string> }
+    const token = signing.sign('media', 'file-a', 'student-a', Math.floor(Date.now() / 1000) + 60)
+    if (failure === 'revoked') session.revokedAt = new Date()
+    if (failure === 'expired') session.expiresAt = new Date(0)
+    if (failure === 'foreign') session.userId = 'student-b'
+    if (failure === 'version') session.user.sessionVersion = 1
+    if (failure === 'disabled') session.user.status = 'disabled'
+    if (failure.startsWith('admin_')) session.client = 'admin'
+    if (failure === 'admin_network') {
+      session.mfaVerified = true; session.user.mfaEnabledAt = new Date()
+      Object.assign(service, { config: new ConfigService({ ADMIN_NETWORK_CIDRS: '192.0.2.9/32' }) })
+    }
+    await expect(signing.verify('media', 'file-a', token)).rejects.toThrow()
+  })
+
   it.each([false, true])('后台修改资源属性必须复用已投稿范围：submitted=%s', async (submitted) => {
     const scope = { status: { not: 'draft' }, OR: [{ publishedAt: { not: null } }, { id: { in: ['synthetic-pending-post'] } }] }
     const tx = {
@@ -94,7 +116,7 @@ describe('资源播放交付', () => {
       user: { count: vi.fn(async () => 0) },
       fileRecord: { count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => Number(where.visibility === 'public' || owner && where.uploadedBy === 'synthetic-viewer')) },
     }
-    const service = hub(prisma, { viewer: vi.fn(), where: vi.fn(async () => ({ status: 'published' })) })
+    const service = hub(prisma, { viewer: vi.fn(), where: vi.fn(async () => ({ status: 'published' })) }, {}, 'synthetic-viewer')
     const open = vi.fn(async () => ({ mimeType: 'image/webp' }))
     Object.defineProperty(service, 'storage', { value: { open } })
     Object.defineProperty(service, 'fileAccess', { value: { assert: vi.fn(async () => { if (!published && !owner) throw new Error('媒体不可见') }) } })
@@ -158,17 +180,18 @@ describe('资源播放交付', () => {
     expect(streams.at(-1)?.destroyed).toBe(true)
   })
 
-  it('播放凭据限制用途、目标和有效期', () => {
+  it('播放凭据限制用途、目标、设备和有效期', async () => {
     const service = hub() as unknown as {
       sign: (purpose: string, targetId: string, userId: string, expires: number) => string
-      verify: (purpose: string, targetId: string, token: string) => string
+      verify: (purpose: string, targetId: string, token: string) => Promise<string>
     }
     const token = service.sign('play', 'video-a', 'student-a', Math.floor(Date.now() / 1000) + 60)
-    expect(service.verify('play', 'video-a', token)).toBe('student-a')
-    expect(() => service.verify('attachment', 'video-a', token)).toThrow()
-    expect(() => service.verify('play', 'video-b', token)).toThrow()
+    await expect(service.verify('play', 'video-a', token)).resolves.toBe('student-a')
+    await expect(service.verify('attachment', 'video-a', token)).rejects.toThrow()
+    await expect(service.verify('play', 'video-b', token)).rejects.toThrow()
+    expect(() => service.sign('play', 'video-a', 'other-user', Math.floor(Date.now() / 1000) + 60)).toThrow('设备会话')
     const expired = service.sign('play', 'video-a', 'student-a', Math.floor(Date.now() / 1000) - 1)
-    expect(() => service.verify('play', 'video-a', expired)).toThrow()
+    await expect(service.verify('play', 'video-a', expired)).rejects.toThrow()
   })
 
   it('媒体命令使用参数数组，不把参数当作 Shell 指令执行', async () => {

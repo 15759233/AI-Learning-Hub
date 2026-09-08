@@ -17,6 +17,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const errorCode = raw && typeof raw === 'object' && 'errorCode' in raw && typeof raw.errorCode === 'string' ? raw.errorCode : undefined
     const retryAfter = raw && typeof raw === 'object' && 'retryAfter' in raw && typeof raw.retryAfter === 'number' ? raw.retryAfter : undefined
     const availableAt = raw && typeof raw === 'object' && 'availableAt' in raw && typeof raw.availableAt === 'string' ? raw.availableAt : undefined
+    if (status >= 500) process.stderr.write(JSON.stringify({ event: 'api_error', status, requestId: response.locals.requestId }) + '\n')
     const nextAction = raw && typeof raw === 'object' && 'nextAction' in raw && raw.nextAction && typeof raw.nextAction === 'object' ? raw.nextAction : undefined
     if (status === 429 && retryAfter) response.setHeader('Retry-After', String(retryAfter))
     response.status(status).json({

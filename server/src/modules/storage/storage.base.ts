@@ -53,7 +53,7 @@ export abstract class StorageBase extends StorageService implements OnModuleInit
     const jobs = await this.prisma.mediaGcJob.findMany({ orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }], take: 20 })
     for (const job of jobs) {
       try { await this.delete(job.fileId); await this.prisma.mediaGcJob.deleteMany({ where: { id: job.id } }) }
-      catch (error) { await this.prisma.mediaGcJob.updateMany({ where: { id: job.id }, data: { attempts: { increment: 1 }, lastError: (error instanceof Error ? error.message : '清理失败').slice(0, 500), updatedAt: new Date() } }) }
+      catch { await this.prisma.mediaGcJob.updateMany({ where: { id: job.id }, data: { attempts: { increment: 1 }, lastError: '清理失败，请核对文件引用、存储连接与配额；原始异常不记录', updatedAt: new Date() } }) }
     }
   }
   protected async openObject(_objectKey: string, _start?: number, _end?: number, _signal?: AbortSignal): Promise<Readable> {

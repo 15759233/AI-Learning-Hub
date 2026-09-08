@@ -27,7 +27,8 @@ const clearSession = () => {
 }
 
 const refresh = async () => {
-  const response = await fetch(`${baseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' })
+  const previous = sessionStorage.getItem('student-access-token')
+  const response = await fetch(baseUrl + '/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...(previous ? { authorization: 'Bearer ' + previous } : {}) } })
   if (!response.ok) {
     if (response.status === 401) { clearSession(); return false }
     throw new ApiError('服务暂时不可用，请重新连接', response.status)

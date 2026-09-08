@@ -6,7 +6,7 @@ import { mkdir, readFile, readdir, rm, stat, statfs, writeFile } from 'node:fs/p
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { NestFactory, Reflector } from '@nestjs/core'
+import { ContextIdFactory, NestFactory, Reflector } from '@nestjs/core'
 import type { INestApplication } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaClient } from '@prisma/client'
@@ -63,8 +63,15 @@ beforeAll(async () => {
   const actor = await account(); owner = actor.id; viewer = (await account()).id; admin = (await account('super_admin')).id
   app = await NestFactory.create(AppModule, { logger: false }); app.setGlobalPrefix('api/v1'); app.use(cookieParser()); app.useGlobalPipes(appValidationPipe); app.useGlobalFilters(new ApiExceptionFilter()); app.useGlobalInterceptors(new ApiResponseInterceptor(app.get(Reflector)))
   await app.listen(0, '127.0.0.1'); base = `${await app.getUrl()}/api/v1`
-  quota = app.get(StorageQuotaService); processor = app.get(VideoProcessingService); storage = app.get(STORAGE_SERVICE); access = app.get(FileAccessService); hub = app.get(ResourceHubService)
+  quota = app.get(StorageQuotaService); processor = app.get(VideoProcessingService); storage = app.get(STORAGE_SERVICE); access = app.get(FileAccessService)
   const login = await api('/auth/login', 'POST', { identifier: actor.username, password }, ''); token = login.body.data.accessToken
+  const viewerAccount = await db.user.findUniqueOrThrow({ where: { id: viewer } })
+  const viewerLogin = await api('/auth/login', 'POST', { identifier: viewerAccount.username, password }, '')
+  expect(viewerLogin.status).toBe(201)
+  const claims = JSON.parse(Buffer.from(viewerLogin.body.data.accessToken.split('.')[1], 'base64url').toString())
+  const context = ContextIdFactory.create()
+  app.registerRequestByContextId({ user: claims, ip: '127.0.0.1' }, context)
+  hub = await app.resolve(ResourceHubService, context)
 }, 60000)
 afterAll(async () => { await app?.close(); await db.$disconnect() })
 

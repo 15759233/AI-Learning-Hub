@@ -34,7 +34,7 @@ describe('社区分操作资格', () => {
     const denied = new Error('资料修改受限')
     const prisma = { $transaction: vi.fn() }
     const visibility = { assertOperation: vi.fn(async () => { throw denied }) }
-    const controller = new MeController(prisma as never, {} as never, visibility as never, {} as never)
+    const controller = new MeController(prisma as never, {} as never, visibility as never, {} as never, {} as never)
     await expect(controller.update({ id: 'student' } as never, { expectedRevision: 1, displayName: '学生' })).rejects.toBe(denied)
     expect(visibility.assertOperation).toHaveBeenCalledWith('student', 'profile')
     expect(prisma.$transaction).not.toHaveBeenCalled()

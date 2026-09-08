@@ -218,6 +218,7 @@ onBeforeUnmount(() => { loadEpoch++ })
 </script>
 
 <template>
+  <RouterLink v-if="profile?.isSelf" class="button secondary small" to="/account/security">账号安全</RouterLink>
   <section class="community-profile-page">
     <RouterLink class="community-profile-back" to="/community">返回社区发现</RouterLink>
     <CommunitySkeleton v-if="loading && !profile" />

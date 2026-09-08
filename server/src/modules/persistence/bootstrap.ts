@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { hash } from 'bcryptjs'
+import { passwordProblem } from '@ai-learning-hub/contracts'
 
 export const requiredPermissions = [
   'dashboard.read', 'homepage.read', 'homepage.write', 'homepage.publish', 'platform.manage',
@@ -41,7 +42,7 @@ export async function bootstrapDatabase(prisma: PrismaClient) {
     }
     if (!await tx.userRole.count({ where: { role: { code: { in: ['admin', 'super_admin'] } } } })) {
       const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase(), password = process.env.SEED_ADMIN_PASSWORD
-      if (!email || !password || password.length < 8 || password.startsWith('change-me')) throw new Error('首次初始化请配置有效 SEED_ADMIN_EMAIL 和至少8位 SEED_ADMIN_PASSWORD')
+      if (!email || !password || passwordProblem(password, [email])) throw new Error('首次初始化请配置有效 SEED_ADMIN_EMAIL 和符合统一密码策略的 SEED_ADMIN_PASSWORD')
       if (await tx.user.count({ where: { email: { equals: email, mode: 'insensitive' } } })) throw new Error('初始化邮箱已属于现有账号；禁止自动提权，请人工确认')
       const role = allRoles.find((r) => r.code === 'super_admin')!
       await tx.user.create({ data: { email, username: `admin_${Date.now().toString(36)}`, displayName: '平台管理员', userType: 'admin', passwordHash: await hash(password, 12), onboardingCompletedAt: new Date(), registrationSource: 'bootstrap', userRoles: { create: { roleId: role.id } } } })

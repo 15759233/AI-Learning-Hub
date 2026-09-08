@@ -151,6 +151,7 @@ export class ResourceHubMediaController {
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "sandbox; default-src 'none'",
     })
     response.once('close', () => file.stream.destroy())
     return new StreamableFile(file.stream)

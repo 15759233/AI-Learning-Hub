@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import { useAuthUiStore } from '../stores/authUi'
 import { useLearningStore } from '../stores/learning'
 import { authApi } from '../services/api/auth'
+import { passwordProblem, PASSWORD_POLICY_MESSAGE } from '@ai-learning-hub/contracts'
 const auth = useAuthStore(), ui = useAuthUiStore(), router = useRouter()
 const identifier = ref(''), username = ref(''), email = ref(''), password = ref(''), confirmation = ref(''), displayName = ref(''), inviteCode = ref(''), agreement = ref(false), remember = ref(true), forgot = ref(false), message = ref(''), localError = ref('')
 watch(() => ui.visible, async (open) => { if (!open) { password.value = ''; confirmation.value = ''; return }; localError.value = ''; message.value = ''; forgot.value = false; auth.error = ''; try { await auth.loadRegistrationConfig() } catch (error) { localError.value = error instanceof Error ? error.message : '注册配置读取失败' } }, { immediate: true })
@@ -20,8 +21,8 @@ const submit = async () => {
     if (registering) {
       if (!agreement.value) throw new Error('请阅读并同意用户协议与隐私政策')
       if (password.value !== confirmation.value) throw new Error('两次密码不一致')
-      if (!/[A-Za-z]/.test(password.value) || !/\d/.test(password.value)) throw new Error('密码须同时包含字母和数字')
-      if (new TextEncoder().encode(password.value).length > 72) throw new Error('密码不能超过72个UTF-8字节（汉字通常占3字节）')
+      const problem = passwordProblem(password.value, [username.value, email.value], auth.registrationConfig?.passwordMinLength)
+      if (problem) throw new Error(problem)
       if (!auth.registrationConfig || auth.registrationConfig.mode === 'closed') throw new Error('注册暂不可用，请稍后重试或联系管理员')
       await auth.register({ username: username.value, displayName: displayName.value, email: email.value, password: password.value, agreementVersion: auth.registrationConfig!.agreementVersion, ...(inviteCode.value ? { inviteCode: inviteCode.value } : {}) })
     } else {
@@ -42,6 +43,7 @@ const submit = async () => {
   <div class="community-feed-tabs"><button :aria-selected="ui.mode === 'login'" @click="ui.mode = 'login'; forgot = false">登录</button><button v-if="auth.registrationConfig?.mode !== 'closed'" :aria-selected="ui.mode === 'register'" @click="ui.mode = 'register'; forgot = false">注册</button></div>
   <p v-if="auth.dataMode === 'mock'" class="community-notice">这是本地演示账号，不会创建真实服务端账号。</p>
   <form class="dialog-form" @submit.prevent="submit">
+    <p v-if="ui.mode === 'register' && !forgot">{{ PASSWORD_POLICY_MESSAGE }}</p>
     <label v-if="ui.mode === 'register' && !forgot">登录账号<input v-model="username" required minlength="4" maxlength="24" pattern="(?!_)(?!.*__)[A-Za-z0-9_]{4,24}(?<!_)" autocomplete="username" placeholder="4～24位字母、数字或下划线" /></label>
     <label v-if="ui.mode === 'register' && !forgot">显示名称<input v-model="displayName" required minlength="2" maxlength="40" autocomplete="nickname" /></label>
     <label v-if="ui.mode === 'register' || forgot">邮箱<input v-model="email" type="email" required autocomplete="email" maxlength="254" /></label>

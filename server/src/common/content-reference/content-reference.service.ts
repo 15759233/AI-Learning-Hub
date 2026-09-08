@@ -15,7 +15,7 @@ export class ContentReferenceService {
   /** 门户仅投影当前公开对象；不返回草稿、正文块、媒体令牌或账号内部字段。 */
   async resolvePublicCommunity(type: string, id: string): Promise<HomepageResolvedItemDto | null> {
     if (type === 'community_post') {
-      const row = await this.prisma.communityPost.findFirst({ where: { id, ...visiblePublicPost() }, include: { author: { include: authorInclude } } })
+      const row = await this.prisma.communityPost.findFirst({ where: { id, ...visiblePublicPost(), portalConsent: true }, include: { author: { include: authorInclude } } })
       if (!row) return null
       const author = this.publicAuthor(row.author)
       const commentCount = await this.prisma.communityComment.count({ where: { postId: row.id, status: 'published', deletedAt: null, ...visibleComment() } })
@@ -24,11 +24,11 @@ export class ContentReferenceService {
     if (type === 'community_topic') {
       const row = await this.prisma.communityTopic.findFirst({ where: { OR: [{ id }, { slug: id }], status: 'active' } })
       if (!row) return null
-      const postCount = await this.prisma.communityPostTopic.count({ where: { topicId: row.id, post: visiblePublicPost() } })
+      const postCount = await this.prisma.communityPostTopic.count({ where: { topicId: row.id, post: { ...visiblePublicPost(), portalConsent: true } } })
       return { targetType: type, slug: row.slug, title: row.name, summary: row.description, data: { id: row.id, route: `/community/topic/${row.slug}`, postCount, followerCount: row.followerCount, recommended: row.recommended } }
     }
     if (type === 'community_user') {
-      const user = await this.prisma.user.findFirst({ where: { OR: [{ id }, { username: id }], ...visibleProfile(), communityProfile: { isNot: null }, communityPosts: { some: visiblePublicPost() } }, include: authorInclude })
+      const user = await this.prisma.user.findFirst({ where: { OR: [{ id }, { username: id }], ...visibleProfile(), communityProfile: { isNot: null }, communityPosts: { some: { ...visiblePublicPost(), portalConsent: true } } }, include: authorInclude })
       if (!user) return null
       const author = this.publicAuthor(user)
       // 公开创作者必须有公开作品；后台身份本身不构成允许展示。

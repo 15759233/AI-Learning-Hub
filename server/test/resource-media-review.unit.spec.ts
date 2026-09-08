@@ -14,6 +14,7 @@ function fixture() {
     adminWhere: vi.fn(async () => adminScope), auditAdminRead: vi.fn(),
   }
   const prisma = {
+    refreshToken: { findUnique: vi.fn(async () => ({ userId: 'synthetic-viewer', client: state.permissions.length ? 'admin' : 'student', mfaVerified: true, expiresAt: new Date(Date.now() + 3600000), user: { id: 'synthetic-viewer', status: 'active', sessionVersion: 0, mfaEnabledAt: new Date(), userRoles: [] } })) },
     communityPost: { findFirst: vi.fn(async () => state.status === 'published' || state.owner && ['draft', 'pending_review'].includes(state.status) ? { authorId: 'synthetic-owner' } : null), count: vi.fn(async ({ where }: { where: { AND: object[] } }) => {
       const scope = where.AND[1]
       if (scope === adminScope) return Number(state.submitted && state.status !== 'draft')
@@ -33,7 +34,7 @@ function fixture() {
     if (state.status !== 'draft' && state.submitted && ['resource.read', 'community.moderate'].every((permission) => state.permissions.includes(permission))) { await visibility.auditAdminRead('synthetic-viewer', 'resource_media', 'synthetic-file'); return }
     throw new Error('媒体不可见')
   }) }
-  const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-media-review-test-secret' }), {} as never, visibility as never, {} as never, {} as never, {} as never, storage as never, {} as never, {} as never, fileAccess as never)
+  const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-media-review-test-secret' }), {} as never, visibility as never, {} as never, {} as never, {} as never, storage as never, {} as never, {} as never, fileAccess as never, { user: { id: 'synthetic-viewer', sessionId: 'synthetic-session', sessionVersion: 0 }, ip: '127.0.0.1' } as never)
   const token = (purpose: string, target: string) => (service as unknown as { sign(p: string, id: string, user: string, expires: number): string }).sign(purpose, target, 'synthetic-viewer', Math.floor(Date.now() / 1000) + 60)
   return { state, prisma, service, visibility, storage, token }
 }

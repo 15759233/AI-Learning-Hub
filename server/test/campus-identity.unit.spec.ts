@@ -34,12 +34,13 @@ describe('校园实名、账号和社区写权限', () => {
       $queryRaw: vi.fn().mockResolvedValue([{ attempts: 1 }]),
       loginThrottle: { findUnique: vi.fn().mockResolvedValue(null), deleteMany: vi.fn() }, loginLog: { create: vi.fn() },
       user: { findFirst: vi.fn().mockResolvedValue(user), findUniqueOrThrow: vi.fn().mockResolvedValue(user), update: vi.fn().mockResolvedValue(user) },
-      activityEvent: { create: vi.fn() }, refreshToken: { create: vi.fn() }, communityModerationAction: { count: vi.fn(async () => 0) },
+      activityEvent: { create: vi.fn() }, refreshToken: { create: vi.fn().mockResolvedValue({ id: 'session-1', mfaVerified: false }) }, communityModerationAction: { count: vi.fn(async () => 0) },
     }
     const prisma: any = { ...tx, $transaction: vi.fn(async (callback) => callback(tx)) }
     const service = new AuthService(prisma, { signAsync: vi.fn().mockResolvedValue('access') } as never, new ConfigService({ JWT_SECRET: 'test-secret' }), {} as never)
     for (const identifier of ['STUDENT_2026', 'STUDENT@EXAMPLE.INVALID']) {
       const result = await service.login(identifier, 'ValidPass8', `client-${identifier}`, '127.0.0.1')
+      if ('mfaRequired' in result) throw new Error('学生登录不应要求 MFA')
       expect(result.user).toMatchObject({ username: 'student_2026', identityVerificationStatus: 'approved', communityWriteEnabled: true })
     }
     expect(prisma.user.findFirst.mock.calls[0][0].where).toEqual({ username: { equals: 'student_2026', mode: 'insensitive' } })

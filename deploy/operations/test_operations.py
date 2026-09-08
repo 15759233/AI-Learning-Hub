@@ -186,6 +186,10 @@ class OperationsTests(unittest.TestCase):
         self.assertIn('ORDER BY md5', fingerprint_sql(['users', 'course_versions']))
         with self.assertRaises(ValueError):
             fingerprint_sql(['users; DROP TABLE users'])
+        self.assertIn('SELECT "id","email" FROM public."users"', fingerprint_sql(['users'], {'users': ['id', 'email']}))
+        for columns in ({}, {'users': []}, {'users': ['id; DROP TABLE users']}):
+            with self.assertRaises(ValueError):
+                fingerprint_sql(['users'], columns)
 
     def test_channel_does_not_accept_http_200_with_vendor_error(self):
         with tempfile.TemporaryDirectory() as directory:

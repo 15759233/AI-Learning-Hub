@@ -374,6 +374,7 @@ describe('PERSIST-001 真实 PostgreSQL 持久化与账号产品化', () => {
     loginGate.resume()
     expect(await loggingIn).toBe('denied'); vi.restoreAllMocks()
     const session = await auth.login(fresh.user.email, `${password}New`, randomUUID(), 'isolated')
+    if ('mfaRequired' in session) throw new Error('学生登录不应要求 MFA')
     const refreshGate = pauseTransaction()
     const refreshing = auth.refresh(session.refreshToken).then(() => 'created', () => 'denied')
     await refreshGate.entered

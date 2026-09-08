@@ -28,7 +28,7 @@ describe('资源视频自选封面', () => {
     { cover: null, automatic: null, expected: null },
   ])('播放器与投稿封面一致：$expected', async ({ cover, automatic, expected }) => {
     const prisma = { resourceWatchProgress: { findUnique: vi.fn(async () => null) } }
-    const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-resource-cover-test-secret' }), {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    const service = new ResourceHubService(prisma as never, new ConfigService({ JWT_SECRET: 'synthetic-resource-cover-test-secret' }), {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, { user: { id: 'viewer', sessionId: 'synthetic-session', sessionVersion: 0 } } as never)
     const visibleAsset = vi.fn(async () => ({ durationSeconds: 60, posterFileId: automatic, contribution: { postId: 'post', coverFileId: cover } }))
     Object.defineProperty(service, 'visibleAsset', { value: visibleAsset })
     const playback = await service.playback('viewer', 'video')

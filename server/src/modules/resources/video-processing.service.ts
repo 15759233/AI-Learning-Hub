@@ -64,7 +64,7 @@ export class VideoProcessingService implements OnModuleInit, OnModuleDestroy {
     if (this.checking || this.stopping) return
     this.checking = true
     try { await this.recoverExpired(); void this.processNext() }
-    catch (error) { this.logger.error(`媒体队列检查失败：${error instanceof Error ? error.message : '未知错误'}`) }
+    catch { this.logger.error('媒体队列检查失败，请核对数据库与队列状态') }
     finally { this.checking = false }
   }
 
@@ -135,7 +135,7 @@ export class VideoProcessingService implements OnModuleInit, OnModuleDestroy {
 
   async processNext() {
     if (this.running || this.stopping || this.config.get('VIDEO_PROCESSING_ENABLED') === 'false') return
-    this.running = this.claimNext().then(async (asset) => { if (asset) await this.process(asset.id, asset.claimToken!) }).catch((error: unknown) => { this.logger.error(`媒体队列执行失败：${error instanceof Error ? error.message : '未知错误'}`) }).finally(() => { this.running = undefined })
+    this.running = this.claimNext().then(async (asset) => { if (asset) await this.process(asset.id, asset.claimToken!) }).catch(() => { this.logger.error('媒体队列执行失败，请核对数据库与队列状态') }).finally(() => { this.running = undefined })
     await this.running
   }
 
@@ -147,8 +147,8 @@ export class VideoProcessingService implements OnModuleInit, OnModuleDestroy {
       let reservation = candidate.reservation
       if (!reservation || reservation.state !== 'queued') {
         try { reservation = await this.quota.reserve(candidate.uploaderId, 'processing', candidate.sourceFile.size, tx) }
-        catch (error) {
-          await tx.videoAsset.update({ where: { id: candidate.id }, data: { status: 'failed', lastError: error instanceof Error ? error.message.slice(0, 1000) : '处理容量不足' } })
+        catch {
+          await tx.videoAsset.update({ where: { id: candidate.id }, data: { status: 'failed', lastError: '无法预留处理容量，请检查存储余量、配额和队列状态' } })
           return null
         }
       }
@@ -232,11 +232,11 @@ export class VideoProcessingService implements OnModuleInit, OnModuleDestroy {
       if (!updated.count) throw new ConflictException('旧处理任务不能覆盖当前结果')
       await tx.storageReservation.updateMany({ where: { id: reservation.id, claimToken }, data: { state: 'released', remainingBytes: 0n, temporaryBytes: 0n } })
       })
-    } catch (error) {
+    } catch {
       for (const fileId of [playableFileId, posterFileId].filter(Boolean)) await this.prisma.mediaGcJob.upsert({ where: { fileId }, create: { fileId }, update: {} })
       await this.prisma.videoAsset.updateMany({
         where: { id, status: 'processing', claimToken },
-        data: { status: this.stopping && asset.attempts < this.maxAttempts ? 'uploaded' : 'failed', claimToken: null, leaseExpiresAt: null, claimedAt: null, finishedAt: new Date(), lastError: (error instanceof Error ? error.message : '未知媒体处理错误').slice(0, 1000) },
+        data: { status: this.stopping && asset.attempts < this.maxAttempts ? 'uploaded' : 'failed', claimToken: null, leaseExpiresAt: null, claimedAt: null, finishedAt: new Date(), lastError: this.stopping ? '服务停止，处理任务已中断' : '媒体处理失败，请检查文件格式、处理工具和存储状态' },
       })
       await this.quota.release(reservation)
     } finally {

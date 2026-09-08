@@ -37,6 +37,7 @@ const router = createRouter({
     { path: '/frontier', name: 'frontier', component: () => import('./views/FrontierView.vue'), meta: { title: 'AI 前沿', layout: 'adaptive', requiresAuth: true, communityMode: 'wide' } },
     { path: '/assessments', name: 'assessments', component: () => import('./views/AssessmentsView.vue'), meta: { title: '挑战与测评', layout: 'adaptive', requiresAuth: true, communityMode: 'wide' } },
     { path: '/profile', name: 'profile', component: () => import('./views/ProfileView.vue'), meta: { title: '个人中心', layout: 'community', requiresAuth: true, communityMode: 'wide' } },
+    { path: '/account/security', name: 'account-security', component: () => import('./views/AccountSecurityView.vue'), meta: { title: '账号安全', layout: 'community', requiresAuth: true, communityMode: 'wide' } },
     { path: '/terms', component: () => import('./views/LegalView.vue'), meta: { title: '用户协议', layout: 'public', requiresAuth: false } },
     { path: '/privacy', component: () => import('./views/LegalView.vue'), meta: { title: '隐私政策', layout: 'public', requiresAuth: false } },
     { path: '/reset-password', component: () => import('./views/AccountRecoveryView.vue'), meta: { title: '重置密码', layout: 'public', requiresAuth: false } },

@@ -92,13 +92,20 @@ def validate_repository(config, env):
         raise ValueError('restic 密码文件必须非空且只有备份账号可读')
 
 
-def fingerprint_sql(tables):
+def fingerprint_sql(tables, columns=None):
     # 只输出全表行数和稳定摘要，证据中不包含账号或正文内容。
     statements = []
     for table in tables:
         if not re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*', table):
             raise ValueError('业务表名称不合法')
-        statements.append(f'''SELECT json_build_object('table','{table}','rows',count(*),'digest',md5(coalesce(string_agg(md5(to_jsonb(t)::text),'' ORDER BY md5(to_jsonb(t)::text)),''))) FROM public."{table}" t''')
+        source = f'public."{table}"'
+        if columns is not None:
+            selected = columns.get(table)
+            if not selected or any(not re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*', column) for column in selected):
+                raise ValueError('旧列清单不合法')
+            names = ','.join('"' + column + '"' for column in selected)
+            source = f'(SELECT {names} FROM {source})'
+        statements.append(f'''SELECT json_build_object('table','{table}','rows',count(*),'digest',md5(coalesce(string_agg(md5(to_jsonb(t)::text),'' ORDER BY md5(to_jsonb(t)::text)),''))) FROM {source} t''')
     return ' UNION ALL '.join(statements)
 
 

@@ -58,6 +58,8 @@ export class LocalFileController {
       where: {
         id,
         visibility: 'public',
+        quarantinedAt: null,
+        mimeType: { in: ['image/png', 'image/jpeg', 'image/webp'] },
         OR: [
           { profileAvatars: { some: { user: visibleProfile() } } },
           { profileBanners: { some: { user: visibleProfile() } } },
@@ -98,6 +100,7 @@ export class LocalFileController {
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "sandbox; default-src 'none'",
       })
       response.once('close', () => file.stream.destroy())
       return new StreamableFile(file.stream)

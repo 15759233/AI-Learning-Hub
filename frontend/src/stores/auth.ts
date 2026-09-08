@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { authApi, type StudentUser } from '../services/api/auth'
 import { ApiError, dataMode, restoreRefresh } from '../services/api/client'
 import type { AuthUser, RegisterInput, RegistrationConfigDto } from '@ai-learning-hub/contracts'
+import { passwordProblem } from '@ai-learning-hub/contracts'
 import { useLearningStore } from './learning'
 import { useCommunityStore } from './community'
 import { useAuthUiStore } from './authUi'
@@ -58,12 +59,14 @@ export const useAuthStore = defineStore('auth', {
       return this.restorePromise
     },
     async loadRegistrationConfig() {
-      this.registrationConfig = dataMode === 'mock' ? { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false, registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30, mailAvailable: false, inviteAvailable: false } : await authApi.registrationConfig()
+      this.registrationConfig = dataMode === 'mock' ? { mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 12, schoolRequired: false, registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30, mailAvailable: false, inviteAvailable: false } : await authApi.registrationConfig()
       return this.registrationConfig
     },
     async register(input: RegisterInput) {
       this.loading = true; this.error = ''
       try {
+        const problem = passwordProblem(input.password, [input.username, input.email], this.registrationConfig?.passwordMinLength)
+        if (problem) throw new Error(problem)
         if (dataMode === 'mock') {
           this.user = { ...demoUser(), username: demoUsername(input.username), displayName: input.displayName, email: input.email.trim().toLowerCase(), onboardingCompleted: false, identityVerificationStatus: 'unsubmitted', communityWriteEnabled: false }
           localStorage.setItem('community-demo-user', JSON.stringify(this.user)); sessionStorage.setItem('community-demo-login', 'true')
@@ -93,12 +96,9 @@ export const useAuthStore = defineStore('auth', {
       } finally { this.loading = false }
     },
     async logout() {
-      try {
-        if (dataMode === 'api') await authApi.logout()
-      } finally {
-        sessionStorage.removeItem('community-demo-login')
-        this.clearSession()
-      }
+      if (dataMode === 'api') await authApi.logout()
+      sessionStorage.removeItem('community-demo-login')
+      this.clearSession()
     },
   },
 })

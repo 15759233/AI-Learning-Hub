@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, AUTH_SESSION_CLEARED_EVENT, request, restoreRefresh } from '../src/services/api/client'
 import { authApi } from '../src/services/api/auth'
 import { assessmentApi } from '../src/services/api/assessments'
+import { api as adminApi } from '../../admin-web/src/services/api'
 const stored = new Map<string, string>()
 beforeEach(() => {
   stored.clear(); stored.set('student-access-token', 'local-test-token')
@@ -10,6 +11,17 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it.each(['student', 'admin'])('%s 刷新携带旧设备身份，账号已变化时不重试原写请求', async client => {
+    stored.set('admin-access-token', 'admin-test-token')
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ code: 40101, message: '账号已变化', data: null }), { status: 401 }))
+    vi.stubGlobal('fetch', fetcher)
+    const submit = client === 'student' ? request : adminApi
+    await expect(submit('/me', { method: 'PATCH', body: '{}' })).rejects.toMatchObject({ status: 401 })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(String(fetcher.mock.calls[1][0])).toMatch(client === 'student' ? /\/auth\/refresh$/ : /\/admin-auth\/refresh$/)
+    expect(fetcher.mock.calls[1][1].headers.authorization).toBe('Bearer ' + (client === 'student' ? 'local-test-token' : 'admin-test-token'))
+  })
+
   it('资格错误保留结构化字段并在人机提示中带出解除时间', () => {
     const error = new ApiError('发布过于频繁', 429, 'COMMUNITY_RATE_LIMITED', '2026-09-06T12:00:00.000Z')
     expect(error).toMatchObject({ status: 429, code: 'COMMUNITY_RATE_LIMITED', availableAt: '2026-09-06T12:00:00.000Z' })

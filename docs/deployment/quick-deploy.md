@@ -5,8 +5,8 @@
 ## 启动
 
 ```bash
-cp deploy/compose/.env.example deploy/compose/.env
-# 修改 .env 中所有 change-me 值
+node deploy/compose/init-env.mjs experience deploy/compose/.env
+# 填写初始管理员、真实地址和管理网段；既有部署保留原密钥。
 docker compose --env-file deploy/compose/.env \
   -f deploy/compose/docker-compose.yml up -d --build
 ```
@@ -15,7 +15,7 @@ docker compose --env-file deploy/compose/.env \
 
 - 学生端：`http://127.0.0.1:8080`
 - 管理端：`http://127.0.0.1:8081`
-- OpenAPI：`http://127.0.0.1:8080/api/docs`
+- Swagger 默认关闭，学生入口禁止访问管理 API。
 
 检查与停止：
 
@@ -45,6 +45,6 @@ LOAD_DEMO_DATA=true docker compose --env-file deploy/compose/.env \
 
 邀请注册需在环境变量 `REGISTRATION_INVITE_HASHES` 填入邀请码的 SHA-256 十六进制摘要（逗号分隔）；不在数据库或公开设置保存明文邀请码。当前为可重复使用的邀请码，不包含配额管理。
 
-API 默认不信任转发头。Compose 仅允许 Docker 私网代理范围，Nginx 覆盖 `X-Forwarded-For`；调整网络时将 `TRUSTED_PROXY_CIDRS` 收窄为实际代理网段，勿对外开放 API 容器或信任任意来源。
+API 默认不信任转发头。Compose 仅信任两个固定 Nginx 地址，Nginx 覆盖 `X-Forwarded-For`；调整网络时同步两个代理 IP 与 `TRUSTED_PROXY_CIDRS`，勿对外开放 API 容器或信任任意来源。
 
-> 默认只监听 `127.0.0.1`。不要将此 Compose 直接暴露公网；正式部署请使用[服务部署方案](service-deployment.md)。
+> 默认只监听 `127.0.0.1`。不要将此 Compose 直接暴露公网；正式部署请使用[校园部署配置](../../deploy/compose/README.md)，先通过生产 preflight，再验证校方 HTTPS 与完整代理链。

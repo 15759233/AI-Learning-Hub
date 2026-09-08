@@ -4,18 +4,18 @@ import { Prisma } from '@prisma/client'
 import { compare, hash } from 'bcryptjs'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createTransport } from 'nodemailer'
-import type { RegistrationConfigDto, RegistrationSettingsDto } from '@ai-learning-hub/contracts'
+import { passwordProblem, type AccountSecurityDto, type AuthUser, type ChangeEmailInput, type ChangePasswordInput, type RegistrationConfigDto, type RegistrationSettingsDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { AuthService } from './auth.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import type { RegisterDto } from './auth.dto'
-import { actionEvent, idempotency, lockFileReferences, lockUser } from '../../common/persistence'
+import { actionEvent, idempotency, lockFileReferences, lockUser, rateLimit } from '../../common/persistence'
 import { ContentDetectionService } from '../community/content-detection.service'
 import { normalizeUsername } from './username'
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 const defaults: RegistrationSettingsDto = {
-  mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 8, schoolRequired: false,
+  mode: 'open', emailVerification: false, agreementVersion: '2026-08-30', passwordMinLength: 12, schoolRequired: false,
   registrationRateWindowMinutes: 15, registrationMaxAttemptsPerIp: 120, registrationMaxAttemptsPerIdentifier: 8, registrationMaxSuccessPerIp: 30,
 }
 @Injectable()
@@ -32,7 +32,7 @@ export class RegistrationService {
       mode: ['open', 'invite', 'closed'].includes(value.mode || '') ? value.mode! : defaults.mode,
       emailVerification: value.emailVerification === true,
       agreementVersion: typeof value.agreementVersion === 'string' && value.agreementVersion.length >= 1 && value.agreementVersion.length <= 60 ? value.agreementVersion : defaults.agreementVersion,
-      passwordMinLength: Number.isInteger(value.passwordMinLength) && value.passwordMinLength! >= 8 && value.passwordMinLength! <= 72 ? value.passwordMinLength! : defaults.passwordMinLength,
+      passwordMinLength: Math.max(12, Number.isInteger(value.passwordMinLength) && value.passwordMinLength! >= 8 && value.passwordMinLength! <= 72 ? value.passwordMinLength! : defaults.passwordMinLength),
       schoolRequired: value.schoolRequired === true,
       registrationRateWindowMinutes: Number.isInteger(value.registrationRateWindowMinutes) && value.registrationRateWindowMinutes! >= 1 && value.registrationRateWindowMinutes! <= 1440 ? value.registrationRateWindowMinutes! : defaults.registrationRateWindowMinutes,
       registrationMaxAttemptsPerIp: Number.isInteger(value.registrationMaxAttemptsPerIp) && value.registrationMaxAttemptsPerIp! >= 10 && value.registrationMaxAttemptsPerIp! <= 10000 ? value.registrationMaxAttemptsPerIp! : defaults.registrationMaxAttemptsPerIp,
@@ -114,9 +114,10 @@ export class RegistrationService {
     }
   }
   async register(input: RegisterDto, ip: string, key?: string) {
-    if (Buffer.byteLength(input.password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
     const email = input.email.trim().toLowerCase(), username = normalizeUsername(input.username)
     const requestSettings = await this.settings()
+    const problem = passwordProblem(input.password, [email, username], requestSettings.passwordMinLength)
+    if (problem) throw new BadRequestException(problem)
     await this.registrationAttempt(requestSettings, username, email, ip)
     const passwordHash = await hash(input.password, 12)
     try {
@@ -206,19 +207,23 @@ export class RegistrationService {
     return { message: '如果该账号需要验证，你将收到新的验证邮件。' }
   }
   async reset(token: string, password: string, ip: string) {
-    if (Buffer.byteLength(password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
+    const problem = passwordProblem(password, [], (await this.settings()).passwordMinLength)
+    if (problem) throw new BadRequestException(problem)
     await this.throttle('reset', digest(token), ip)
     if (password.length < (await this.settings()).passwordMinLength) throw new BadRequestException('密码长度不符合平台要求')
     const passwordHash = await hash(password, 12)
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.passwordResetToken.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
       if (!row || row.usedAt || row.expiresAt <= new Date()) throw new BadRequestException('重置链接已失效')
+      const accountProblem = passwordProblem(password, [row.user.username, row.user.email])
+      if (accountProblem) throw new BadRequestException(accountProblem)
       await lockUser(tx, row.userId)
       if (!await tx.user.count({ where: { id: row.userId } })) throw new BadRequestException('账号已失效')
       const claimed = await tx.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } })
       if (!claimed.count) throw new BadRequestException('重置链接已使用')
-      await tx.user.update({ where: { id: row.userId }, data: { passwordHash, sessionVersion: { increment: 1 } } })
+      await tx.user.update({ where: { id: row.userId }, data: { passwordHash, sessionVersion: { increment: 1 }, mfaChallengeHash: null } })
       await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } })
+      await tx.emailVerificationToken.updateMany({ where: { userId: row.userId, usedAt: null }, data: { usedAt: new Date() } })
       return { reset: true }
     })
   }
@@ -227,9 +232,62 @@ export class RegistrationService {
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.emailVerificationToken.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
       if (!row || row.usedAt || row.expiresAt <= new Date() || row.user.status !== 'active') throw new BadRequestException('验证链接已失效')
+      await lockUser(tx, row.userId)
+      const current = await tx.user.findUniqueOrThrow({ where: { id: row.userId } })
+      if (current.status !== 'active' || (row.previousEmail && row.previousEmail !== current.email)) throw new BadRequestException('邮箱已变化，请重新申请')
       if (!(await tx.emailVerificationToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } })).count) throw new BadRequestException('验证链接已使用')
+      if (row.newEmail) {
+        if (await tx.user.count({ where: { email: { equals: row.newEmail, mode: 'insensitive' }, id: { not: row.userId } } })) throw new ConflictException('新邮箱已被使用')
+        await tx.user.update({ where: { id: row.userId }, data: { email: row.newEmail, emailVerifiedAt: new Date(), revision: { increment: 1 }, sessionVersion: { increment: 1 }, mfaChallengeHash: null } })
+        await tx.campusIdentityVerification.updateMany({ where: { userId: row.userId, status: { in: ['approved', 'pending'] } }, data: { status: 'revoked', reviewReason: '邮箱变更后需重新核验校园身份', reviewedAt: new Date(), revision: { increment: 1 } } })
+        await tx.emailVerificationToken.updateMany({ where: { userId: row.userId, usedAt: null }, data: { usedAt: new Date() } })
+        await tx.passwordResetToken.updateMany({ where: { userId: row.userId, usedAt: null }, data: { usedAt: new Date() } })
+        await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } })
+        await actionEvent(tx, row.userId, 'account_email_changed', 'user', row.userId)
+        return { verified: true, emailChanged: true, message: '新邮箱已确认，全部设备已退出；校园认证需重新核验。' }
+      }
       await tx.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date() } })
       return { verified: true }
     })
+  }
+
+  async accountSecurity(user: AuthUser): Promise<AccountSecurityDto> {
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
+    return { mfaEnabled: !!row.mfaEnabledAt, mfaRequired: !!user.permissions.length, recoveryCodesRemaining: row.mfaRecoveryHashes.length, mailAvailable: this.mailAvailable(), passwordMinLength: (await this.settings()).passwordMinLength }
+  }
+
+  async changePassword(user: AuthUser, input: ChangePasswordInput) {
+    await rateLimit(this.prisma, user.id, 'account:reauth', 10, 15 * 60000)
+    const problem = passwordProblem(input.password, [user.username, user.email], (await this.settings()).passwordMinLength)
+    if (problem) throw new BadRequestException(problem)
+    if (input.password === input.currentPassword) throw new BadRequestException('新密码不能与当前密码相同')
+    const passwordHash = await hash(input.password, 12)
+    return this.prisma.$transaction(async (tx) => {
+      await this.auth.reauthenticate(user.id, input, tx)
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, sessionVersion: { increment: 1 }, mfaChallengeHash: null } })
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } })
+      await tx.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } })
+      await tx.emailVerificationToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } })
+      await actionEvent(tx, user.id, 'account_password_changed', 'user', user.id)
+      return { changed: true, message: '密码已修改，全部设备已退出，请重新登录。' }
+    })
+  }
+
+  async changeEmail(user: AuthUser, input: ChangeEmailInput) {
+    await rateLimit(this.prisma, user.id, 'account:reauth', 10, 15 * 60000)
+    if (!this.mailAvailable()) throw new ServiceUnavailableException('邮件服务尚未配置，暂不能修改邮箱')
+    const email = input.email.trim().toLowerCase(), token = randomBytes(48).toString('base64url')
+    await this.prisma.$transaction(async (tx) => {
+      const current = await this.auth.reauthenticate(user.id, input, tx)
+      if (email === current.email.toLowerCase()) throw new BadRequestException('新邮箱与当前邮箱相同')
+      if (await tx.user.count({ where: { email: { equals: email, mode: 'insensitive' } } })) throw new ConflictException('新邮箱已被使用')
+      await tx.emailVerificationToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } })
+      await tx.emailVerificationToken.create({ data: { userId: user.id, tokenHash: digest(token), previousEmail: current.email, newEmail: email, expiresAt: new Date(Date.now() + 30 * 60_000) } })
+    })
+    try { await this.send(email, token, true) } catch (error) {
+      await this.prisma.emailVerificationToken.updateMany({ where: { tokenHash: digest(token), usedAt: null }, data: { usedAt: new Date() } })
+      throw error
+    }
+    return { message: '确认邮件已发往新地址。确认前原邮箱保持不变；确认后全部设备退出，并重新核验校园身份。' }
   }
 }

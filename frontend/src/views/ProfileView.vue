@@ -90,6 +90,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <RouterLink class="button secondary small" to="/account/security">账号安全</RouterLink>
   <nav class="community-profile-links"><RouterLink :to="`/community/user/${auth.user?.username}`">我的社区主页</RouterLink><RouterLink :to="`/community/user/${auth.user?.username}?tab=topics`">关注的话题</RouterLink><RouterLink :to="`/community/user/${auth.user?.username}?tab=following`">关注的人</RouterLink><RouterLink to="/bookmarks">我的收藏与笔记</RouterLink><RouterLink to="/notifications">社区通知</RouterLink></nav>
   <div class="page-container profile-page">
     <section class="profile-hero">

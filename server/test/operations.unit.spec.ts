@@ -23,7 +23,7 @@ describe('长期运行边界', () => {
   })
   it('学生与普通编辑不能读取运维详情', () => {
     const guard = new PermissionsGuard(new Reflector())
-    const context = (permissions: string[]) => ({ getHandler: () => PersistenceController.prototype.operationsStatus, getClass: () => PersistenceController, switchToHttp: () => ({ getRequest: () => ({ user: { permissions } }) }) })
+    const context = (permissions: string[]) => ({ getHandler: () => PersistenceController.prototype.operationsStatus, getClass: () => PersistenceController, switchToHttp: () => ({ getRequest: () => ({ user: { permissions, sessionClient: 'admin', mfaVerified: true } }) }) })
     expect(() => guard.canActivate(context([]) as never)).toThrow()
     expect(() => guard.canActivate(context(['settings.read']) as never)).toThrow()
     expect(guard.canActivate(context(['platform.manage']) as never)).toBe(true)

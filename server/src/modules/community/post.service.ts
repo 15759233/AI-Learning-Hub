@@ -76,6 +76,7 @@ export class CommunityPostService {
     if (current && input.expectedRevision === undefined) throw new BadRequestException('编辑动态必须提供 expectedRevision')
     if (current && !['draft', 'published', 'pending_review'].includes(current.status)) throw new ForbiddenException('当前状态的内容暂不可编辑')
     if (input.visibility === 'school' && !viewer.schoolId) throw new BadRequestException('未认证学校，不能发布同校内容')
+    if (input.portalConsent && audit && audit.actorId !== userId) throw new ForbiddenException('只有作者本人可以授权匿名门户展示')
     const coverFileId = input.coverFileId === undefined ? current?.coverFileId || null : input.coverFileId
     if (coverFileId && !await this.prisma.fileRecord.count({ where: { quarantinedAt: null, id: coverFileId, uploadedBy: userId, mimeType: { in: ['image/png', 'image/jpeg', 'image/webp'] }, extension: { in: ['.png', '.jpg', '.jpeg', '.webp'] }, size: { gt: 0, lte: 5 * 1024 * 1024 } } })) throw new BadRequestException('封面必须由本人上传且为不超过 5MB 的 PNG、JPEG 或 WebP')
     const contribution: ResourceContributionInput | undefined = input.contribution || (current?.contribution ? {
@@ -155,11 +156,12 @@ export class CommunityPostService {
       const publishing = status === 'published' && latest?.status !== 'published'
       if (input.status === 'published' && latest?.status !== 'published') await this.visibility.consumeQuota(tx, userId, 'post', ip)
       const oldTopicIds = current ? (await tx.communityPostTopic.findMany({ where: { postId: current.id } })).map((row) => row.topicId) : []
-      const data = { authorId: userId, postType: input.type, status, visibility: input.visibility, schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), coverFileId, contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
+      const data = { authorId: userId, postType: input.type, status, visibility: input.visibility, portalConsent: input.portalConsent === true && input.visibility === 'public', schoolId: viewer.schoolId, title: input.title?.trim() || null, body: plainText, plainText, contentBlocks: json(clean), coverFileId, contentHash, sourceType: input.sourceType || null, sourceId: input.sourceId || null, publishedAt: status === 'published' ? current?.publishedAt || new Date() : null, ...(id ? { editedAt: new Date() } : {}) }
       if (latest) await postRevision(tx, latest.id, userId, 'user', '编辑前版本')
       const saved = id ? await tx.communityPost.update({ where: { id, revision: latest!.revision }, data: { ...data, revision: { increment: 1 } } }) : await tx.communityPost.create({ data })
       if (detection) await this.detection.record(tx, { type: 'post', id: saved.id, revision: saved.revision, authorId: userId, submittedById: audit?.actorId || userId }, detection)
       else await tx.contentReview.updateMany({ where: { targetType: 'post', targetId: saved.id, status: 'pending' }, data: { status: 'superseded' } })
+      if ((current?.portalConsent || false) !== saved.portalConsent) await actionEvent(tx, audit?.actorId || userId, 'portal_consent_changed', 'post', saved.id, { allowed: saved.portalConsent, revision: saved.revision }, audit ? 'admin-web' : 'student-web')
       if (normalizedContribution) {
         await tx.resourceContribution.upsert({
           where: { postId: saved.id },
@@ -261,7 +263,7 @@ export class CommunityPostService {
     const publicLabs = await this.refs.resolveMany(runs.map((run) => ({ type: 'lab', id: run.labId })), userId)
     const runRefs = new Map(runs.map((run) => [run.id, publicLabs.get(`lab:${run.labId}`)]))
     return rows.map((row) => ({
-      id: row.id, revision: row.revision, type: row.postType, status: row.status, visibility: row.visibility, title: row.title,
+      id: row.id, revision: row.revision, type: row.postType, status: row.status, visibility: row.visibility, portalConsent: row.portalConsent, title: row.title,
       mediaCount: (row.contentBlocks as CommunityContentBlock[]).filter((block) => block.type === 'image').length + (row.coverFileId ? 1 : 0),
       body: row.body, bodyPreview: row.plainText.slice(0, 320), contentBlocks: row.contentBlocks as CommunityContentBlock[], coverFileId: row.coverFileId,
       author: authorDto(row.author),

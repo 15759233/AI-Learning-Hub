@@ -128,12 +128,13 @@ export class HomepageService {
       let fifthIssue = !fifth || fifth.targetType !== 'community_post' ? '缺少社区帖子快照' : ''
       if (!fifthIssue && fifth!.targetId === firstPost?.targetId) fifthIssue = '社区帖子快照与第1张重复'
       if (!fifthIssue) {
-        const post = await tx.communityPost.findUnique({ where: { id: fifth!.targetId }, select: { status: true, visibility: true, deletedAt: true, publishedAt: true, author: { select: { status: true } } } })
+        const post = await tx.communityPost.findUnique({ where: { id: fifth!.targetId }, select: { status: true, visibility: true, portalConsent: true, deletedAt: true, publishedAt: true, author: { select: { status: true } } } })
         fifthIssue = !post ? '社区帖子不存在'
           : post.deletedAt ? '社区帖子已删除'
             : post.status === 'hidden' ? '社区帖子已隐藏'
               : post.status !== 'published' || !post.publishedAt ? '社区帖子未发布'
-                : post.visibility !== 'public' ? '社区帖子非公开'
+                : post.visibility !== 'public' ? '社区帖子非社区内公开'
+                  : !post.portalConsent ? '作者尚未授权匿名门户展示'
                   : post.author.status !== 'active' ? '帖子作者已失效' : ''
       }
       if (fifthIssue) throw new BadRequestException(`首页存在配置未完成模块：${hero.name}（${fifthIssue}）`)
@@ -197,7 +198,7 @@ export class HomepageService {
           if (!fifth || fifth.targetType !== 'community_post' || earlierPostIds.includes(fifth.slug)) {
             items = items.filter((item) => item.slot !== 4)
             const fallback = await this.prisma.communityPost.findFirst({
-              where: { id: { notIn: earlierPostIds }, ...visiblePublicPost() },
+              where: { id: { notIn: earlierPostIds }, ...visiblePublicPost(), portalConsent: true },
               orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
               select: { id: true },
             })
@@ -288,7 +289,7 @@ export class HomepageService {
 
   async contentOptions(type: string) {
     if (!['community_post', 'community_topic', 'community_user', 'course', 'lab', 'article', 'resource'].includes(type)) throw new BadRequestException('不支持的内容类型')
-    const rows = type === 'community_post' ? await this.prisma.communityPost.findMany({ where: visiblePublicPost(), orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], select: { id: true }, take: 100 })
+    const rows = type === 'community_post' ? await this.prisma.communityPost.findMany({ where: { ...visiblePublicPost(), portalConsent: true }, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], select: { id: true }, take: 100 })
       : type === 'community_topic' ? await this.prisma.communityTopic.findMany({ where: { status: 'active' }, select: { id: true }, take: 100 })
         : type === 'community_user' ? await this.prisma.user.findMany({ where: { ...visibleProfile(), communityProfile: { isNot: null } }, select: { id: true }, take: 100 })
           : type === 'course' ? await this.prisma.course.findMany({ where: { status: 'published', deletedAt: null }, select: { id: true }, take: 100 })

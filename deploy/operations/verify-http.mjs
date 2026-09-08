@@ -4,18 +4,23 @@ import { PrismaClient } from '@prisma/client'
 import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 const prisma = new PrismaClient()
+const load = createRequire(import.meta.url)
+const securedAuth = existsSync(process.cwd() + '/dist/common/deployment-security.js')
 const base = 'http://127.0.0.1:3000/api/v1'
 const checks = []
 let stage = 'readiness'
 async function json(path, token, init = {}) {
-  const response = await fetch(base + path, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...init.headers }, signal: AbortSignal.timeout(10000) })
+  const response = await fetch(base + path, { ...init, headers: { 'content-type': 'application/json', origin: process.env[path.startsWith('/admin-auth/') ? 'ADMIN_WEB_URL' : 'FRONTEND_URL'] || 'http://127.0.0.1:3000', ...(token ? { authorization: `Bearer ${token}` } : {}), ...init.headers }, signal: AbortSignal.timeout(10000) })
   const body = await response.json()
   assert.equal(response.status, 200 + (init.method === 'POST' ? 1 : 0), '恢复接口 HTTP 状态异常')
   assert.equal(body.code, 0, '恢复接口业务状态异常')
   return body.data
 }
 try {
+  const database = new URL(process.env.DATABASE_URL)
+  assert(database.pathname === '/drill' && /^aihub-drill-[a-f0-9]{12}-db$/.test(database.hostname), '仅允许本次隔离恢复数据库')
   let ready = false
   for (let i = 0; i < 60; i++) {
     try { const response = await fetch(base + '/health', { signal: AbortSignal.timeout(2000) }); if (response.ok) { ready = true; break } } catch { /* 等待应用就绪 */ }
@@ -49,7 +54,21 @@ try {
   }
   checks.push('student-admin-static-and-proxy')
   stage = 'existing-login'
-  const login = async role => json('/auth/login', '', { method: 'POST', body: JSON.stringify({ identifier: input.credentials[`${role}Identifier`], password: input.credentials[`${role}Password`], remember: false }) })
+  const login = async role => {
+    const identifier = input.credentials[`${role}Identifier`]
+    const result = await json(securedAuth && role === 'admin' ? '/admin-auth/login' : '/auth/login', '', { method: 'POST', body: JSON.stringify({ identifier, password: input.credentials[`${role}Password`], remember: false }) })
+    if (!result.mfaRequired) return result
+    const user = await prisma.user.findFirstOrThrow({ where: { OR: [{ username: { equals: identifier, mode: 'insensitive' } }, { email: { equals: identifier, mode: 'insensitive' } }] } })
+    // 仅在无端口的恢复副本核对被备份的MFA密文及密钥；不改变线上管理员。
+    const secret = result.secret || load(process.cwd() + '/dist/modules/auth/mfa-crypto.js').decryptMfa(user.mfaSecretEncrypted, process.env.MFA_DATA_KEY, user.id)
+    const waitUntil = Date.now() + 35_000
+    while (user.mfaLastTimeStep !== null && Math.floor(Date.now() / 30000) <= user.mfaLastTimeStep) {
+      if (Date.now() >= waitUntil) throw new Error('恢复副本 MFA 时间步异常，请核对时钟')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    const code = await load('otplib').generate({ secret })
+    return json('/admin-auth/mfa', '', { method: 'POST', body: JSON.stringify({ challenge: result.challenge, code, remember: false }) })
+  }
   const student = await login('student'), admin = await login('admin')
   assert(student.user.id && admin.user.id)
   checks.push('existing-student-and-admin-login')

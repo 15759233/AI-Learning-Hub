@@ -35,9 +35,9 @@ def query(container, sql):
     return run(['docker', 'exec', '-i', container, 'psql', '-U', 'drill', '-d', 'drill', '-XqAt', '-v', 'ON_ERROR_STOP=1'], input=sql.encode(), timeout=120).decode().strip()
 
 
-def validate_clone(container, manifest, after_migration=False):
+def validate_clone(container, manifest, after_migration=False, columns=None):
     expected = sorted([row for row in manifest['tables'] if not after_migration or row['table'] != '_prisma_migrations'], key=lambda row: row['table'])
-    actual = sorted([json.loads(line) for line in query(container, fingerprint_sql([x['table'] for x in expected])).splitlines()], key=lambda row: row['table'])
+    actual = sorted([json.loads(line) for line in query(container, fingerprint_sql([x['table'] for x in expected], columns)).splitlines()], key=lambda row: row['table'])
     if actual != expected:
         changed = [row['table'] for row in expected if row not in actual]
         raise RuntimeError('恢复库全表行数或摘要不一致：' + ','.join(changed))
@@ -98,14 +98,22 @@ def drill(config):
             if completed.returncode:
                 raise RuntimeError('隔离数据库恢复失败')
         result['database'] = validate_clone(db, manifest)
+        old_columns = json.loads(query(db, "SELECT json_object_agg(table_name,cols) FROM (SELECT table_name,json_agg(column_name ORDER BY ordinal_position) cols FROM information_schema.columns WHERE table_schema='public' GROUP BY table_name) x"))
+        security_upgrade = 'mfa_secret_encrypted' not in old_columns['users']
+        if security_upgrade:
+            query(db, 'CREATE TABLE _aihub_drill_revocations AS SELECT id,revoked_at FROM refresh_tokens WHERE revoked_at IS NOT NULL')
+            stable_refresh = [column for column in old_columns['refresh_tokens'] if column != 'revoked_at']
+            refresh_before = json.loads(query(db, fingerprint_sql(['refresh_tokens'], {'refresh_tokens': stable_refresh})))
         # 原环境文件作为输入，连接地址最后覆盖到随机命名的隔离数据库。
         api_env = directory / 'api.env'
         api_env.write_text(env_file.read_text().rstrip() + '\n' + '\n'.join([
             'DATABASE_URL=postgresql://drill:' + secret.read_text() + '@' + db + ':5432/drill',
-            'NODE_ENV=test', 'LOAD_DEMO_DATA=false', 'PORT=3000', 'STORAGE_DRIVER=local',
+            'NODE_ENV=test', 'DEPLOYMENT_PROFILE=experience', 'VITE_DATA_MODE=api', 'LOAD_DEMO_DATA=false', 'PORT=3000', 'STORAGE_DRIVER=local',
             'STORAGE_LOCAL_PATH=/workspace/server/var/uploads', 'OPS_STATE_DIRECTORY=/tmp/operations',
             'SMTP_HOST=', 'SMTP_FROM=', 'MEDIA_CLAMSCAN_PATH=', 'VIDEO_PROCESSING_ENABLED=false', 'COOKIE_SECURE=false',
-            'CORS_ORIGINS=http://127.0.0.1:3000', 'TRUSTED_PROXY_CIDRS=',
+            'FRONTEND_URL=http://127.0.0.1:3000', 'ADMIN_WEB_URL=http://127.0.0.1:3000',
+            'CORS_ORIGINS=http://127.0.0.1:3000', 'TRUSTED_PROXY_CIDRS=', 'ADMIN_NETWORK_CIDRS=127.0.0.1/32,::1/128',
+            *([] if any(line.startswith('MFA_DATA_KEY=') and line.split('=', 1)[1] for line in env_file.read_text().splitlines()) else ['MFA_DATA_KEY=' + secrets.token_hex(32)]),
         ]) + '\n')
         api_env.chmod(0o600)
         base = ['docker', 'run', '--label', 'aihub.drill=' + name, '--network', name, '--env-file', str(api_env),
@@ -118,19 +126,33 @@ def drill(config):
         if b'No pending migrations' not in second:
             raise RuntimeError('重复迁移没有得到无待执行项结论')
         result['migrationRepeatNoop'] = True
-        result['afterMigrationPreservation'] = validate_clone(db, manifest, after_migration=True)
+        expected_after = {**manifest, 'tables': list(manifest['tables'])}
+        if security_upgrade:
+            installed = query(db, "SELECT count(*) FROM information_schema.columns WHERE table_name='users' AND column_name='mfa_secret_encrypted'") == '1'
+            if installed:
+                if query(db, "SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL") != '0' or query(db, "SELECT count(*) FROM _aihub_drill_revocations old LEFT JOIN refresh_tokens current ON old.id=current.id WHERE current.id IS NULL OR old.revoked_at IS DISTINCT FROM current.revoked_at") != '0':
+                    raise RuntimeError('安全迁移未正确撤销旧会话或改写了已有撤销记录')
+                old_columns['refresh_tokens'] = stable_refresh
+                expected_after['tables'] = [refresh_before if row['table'] == 'refresh_tokens' else row for row in manifest['tables']]
+                result['legacySessionsRevoked'] = True
+            query(db, 'DROP TABLE _aihub_drill_revocations')
+        result['afterMigrationPreservation'] = validate_clone(db, expected_after, after_migration=True, columns=old_columns)
         result['applications'] = []
         verifier = Path(__file__).with_name('verify-http.mjs').read_text()
         for key in ['candidate_image', 'previous_image']:
             phase = key.split('_')[0]
             app = name + '-' + phase
             run([*base, '-d', '--name', app, '--network-alias', 'server', images[key]])
+            app_ip = json.loads(run(['docker', 'inspect', app]).decode())[0]['NetworkSettings']['Networks'][name]['IPAddress']
             frontends = []
             phase_containers = [app]
             for frontend in ['student', 'admin']:
                 container = name + '-' + phase + '-' + frontend
                 run(['docker', 'run', '-d', '--name', container, '--label', 'aihub.drill=' + name, '--network', name,
-                     '--memory', '256m', '--cpus', '0.5', '--pids-limit', '64', images[phase + '_' + frontend + '_image']])
+                     '--memory', '256m', '--cpus', '0.5', '--pids-limit', '64',
+                     '-e', 'FRONTEND_URL=http://127.0.0.1:3000', '-e', 'ADMIN_WEB_URL=http://127.0.0.1:3000',
+                     '-e', 'EXTERNAL_PROXY_CIDRS=', '-e', 'ADMIN_NETWORK_CIDRS=' + app_ip + '/32,127.0.0.1/32',
+                     images[phase + '_' + frontend + '_image']])
                 phase_containers.append(container)
                 frontends.append('http://' + container)
             payload = {'credentials': identity, 'previous': key == 'previous_image', 'frontends': frontends}

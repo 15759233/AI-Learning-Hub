@@ -7,6 +7,7 @@ services:
       - ${OPS_DIRECTORY:?required}/runtime:/workspace/server/var/operations/runtime
       - ${OPS_DIRECTORY:?required}/backup:/workspace/server/var/operations/backup:ro
   backup:
+    networks: [data, edge]
     profiles: [operations]
     image: ai-learning-hub-operations:${OPS_IMAGE_TAG:?required}
     build:
