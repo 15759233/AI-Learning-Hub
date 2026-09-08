@@ -1,11 +1,21 @@
 name: ai-learning-hub
 
+x-logging: &bounded-logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "5"
+
 x-server-build: &server-build
   context: ../..
   dockerfile: server/Dockerfile
 
 services:
   postgres:
+    logging: *bounded-logging
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 128
     image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
     restart: unless-stopped
     environment:
@@ -55,6 +65,7 @@ services:
         condition: service_completed_successfully
 
   server:
+    logging: *bounded-logging
     init: true
     cpus: 2.0
     mem_limit: 2g
@@ -84,6 +95,10 @@ services:
       start_period: 20s
 
   student-web:
+    logging: *bounded-logging
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
     image: ai-learning-hub-student:local
     build:
       context: ../..
@@ -106,6 +121,10 @@ services:
       start_period: 10s
 
   admin-web:
+    logging: *bounded-logging
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
     image: ai-learning-hub-admin:local
     build:
       context: ../..

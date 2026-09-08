@@ -176,6 +176,7 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([expiresAt])
   @@map("password_reset_tokens")
 }
 
@@ -189,6 +190,7 @@ model EmailVerificationToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([expiresAt])
   @@map("email_verification_tokens")
 }
 
@@ -197,6 +199,7 @@ model RegistrationThrottle {
   attempts    Int      @default(1)
   expiresAt   DateTime @map("expires_at")
 
+  @@index([expiresAt])
   @@map("registration_throttles")
 }
 
@@ -276,6 +279,7 @@ model RefreshToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([expiresAt])
   @@map("refresh_tokens")
 }
 
@@ -1611,6 +1615,7 @@ model OperationLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([actorId, createdAt])
+  @@index([method, createdAt])
   @@map("operation_logs")
 }
 

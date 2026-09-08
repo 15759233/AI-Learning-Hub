@@ -231,9 +231,12 @@ export abstract class StorageBase extends StorageService implements OnModuleInit
 
   async delete(fileId: string) {
     await this.prisma.$transaction(async (tx) => {
+      // 备份持有排他锁时只等待物理删除；普通上传和业务写入不受此锁影响。
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('operations-backup', 0))::text`
       await lockFileReferences(tx)
       const file = await tx.fileRecord.findUnique({ where: { id: fileId } })
       if (!file) return
+      if (file.quarantinedAt) throw new BadRequestException('隔离文件须按批准的安全保存规则处理，不能自动清理')
       if (await fileReferenced(tx, fileId)) throw new BadRequestException('文件仍被业务内容或历史版本引用，不能清理')
       if (file.storageDriver !== this.driver) throw new BadRequestException('文件存储驱动与当前配置不一致')
       await this.removeObject(file.objectKey)

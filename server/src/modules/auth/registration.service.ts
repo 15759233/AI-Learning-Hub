@@ -103,10 +103,15 @@ export class RegistrationService {
       ...(this.config.get('SMTP_USER') ? { auth: { user: this.config.get<string>('SMTP_USER'), pass: this.config.get<string>('SMTP_PASSWORD') } } : {}),
       connectionTimeout: 8000, socketTimeout: 10000, logger: false, debug: false,
     })
+    let delivered = false
     try {
       await transport.sendMail({ from: this.config.getOrThrow<string>('SMTP_FROM'), to: email, subject: verify ? '验证学习账号邮箱' : '重置学习账号密码', text: `请打开以下链接${verify ? '验证邮箱' : '重置密码'}：\n${url.href}\n链接30分钟内有效且仅可使用一次。若非本人操作，请忽略。` })
+      delivered = true
     } catch { throw new ServiceUnavailableException('邮件通道暂不可用，请稍后再试') }
-    finally { transport.close() }
+    finally {
+      transport.close()
+      await this.prisma.operationLog.create({ data: { method: 'MAIL', path: '/internal/mail/delivery', result: delivered ? 'success' : 'failed' } }).catch(() => { this.logger.error('邮件送达状态记录失败') })
+    }
   }
   async register(input: RegisterDto, ip: string, key?: string) {
     if (Buffer.byteLength(input.password, 'utf8') > 72) throw new BadRequestException('密码 UTF-8 长度不能超过72字节')
