@@ -149,12 +149,12 @@ class Snapshot:
 
 def backup(config, env=None):
     env = dict(os.environ if env is None else env)
-    validate_repository(config, env)
     state = Path(config['state_dir']) / 'backup.json'
     started = time.time()
     previous = json.loads(state.read_text()) if state.exists() else {}
     private_json(state, {**previous, 'lastAttemptAt': started, 'status': 'running'})
     try:
+        validate_repository(config, env)
         # 私有暂存区只存 DB 与清单；媒体直接流式进入 restic，避免复制整个视频库。
         stage = Path(config['stage_dir'])
         stage.mkdir(parents=True, exist_ok=True, mode=0o700)

@@ -5,11 +5,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backup import Snapshot, fingerprint_sql, media_path, private_json, restore, validate_repository, verify_media, verify_remote_file
+from backup import Snapshot, backup, fingerprint_sql, media_path, private_json, restore, validate_repository, verify_media, verify_remote_file
 from monitor import problems, transition, notify_wecom
 
 
 class OperationsTests(unittest.TestCase):
+    def test_configuration_failure_marks_attempt_failed_immediately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('backup.validate_repository', side_effect=ValueError('配置失效')), self.assertRaises(ValueError):
+                backup({'state_dir': directory})
+            self.assertEqual(json.loads((Path(directory) / 'backup.json').read_text())['status'], 'failed')
+
     def test_remote_readback_rejects_extra_bytes_and_stalled_process(self):
         import subprocess
         import sys
