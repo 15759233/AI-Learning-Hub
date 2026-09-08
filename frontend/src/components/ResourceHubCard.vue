@@ -32,7 +32,7 @@ const duration = computed(() => {
           <span>{{ item.author.displayName }}</span>
         </RouterLink>
         <span v-else>平台资源</span>
-        <small><AppIcon name="play" :size="14" />{{ item.stats.views.toLocaleString() }} · {{ relativeTime(item.publishedAt) }}</small>
+        <small :title="item.kind === 'video' ? '有效播放次数' : '浏览次数'"><AppIcon :name="item.kind === 'video' ? 'play' : 'eye'" :size="14" />{{ item.stats.views.toLocaleString() }} · {{ relativeTime(item.publishedAt) }}</small>
         <button v-if="item.postId && showWatchLater" type="button" title="稍后再看" aria-label="加入稍后再看" @click="$emit('watchLater', item.postId)"><AppIcon name="bookmark" :size="16" /></button>
       </footer>
     </div>

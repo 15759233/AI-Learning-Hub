@@ -7,6 +7,12 @@ import type { ContentDetectionInput, ContentDetectionRule } from '@ai-learning-h
 import { USERNAME_PATTERN } from '../auth/username'
 const communityPostTypes = Object.values(DatabasePostType)
 
+export class CommentQueryDto {
+  @IsOptional() @IsString() @Length(1, 100) parentId?: string
+  @IsOptional() @IsString() @Length(1, 100) cursor?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 25
+}
+
 export class ContentPolicyDto {
   @IsInt() @Min(1) expectedVersion!: number
   @IsOptional() @IsArray() @ArrayMaxSize(100) rules?: ContentDetectionRule[]

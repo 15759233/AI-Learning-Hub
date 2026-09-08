@@ -131,7 +131,10 @@ export interface CommunityCommentDto {
   id: string; postId: string; author: CommunityAuthorDto; parentId: string | null; rootId: string | null
   body: string; contentBlocks: CommunityContentBlock[]; deleted: boolean; likes: number
   liked: boolean; accepted: boolean; createdAt: string
+  replyCount?: number
 }
+export interface CommunityCommentPageDto { items: CommunityCommentDto[]; nextCursor: string | null }
+export interface CommunityCommentQuery { parentId?: string; cursor?: string; limit?: number }
 export interface CommunityCommentInput { contentBlocks: CommunityContentBlock[]; parentId?: string; expectedRevision?: number }
 export interface CommunityLearningSummary { id: string; title: string; route: string; type?: LearningContentType; progress?: number; summary?: string }
 export interface CommunityContextDto {

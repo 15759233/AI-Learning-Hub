@@ -102,11 +102,14 @@ describe('资源播放交付', () => {
 
   it('创作工作室将待复核投稿与公开作品、私人草稿分开返回', async () => {
     const rows = ['published', 'draft', 'pending_review'].map((status) => ({ id: `synthetic-${status}`, status }))
-    const prisma = { communityPost: { findMany: vi.fn(async () => rows) } }
+    const prisma = { communityPost: {
+      findMany: vi.fn(async ({ where }: { where: { AND: Array<{ status?: string }> } }) => rows.filter((row) => row.status === where.AND[1].status)),
+      groupBy: vi.fn(async () => rows.map((row) => ({ status: row.status, _count: { _all: 1 } }))), count: vi.fn(async () => 0),
+    } }
     const service = hub(prisma)
-    Object.assign(service, { posts: { mapMany: vi.fn(async () => rows) }, mapContributions: vi.fn(async () => rows.map((row) => ({ postId: row.id, mediaStatus: 'ready' }))) })
-    expect(await service.studio('synthetic-owner')).toEqual({ items: [{ postId: 'synthetic-published', mediaStatus: 'ready' }], drafts: [rows[1]], pendingReview: [rows[2]], processing: [] })
-    expect(prisma.communityPost.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { authorId: 'synthetic-owner', deletedAt: null, contribution: { isNot: null } } }))
+    Object.assign(service, { posts: { mapMany: vi.fn(async () => rows) }, mapContributions: vi.fn(async () => rows.map((row) => ({ id: row.id, postId: row.id, mediaStatus: 'ready' }))) })
+    expect(await service.studio('synthetic-owner')).toEqual({ items: [{ id: 'synthetic-published', postId: 'synthetic-published', mediaStatus: 'ready' }], drafts: [rows[1]], pendingReview: [rows[2]], processing: [], counts: { items: 1, drafts: 1, pendingReview: 1, processing: 0 }, nextCursors: { items: null, drafts: null, pendingReview: null, processing: null } })
+    expect(prisma.communityPost.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { AND: [{ authorId: 'synthetic-owner', deletedAt: null, contribution: { isNot: null } }, { status: 'published' }] }, take: 19 }))
   })
 
   it('待审资源的旧封面令牌不能凭文件 public 标记继续读取，作者仍可预览', async () => {

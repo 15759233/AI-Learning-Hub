@@ -1,7 +1,8 @@
-import type { CreatorContentSummaryDto, LearningCollectionDto, LearningCollectionInput, LearningCollectionSummaryDto, ResourceContributionDetailDto, ResourceHubCategoryDto, ResourceHubHomeDto, ResourceHubListDto, VideoAssetDto, VideoPlaybackDto, WatchProgressInput } from '@ai-learning-hub/contracts'
+import type { CreatorContentSummaryDto, ResourceHubCreatorDto, LearningCollectionDto, LearningCollectionInput, LearningCollectionSummaryDto, ResourceContributionDetailDto, ResourceHubCategoryDto, ResourceHubHomeDto, ResourceHubListDto, VideoAssetDto, VideoPlaybackDto, WatchProgressInput } from '@ai-learning-hub/contracts'
 import { ApiError, dataMode, request, restoreRefresh, writeRequest } from './client'
 import { mockResourceHub } from './resourceHub.mock'
 import { randomId } from './random-id'
+import type { CollectionPageQuery, CreatorContentSection, ResourceHubPageDto } from '@ai-learning-hub/contracts'
 import type { FileScanDto, StorageCapacityDto } from '@ai-learning-hub/contracts'
 
 const call = <T>(path: string, method = 'GET', body?: unknown) => dataMode === 'api'
@@ -52,17 +53,17 @@ export const resourceHubApi = {
   categories: () => call<ResourceHubCategoryDto[]>('/categories'),
   list: (query: { keyword?: string; category?: string; kind?: string; sort?: string; cursor?: string; limit?: number } = {}) => call<ResourceHubListDto>(`/items?${new URLSearchParams(Object.entries(query).flatMap(([key, value]) => value === undefined || value === '' ? [] : [[key, String(value)]]))}`),
   detail: (postId: string) => call<ResourceContributionDetailDto>(`/contributions/${encodeURIComponent(postId)}`),
-  studio: () => call<CreatorContentSummaryDto>('/studio'),
+  studio: (query: { section?: CreatorContentSection; cursor?: string } = {}) => call<CreatorContentSummaryDto>(`/studio?${new URLSearchParams(query)}`),
   capacity: () => call<StorageCapacityDto>('/capacity'),
-  creator: (userId: string) => call<{ items: ResourceHubListDto['items']; collections: LearningCollectionSummaryDto[] }>(`/creators/${encodeURIComponent(userId)}`),
+  creator: (userId: string, query: { kind?: string; cursor?: string; collectionsCursor?: string } = {}) => call<ResourceHubCreatorDto>(`/creators/${encodeURIComponent(userId)}?${new URLSearchParams(query)}`),
   video: (assetId: string) => call<VideoAssetDto>(`/videos/${encodeURIComponent(assetId)}`),
   playback: (assetId: string) => call<VideoPlaybackDto>(`/videos/${encodeURIComponent(assetId)}/playback`),
   progress: (assetId: string, input: WatchProgressInput) => call<{ positionSeconds: number; watchedSeconds: number; completed: boolean }>(`/videos/${encodeURIComponent(assetId)}/progress`, 'PUT', input),
   retryVideo: (assetId: string) => call<VideoAssetDto>(`/videos/${encodeURIComponent(assetId)}/retry`, 'POST'),
   uploadVideo: (file: File, progress: (percentage: number) => void) => upload<VideoAssetDto>('/uploads/video', file, progress),
   uploadDocument: (file: File, progress: (percentage: number) => void) => upload<{ id: string; originalName: string; mimeType: string; size: number; securityScan?: FileScanDto }>('/uploads/document', file, progress),
-  collections: () => call<LearningCollectionSummaryDto[]>('/collections'),
-  collection: (id: string) => call<LearningCollectionDto>(`/collections/${encodeURIComponent(id)}`),
+  collections: (cursor = '') => call<ResourceHubPageDto<LearningCollectionSummaryDto>>(`/collections?${new URLSearchParams({ cursor })}`),
+  collection: (id: string, query: CollectionPageQuery = {}) => call<LearningCollectionDto>(`/collections/${encodeURIComponent(id)}?${new URLSearchParams({ ...query })}`),
   createCollection: (input: LearningCollectionInput) => call<LearningCollectionDto>('/collections', 'POST', input),
   updateCollection: (id: string, input: LearningCollectionInput) => call<LearningCollectionDto>(`/collections/${encodeURIComponent(id)}`, 'PATCH', input),
   addToCollection: (id: string, postId: string) => call<LearningCollectionDto>(`/collections/${encodeURIComponent(id)}/items`, 'POST', { postId }),

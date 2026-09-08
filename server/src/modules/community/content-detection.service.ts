@@ -69,6 +69,7 @@ export class ContentDetectionService {
     await tx.contentReview.updateMany({ where: { targetType: target.type, targetId: target.id, status: 'pending' }, data: { status: 'superseded' } })
     return tx.contentReview.create({ data: {
       targetType: target.type, targetId: target.id, contentRevision: target.revision,
+      postId: target.type === 'post' ? target.id : null,
       authorId: target.authorId, submittedById: target.submittedById, ruleVersion: result.ruleVersion,
       action: result.action, status: result.action === 'review' ? 'pending' : 'not_required',
       findings: result as unknown as Prisma.InputJsonValue, payload,

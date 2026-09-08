@@ -17,7 +17,7 @@ import { SignalsService } from '../signals/signals.service'
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.types'
 import { FileAccessService } from '../storage/file-access.service'
 import { BindingDto, CommentDto, CommunityQueryDto, FeedbackDto, FeedUpdatesDto, ImpressionsDto, InterestsDto, PostDto, ProfileDto, ProfileMediaDto, ProfilePinDto, ProfileRelationQueryDto, ProfileTimelineQueryDto, ReportDto, SignalDto } from './community.dto'
-import { OnboardingDto, SearchDto, UsernameDto } from './community.dto'
+import { CommentQueryDto, OnboardingDto, SearchDto, UsernameDto } from './community.dto'
 import { CommunitySearchService } from './search.service'
 import type { CommunityDraftDto, CommunityPostInput } from '@ai-learning-hub/contracts'
 import { createHash } from 'node:crypto'
@@ -90,7 +90,12 @@ export class CommunityController {
   @Patch('posts/:id') edit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: PostDto, @Headers('idempotency-key') key: string | undefined, @Ip() ip: string) { return this.posts.save(user.id, input, id, undefined, key, ip) }
   @Post('posts/:id/unpublish') unpublish(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.posts.unpublish(user.id, id) }
   @Delete('posts/:id') remove(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.posts.remove(user.id, id) }
-  @Get('posts/:id/comments') commentList(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.comments.list(user.id, id) }
+  @Get('posts/:id/comments') commentList(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query() query: CommentQueryDto) { return this.comments.list(user.id, id, query) }
+  @Get('posts/:id/comments/:commentId') async commentDetail(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('commentId') commentId: string) {
+    const comment = (await this.comments.list(user.id, id, {}, false, commentId)).items[0]
+    if (!comment) throw new BadRequestException('评论不存在或不可见')
+    return comment
+  }
   @Post('posts/:id/comments') commentCreate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto, @Headers('idempotency-key') key: string | undefined, @Ip() ip: string) { return this.comments.save(user.id, id, input, undefined, key, ip) }
   @Patch('comments/:id') async commentEdit(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CommentDto, @Headers('idempotency-key') key: string | undefined, @Ip() ip: string) {
     const comment = await this.prisma.communityComment.findUnique({ where: { id } })

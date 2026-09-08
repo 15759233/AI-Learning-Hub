@@ -93,8 +93,10 @@ try {
   stage = 'comment-read'
   let commentFound = false
   for (const post of posts.slice(0, 20)) {
-    const comments = await json(`/community/posts/${encodeURIComponent(post.id)}/comments`, student.accessToken)
+    const page = await json(`/community/posts/${encodeURIComponent(post.id)}/comments`, student.accessToken)
+    const comments = input.previous && Array.isArray(page) ? page : page.items
     assert(Array.isArray(comments), '评论返回格式不符合现有契约')
+    if (!Array.isArray(page)) assert(page.nextCursor === null || typeof page.nextCursor === 'string', '评论分页游标格式无效')
     if (comments.length) { commentFound = true; break }
   }
   assert(commentFound, '恢复库抽样未覆盖评论，不得把空列表当作验证通过')

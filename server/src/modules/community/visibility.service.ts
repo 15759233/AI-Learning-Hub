@@ -29,10 +29,9 @@ function normalizedQuota(value: unknown, fallback: { limit: number; windowSecond
 @Injectable()
 export class CommunityVisibilityPolicyService {
   constructor(private readonly prisma: PrismaService) {}
-  async adminWhere(tx: Prisma.TransactionClient = this.prisma): Promise<Prisma.CommunityPostWhereInput> {
-    const submitted = await tx.contentReview.findMany({ where: { targetType: 'post' }, select: { targetId: true }, distinct: ['targetId'] })
+  async adminWhere(_tx?: Prisma.TransactionClient): Promise<Prisma.CommunityPostWhereInput> {
     // 复核后隐藏的内容仍归后台管理；从未投稿的私人草稿及其删除记录不进入审核。
-    return { status: { not: 'draft' }, OR: [{ publishedAt: { not: null } }, { id: { in: submitted.map((row) => row.targetId) } }] }
+    return { status: { not: 'draft' }, OR: [{ publishedAt: { not: null } }, { contentReviews: { some: {} } }] }
   }
   async auditAdminRead(actorId: string, targetType: string, targetId: string) {
     await this.prisma.auditLog.create({ data: { actorId, action: 'restricted_content_read', targetType, targetId } })
@@ -163,6 +162,27 @@ export class CommunityVisibilityPolicyService {
         { OR: [{ visibility: 'public' }, ...(viewer.schoolId ? [{ visibility: 'school' as const, schoolId: viewer.schoolId }] : []), ...(ownDrafts ? [{ authorId: userId, status: { in: ['draft' as const, 'pending_review' as const] } }] : [])] },
       ],
     }
+  }
+  // 资源跨表 UNION 的同一公开读取策略；调用方固定使用 community_posts p。
+  // 反馈和处罚保留在数据库内判断，不把所有排除ID加载进应用内存。
+  async publicPostsSql(userId: string): Promise<Prisma.Sql> {
+    const viewer = await this.viewer(userId)
+    return Prisma.sql`
+      p.deleted_at IS NULL AND p.status IN ('published', 'limited')
+      AND (p.visibility = 'public' OR (p.visibility = 'school' AND p.school_id = ${viewer.schoolId}))
+      AND EXISTS (SELECT 1 FROM users u WHERE u.id = p.author_id AND u.status = 'active')
+      AND NOT EXISTS (SELECT 1 FROM community_moderation_actions m
+        WHERE m.subject_id = p.author_id AND m.action = 'ban' AND m.revoked_at IS NULL
+          AND (m.expires_at IS NULL OR m.expires_at > NOW()))
+      AND NOT EXISTS (SELECT 1 FROM community_moderation_actions m
+        WHERE m.post_id = p.id AND m.subject_id IS NOT NULL AND m.action = 'takedown' AND m.revoked_at IS NULL
+          AND (m.expires_at IS NULL OR m.expires_at > NOW()))
+      AND NOT EXISTS (SELECT 1 FROM community_feedback f WHERE
+        (f.user_id = ${userId} AND (
+          (f.feedback_type IN ('block', 'mute_author') AND f.target_id = p.author_id)
+          OR (f.feedback_type IN ('hide', 'not_interested') AND f.target_id = p.id)
+          OR (f.feedback_type = 'not_interested' AND f.post_type = p.post_type)))
+        OR (f.user_id = p.author_id AND f.target_id = ${userId} AND f.feedback_type = 'block'))`
   }
   async assertPost(userId: string, id: string, ownDrafts = false) {
     const post = await this.prisma.communityPost.findFirst({ where: { AND: [await this.where(userId, ownDrafts), { id }] } })

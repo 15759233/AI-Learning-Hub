@@ -1,4 +1,4 @@
-import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentInput, CommunityContextDto, CommunityEligibilityDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationsDto, CommunityProfileTab, CommunityProfileTimelineDto, CommunityProfileUpdateDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
+import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentPageDto, CommunityCommentQuery, CommunityCommentInput, CommunityContextDto, CommunityEligibilityDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationsDto, CommunityProfileTab, CommunityProfileTimelineDto, CommunityProfileUpdateDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
 import { dataMode, request, writeRequest } from './client'
 import { assertMockCommunityWrite, mockCommunity } from './community.mock'
 import { randomId } from './random-id'
@@ -28,7 +28,8 @@ export const communityApi = {
   unpublish: (id: string) => call<{ unpublished: boolean }>(`/posts/${id}/unpublish`, 'POST'),
   remove: (id: string) => call(`/posts/${id}`, 'DELETE'),
   list: (kind: 'posts' | 'bookmarks' | 'user' | 'answers' | 'topic', id = '', query = '') => call<CommunityPostDetailDto[]>(kind === 'user' || kind === 'answers' ? `/users/${encodeURIComponent(id)}/${kind === 'answers' ? 'answers' : 'posts'}` : kind === 'topic' ? `/topics/${encodeURIComponent(id)}/posts` : `/${kind}${query ? `?${query}` : ''}`),
-  comments: (id: string) => call<CommunityCommentDto[]>(`/posts/${id}/comments`),
+  comments: (id: string, query: CommunityCommentQuery = {}) => call<CommunityCommentPageDto>(`/posts/${id}/comments?${new URLSearchParams({ limit: String(query.limit || 25), ...(query.cursor ? { cursor: query.cursor } : {}), ...(query.parentId ? { parentId: query.parentId } : {}) })}`),
+  commentDetail: (postId: string, id: string) => call<CommunityCommentDto>(`/posts/${postId}/comments/${id}`),
   comment: (postId: string, input: CommunityCommentInput, id?: string) => call<CommunityCommentDto>(id ? `/comments/${id}` : `/posts/${postId}/comments`, id ? 'PATCH' : 'POST', input),
   removeComment: (id: string) => call(`/comments/${id}`, 'DELETE'),
   accept: (postId: string, id: string) => call(`/questions/${postId}/accept/${id}`, 'POST'),

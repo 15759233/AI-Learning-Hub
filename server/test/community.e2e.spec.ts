@@ -146,19 +146,53 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     expect(second.status).toBe(201); secondRoot = second.data.id
     const child = await request(`/community/posts/${question}/comments`, a, 'POST', { parentId: root, contentBlocks: [{ type: 'paragraph', text: '谢谢，我会补充可复现的验证步骤。' }] }); reply = child.data.id
     expect(child.status).toBe(201)
-    expect((await request<any[]>(`/community/posts/${question}/comments`, a)).data.map((row) => row.id)).toEqual([root, reply, secondRoot])
+    expect((await request<{ items: any[] }>(`/community/posts/${question}/comments`, a)).data.items.map((row) => row.id)).toEqual([root, secondRoot])
+    expect((await request<{ items: any[] }>(`/community/posts/${question}/comments?parentId=${root}`, a)).data.items.map((row) => row.id)).toEqual([reply])
     expect((await request(`/community/posts/${question}/comments`, a, 'POST', { parentId: reply, contentBlocks: [{ type: 'paragraph', text: '这里不允许第三级回复。' }] })).status).toBe(400)
     expect((await request(`/community/questions/${question}/accept/${root}`, c, 'POST')).status).toBe(403)
     expect((await request(`/community/questions/${question}/accept/${root}`, a, 'POST')).data.question.status).toBe('solved')
   })
   it('删除父评论保留子回复占位并撤销采纳', async () => {
     expect((await request(`/community/comments/${root}`, b, 'DELETE')).status).toBe(200)
-    const rows = (await request<any[]>(`/community/posts/${question}/comments`, a)).data
+    const parents = (await request<{ items: any[] }>(`/community/posts/${question}/comments`, a)).data.items
+    const children = (await request<{ items: any[] }>(`/community/posts/${question}/comments?parentId=${root}`, a)).data.items
+    const rows = parents.flatMap((parent) => [parent, ...children.filter((child) => child.parentId === parent.id)])
     expect(rows.map((row) => row.id)).toEqual([root, reply, secondRoot])
     expect(rows.find((r) => r.id === root)).toMatchObject({ deleted: true, body: '该评论已删除或不可见' })
     expect(rows.find((r) => r.id === reply)).toMatchObject({ deleted: false, parentId: root })
     expect((await request(`/community/posts/${question}`, a)).data.question.status).toBe('open')
     expect((await db.communityPost.findUniqueOrThrow({ where: { id: question } })).commentCount).toBe(2)
+  })
+  it('超过500条的一级评论和单组回复都能翻完，跨讨论游标被拒绝', async () => {
+    const post = await fixture(aId, '分页边界')
+    const createdAt = new Date('2026-01-01T00:00:00Z')
+    const roots = Array.from({ length: 520 }, (_, n) => `${prefix}-root-${String(n).padStart(4, '0')}`)
+    const children = Array.from({ length: 521 }, (_, n) => `${prefix}-reply-${String(n).padStart(4, '0')}`)
+    await db.communityComment.createMany({ data: roots.map((id) => ({ id, postId: post.id, authorId: bId, body: '合成一级评论', contentBlocks: [], createdAt })) })
+    await db.communityComment.createMany({ data: children.map((id) => ({ id, postId: post.id, authorId: cId, parentId: roots[0], rootId: roots[0], body: '合成二级回复', contentBlocks: [], createdAt })) })
+    const readAll = async (parentId?: string) => {
+      const ids: string[] = []
+      let cursor: string | null = null
+      do {
+        const query: URLSearchParams = new URLSearchParams({ limit: '50', ...(parentId ? { parentId } : {}), ...(cursor ? { cursor } : {}) })
+        const result = await request<{ items: Array<{ id: string; parentId: string | null }>; nextCursor: string | null }>(`/community/posts/${post.id}/comments?${query}`, a)
+        expect(result.status).toBe(200)
+        expect(result.data.items.length).toBeLessThanOrEqual(50)
+        expect(result.data.items.every((row) => row.parentId === (parentId || null))).toBe(true)
+        ids.push(...result.data.items.map((row) => row.id)); cursor = result.data.nextCursor
+        expect(ids.length).toBeLessThanOrEqual(521)
+      } while (cursor)
+      return ids
+    }
+    expect(await readAll()).toEqual(roots)
+    expect(await readAll(roots[0])).toEqual(children)
+    await db.communityComment.update({ where: { id: roots[0] }, data: { deletedAt: new Date(), status: 'removed' } })
+    expect((await request(`/community/posts/${post.id}/comments/${roots[0]}`, a)).data).toMatchObject({ deleted: true, contentBlocks: [], replyCount: 521 })
+    expect((await request(`/community/posts/${post.id}/comments/${children[520]}`, a)).data).toMatchObject({ id: children[520], parentId: roots[0], deleted: false })
+    expect((await request(`/community/posts/${post.id}/comments?parentId=${roots[1]}&cursor=${children[0]}`, a)).status).toBe(400)
+    expect((await request(`/community/posts/${question}/comments?cursor=${roots[0]}`, a)).status).toBe(400)
+    expect((await request(`/community/posts/${post.id}/comments?parentId=${children[0]}`, a)).status).toBe(404)
+    expect((await request(`/community/posts/${post.id}/comments?limit=501`, a)).status).toBe(400)
   })
   it('编辑换话题、草稿切换和删除均重算原话题计数', async () => {
     expect((await request(`/community/posts/${question}`, a, 'PATCH', input('换话题', { topicIds: [topicB] }))).status).toBe(200)
@@ -186,7 +220,7 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
     expect((await request(`/community/comments/${comment.id}/like`, b, 'PUT')).status).toBe(404)
     expect((await request(`/community/comments/${comment.id}/report`, b, 'POST', { reason: '侧门举报尝试' })).status).toBe(404)
     expect((await request(`/community/posts/${visiblePost.id}/comments`, b, 'POST', { parentId: comment.id, contentBlocks: [{ type: 'paragraph', text: '侧门回复尝试不能通过。' }] })).status).toBe(404)
-    expect((await request<any[]>(`/community/posts/${visiblePost.id}/comments`, b)).data.find((item) => item.id === comment.id)).toMatchObject({ deleted: true, contentBlocks: [] })
+    expect((await request<{ items: any[] }>(`/community/posts/${visiblePost.id}/comments`, b)).data.items.find((item) => item.id === comment.id)).toMatchObject({ deleted: true, contentBlocks: [] })
     expect((await request(`/community/users/${bId}`, c)).status).toBe(200)
     await request(`/community/users/${noSchoolId}/block`, a, 'POST')
     expect((await request(`/community/users/${aId}`, noSchool)).status).toBe(404)

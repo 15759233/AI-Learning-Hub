@@ -1050,6 +1050,7 @@ model ResourceView {
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([resourceId, createdAt])
+  @@index([createdAt, resourceId])
   @@map("resource_views")
 }
 
@@ -1560,6 +1561,7 @@ model ActivityEvent {
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([eventType, createdAt])
+  @@index([eventType, targetId, createdAt])
   @@index([userId, occurredAt])
   @@index([userId, actionType, occurredAt])
   @@index([targetType, targetId, occurredAt])
@@ -1792,6 +1794,7 @@ model CommunityProfile {
 }
 
 model CommunityPost {
+  contentReviews  ContentReview[]
   coverFileId     String?                 @map("cover_file_id")
   coverFile       FileRecord?             @relation("CommunityPostCover", fields: [coverFileId], references: [id], onDelete: Restrict)
   moderationActions CommunityModerationAction[]
@@ -2036,6 +2039,8 @@ model CommunityComment {
 
   @@index([postId, createdAt])
   @@index([postId, status, createdAt, id])
+  @@index([postId, parentId, createdAt, id])
+  @@index([parentId])
   @@index([authorId, createdAt])
   @@map("community_comments")
 }
@@ -2179,6 +2184,8 @@ model CommunityReport {
 }
 
 model ContentReview {
+  postId          String? @map("post_id")
+  post            CommunityPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
   assignedToId String? @map("assigned_to_id")
   claimedAt DateTime? @map("claimed_at")
   dueAt DateTime @default(dbgenerated("(now() + '2 days'::interval)")) @map("due_at")
@@ -2203,6 +2210,7 @@ model ContentReview {
   reviewedBy      User?    @relation("ContentReviewReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
 
   @@unique([targetType, targetId, contentRevision])
+  @@index([postId])
   @@index([status, createdAt, id])
   @@index([authorId, createdAt])
   @@map("content_reviews")

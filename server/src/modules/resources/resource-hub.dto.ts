@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator'
-import type { LearningCollectionInput, WatchProgressInput } from '@ai-learning-hub/contracts'
+import type { CreatorContentSection, LearningCollectionInput, WatchProgressInput } from '@ai-learning-hub/contracts'
 
 export class ResourceHubQueryDto {
   @IsOptional() @IsString() @MaxLength(120) keyword = ''
@@ -8,7 +8,18 @@ export class ResourceHubQueryDto {
   @IsOptional() @IsIn(['all', 'video', 'article', 'document']) kind: 'all' | 'video' | 'article' | 'document' = 'all'
   @IsOptional() @IsString() @MaxLength(100) authorId = ''
   @IsOptional() @IsIn(['latest', 'popular']) sort: 'latest' | 'popular' = 'latest'
-  @IsOptional() @IsString() @MaxLength(200) cursor = ''
+  @IsOptional() @IsString() @MaxLength(1024) cursor = ''
+  @IsOptional() @IsString() @MaxLength(1024) collectionsCursor = ''
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(48) limit = 18
+}
+
+export class StudioQueryDto extends ResourceHubQueryDto {
+  @IsOptional() @IsIn(['items', 'drafts', 'pendingReview', 'processing']) section?: CreatorContentSection
+}
+
+export class CollectionPageQueryDto {
+  @IsOptional() @IsString() @MaxLength(100) cursor = ''
+  @IsOptional() @IsIn(['before', 'after']) direction: 'before' | 'after' = 'after'
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(48) limit = 18
 }
 

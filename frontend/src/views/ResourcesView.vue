@@ -179,7 +179,7 @@ watch(legacySlug, async (slug) => {
 
       <section v-if="isFiltering" class="resource-results">
         <div class="resource-section-heading"><div><span>搜索与筛选</span><h2>{{ category ? home.categories.find((entry) => entry.code === category)?.name : '全部资源' }}</h2></div><strong>{{ results.length }} 项</strong></div>
-        <div v-if="results.length" class="resource-hub-grid three"><ResourceHubCard v-for="entry in results" :key="entry.id" :item="entry" show-watch-later @watch-later="watchLater" /></div>
+        <div v-if="results.length" class="resource-hub-grid three"><ResourceHubCard v-for="entry in results" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" /></div>
         <div v-else class="inline-empty"><h3>没有匹配的共创资源</h3><p>调整搜索词或内容形态后再试。</p></div>
         <button v-if="nextCursor" class="button secondary resource-load-more" :disabled="loading" @click="search(false, true)">{{ loading ? '读取中…' : '加载更多' }}</button>
       </section>
@@ -189,22 +189,22 @@ watch(legacySlug, async (slug) => {
           <main>
             <section>
               <div class="resource-section-heading"><div><span>值得先看</span><h2>本周精选</h2></div><button class="text-link" @click="selectKind('video')">查看全部<i class="resource-direction-arrow" aria-hidden="true" /></button></div>
-              <div class="resource-hub-grid featured"><ResourceHubCard v-for="entry in home.featured" :key="entry.id" :item="entry" variant="featured" show-watch-later @watch-later="watchLater" /></div>
+              <div class="resource-hub-grid featured"><ResourceHubCard v-for="entry in home.featured" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="featured" show-watch-later @watch-later="watchLater" /></div>
             </section>
             <section v-for="section in home.sections" :key="section.key">
               <div class="resource-section-heading"><div><span>师生共创</span><h2>{{ section.title }}</h2></div><button class="text-link" @click="selectCategory(section.categoryCode || '')">更多内容<i class="resource-direction-arrow" aria-hidden="true" /></button></div>
-              <div class="resource-hub-grid three"><ResourceHubCard v-for="entry in section.items.slice(0, 3)" :key="entry.id" :item="entry" show-watch-later @watch-later="watchLater" /></div>
+              <div class="resource-hub-grid three"><ResourceHubCard v-for="entry in section.items.slice(0, 3)" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" /></div>
             </section>
           </main>
           <aside class="resource-hub-rail">
-            <section><h2>热门榜单</h2><div class="resource-ranking-tabs"><button v-for="entry in [{ key: 'week', label: '本周' }, { key: 'month', label: '本月' }, { key: 'all', label: '总榜' }]" :key="entry.key" :class="{ active: rankingPeriod === entry.key }" @click="rankingPeriod = entry.key as typeof rankingPeriod">{{ entry.label }}</button></div><ol><li v-for="(entry, index) in ranking" :key="entry.id"><b>{{ index + 1 }}</b><RouterLink :to="entry.route"><img v-if="entry.coverUrl" :src="entry.coverUrl" alt="" loading="lazy" /><span><strong>{{ entry.title }}</strong><small><AppIcon name="play" :size="12" />{{ entry.stats.views.toLocaleString() }}</small></span></RouterLink></li></ol></section>
+            <section><h2>热门榜单</h2><div class="resource-ranking-tabs"><button v-for="entry in [{ key: 'week', label: '近7天' }, { key: 'month', label: '近30天' }, { key: 'all', label: '总榜' }]" :key="entry.key" :class="{ active: rankingPeriod === entry.key }" @click="rankingPeriod = entry.key as typeof rankingPeriod">{{ entry.label }}</button></div><ol><li v-for="(entry, index) in ranking" :key="`${entry.sourceType}:${entry.id}`"><b>{{ index + 1 }}</b><RouterLink :to="entry.route"><img v-if="entry.coverUrl" :src="entry.coverUrl" alt="" loading="lazy" /><span><strong>{{ entry.title }}</strong><small><AppIcon name="play" :size="12" />{{ (entry.rankingViews ?? entry.stats.views).toLocaleString() }}</small></span></RouterLink></li></ol></section>
             <section><div class="resource-rail-title"><h2>我的播放列表</h2><RouterLink to="/resources/studio">查看全部</RouterLink></div><RouterLink class="resource-playlist-row" to="/resources/collections/watch-later"><AppIcon name="bookmark" /><span><strong>稍后再看</strong><small>仅自己可见</small></span></RouterLink><RouterLink v-for="entry in home.collections.slice(0, 3)" :key="entry.id" class="resource-playlist-row" :to="`/resources/collections/${entry.id}`"><AppIcon name="folder" /><span><strong>{{ entry.name }}</strong><small>{{ entry.itemCount }} 项 · {{ entry.visibility === 'private' ? '私有' : '社区可见' }}</small></span></RouterLink><RouterLink class="resource-playlist-row" :to="`/community/user/${auth.user?.username || 'student'}?tab=liked`"><AppIcon name="heart" /><span><strong>喜欢的视频</strong><small>{{ home.likedVideos.length }} 项</small></span></RouterLink><button class="button primary full-width" @click="publish('video')"><AppIcon name="upload" :size="16" />上传视频</button></section>
           </aside>
         </div>
 
         <section v-if="home.liveReplay.length" class="resource-live-replay">
           <div class="resource-section-heading"><div><span>课堂与活动</span><h2>直播回放</h2></div></div>
-          <div class="resource-hub-grid replay"><ResourceHubCard v-for="entry in home.liveReplay" :key="entry.id" :item="entry" variant="compact" show-watch-later @watch-later="watchLater" /></div>
+          <div class="resource-hub-grid replay"><ResourceHubCard v-for="entry in home.liveReplay" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="compact" show-watch-later @watch-later="watchLater" /></div>
         </section>
       </template>
     </template>

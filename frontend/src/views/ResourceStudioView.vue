@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CreatorContentSummaryDto, LearningCollectionSummaryDto, ResourceContributionKind } from '@ai-learning-hub/contracts'
-import { onMounted, reactive, ref } from 'vue'
+import type { CreatorContentSection, CreatorContentSummaryDto, LearningCollectionSummaryDto, ResourceContributionKind } from '@ai-learning-hub/contracts'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import AppDialog from '../components/base/AppDialog.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import ResourceHubCard from '../components/ResourceHubCard.vue'
@@ -13,16 +13,41 @@ const community = useCommunityStore()
 const { requireWrite } = useCommunityAccess()
 const studio = ref<CreatorContentSummaryDto | null>(null)
 const collections = ref<LearningCollectionSummaryDto[]>([])
+const collectionsCursor = ref<string | null>(null), loadingMore = ref<string | null>(null)
+let loadEpoch = 0
+onBeforeUnmount(() => { loadEpoch++ })
 const error = ref('')
 const notice = ref('')
 const collectionOpen = ref(false)
 const collectionForm = reactive({ id: '', name: '', description: '', learningGoal: '', visibility: 'private' as 'private' | 'community', expectedRevision: undefined as number | undefined })
 
 const load = async () => {
+  const epoch = ++loadEpoch
+  loadingMore.value = null
   try {
-    ;[studio.value, collections.value] = await Promise.all([resourceHubApi.studio(), resourceHubApi.collections()])
+    const [content, choices] = await Promise.all([resourceHubApi.studio(), resourceHubApi.collections()])
+    if (epoch !== loadEpoch) return
+    studio.value = content; collections.value = choices.items; collectionsCursor.value = choices.nextCursor
     error.value = ''
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '创作中心读取失败' }
+  } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '创作中心读取失败' }
+}
+const loadMore = async (section: CreatorContentSection | 'collections') => {
+  const cursor = section === 'collections' ? collectionsCursor.value : studio.value?.nextCursors[section]
+  if (!cursor || loadingMore.value) return
+  const epoch = loadEpoch
+  loadingMore.value = section
+  try {
+    if (section === 'collections') {
+      const page = await resourceHubApi.collections(cursor)
+      if (epoch !== loadEpoch) return
+      collections.value = [...new Map([...collections.value, ...page.items].map((item) => [item.id, item])).values()]; collectionsCursor.value = page.nextCursor
+    } else {
+      const page = await resourceHubApi.studio({ section, cursor })
+      if (epoch !== loadEpoch || !studio.value) return
+      Object.assign(studio.value, { [section]: [...new Map([...studio.value[section], ...page[section]].map((item) => [item.id, item])).values()], counts: page.counts, nextCursors: { ...studio.value.nextCursors, [section]: page.nextCursors[section] } })
+    }
+  } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '继续读取失败' }
+  finally { if (epoch === loadEpoch) loadingMore.value = null }
 }
 const publish = (kind: ResourceContributionKind) => {
   community.openComposer({
@@ -74,24 +99,27 @@ onMounted(load)
     <p v-if="notice" class="community-notice" role="status">{{ notice }}</p>
     <template v-if="studio">
       <section>
-        <div class="resource-section-heading"><div><span>公开作品</span><h2>我的作品</h2></div><strong>{{ studio.items.length }} 项</strong></div>
+        <div class="resource-section-heading"><div><span>公开作品</span><h2>我的作品</h2></div><strong>{{ studio.counts.items }} 项</strong></div>
         <div v-if="studio.items.length" class="resource-hub-grid three"><ResourceHubCard v-for="item in studio.items" :key="item.id" :item="item" /></div>
         <div v-else class="inline-empty"><p>还没有已发布的资源作品。</p></div>
+        <button v-if="studio.nextCursors.items" class="button secondary small" :disabled="!!loadingMore" @click="loadMore('items')">加载更多作品</button>
       </section>
       <section>
         <div class="resource-section-heading"><div><span>保存与处理</span><h2>待完成内容</h2></div></div>
-        <div class="resource-studio-status"><RouterLink to="/community/drafts"><strong>{{ studio.drafts.length }}</strong><span>资源草稿</span></RouterLink><div><strong>{{ studio.processing.length }}</strong><span>待处理视频</span></div></div>
+        <div class="resource-studio-status"><RouterLink to="/community/drafts"><strong>{{ studio.counts.drafts }}</strong><span>资源草稿</span></RouterLink><div><strong>{{ studio.counts.processing }}</strong><span>待处理视频</span></div></div>
         <div v-if="studio.pendingReview.length" class="resource-processing-list">
           <h3>待复核投稿（尚未公开）</h3>
           <article v-for="item in studio.pendingReview" :key="item.id">
             <RouterLink :to="`/community/post/${item.id}`"><strong>{{ item.title || item.bodyPreview }}</strong><small>查看复核结果并修改投稿</small></RouterLink>
           </article>
+          <button v-if="studio.nextCursors.pendingReview" class="button secondary small" :disabled="!!loadingMore" @click="loadMore('pendingReview')">加载更多待复核投稿</button>
         </div>
         <div v-if="studio.processing.length" class="resource-processing-list">
           <article v-for="item in studio.processing" :key="item.id">
             <RouterLink :to="item.route"><strong>{{ item.title }}</strong><small>{{ item.mediaStatus === 'failed' ? '处理失败' : item.mediaStatus === 'processing' ? '正在处理' : '等待处理' }}</small></RouterLink>
             <button v-if="item.mediaStatus === 'failed' && item.videoAssetId" class="button secondary small" @click="retry(item.videoAssetId)">重新处理</button>
           </article>
+          <button v-if="studio.nextCursors.processing" class="button secondary small" :disabled="!!loadingMore" @click="loadMore('processing')">加载更多待处理视频</button>
         </div>
       </section>
       <section>
@@ -102,6 +130,7 @@ onMounted(load)
             <button v-if="!item.systemKind" class="text-link" @click="editCollection(item)">编辑</button>
           </article>
         </div>
+        <button v-if="collectionsCursor" class="button secondary small" :disabled="!!loadingMore" @click="loadMore('collections')">加载更多合集</button>
       </section>
     </template>
   </section>

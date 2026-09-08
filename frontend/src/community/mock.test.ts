@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockCommunity, resetCommunityMock } from '../services/api/community.mock'
-import type { CampusIdentityVerificationDto, CommunityCommentDto, CommunityEligibilityDto, CommunityFeedDto, CommunityPostDetailDto, CommunityPostInput, CommunityNotificationDto, CommunityProfileDto, CommunityProfileTimelineDto, CommunityProfileUpdateDto } from '@ai-learning-hub/contracts'
+import type { CampusIdentityVerificationDto, CommunityCommentDto, CommunityCommentPageDto, CommunityEligibilityDto, CommunityFeedDto, CommunityPostDetailDto, CommunityPostInput, CommunityNotificationDto, CommunityProfileDto, CommunityProfileTimelineDto, CommunityProfileUpdateDto } from '@ai-learning-hub/contracts'
 
 const values = new Map<string, string>()
 const localStorageStub = {
@@ -100,7 +100,10 @@ describe('显式社区 Mock 与统一 Fixtures', () => {
     const path = `/posts/${post.id}/comments`
     const add = (text: string, parentId?: string) => mockCommunity<CommunityCommentDto>(path, 'POST', { contentBlocks: [{ type: 'paragraph', text }], parentId })
     const root = await add('父评论A'), second = await add('父评论B'), reply = await add('回复父评论A', root.id)
-    const ids = async () => (await mockCommunity<CommunityCommentDto[]>(path, 'GET')).map((row) => row.id)
+    const ids = async () => {
+      const roots = (await mockCommunity<CommunityCommentPageDto>(path, 'GET')).items
+      return (await Promise.all(roots.map(async (parent) => [parent.id, ...(await mockCommunity<CommunityCommentPageDto>(`${path}?parentId=${parent.id}`, 'GET')).items.map((row) => row.id)]))).flat()
+    }
     expect(await ids()).toEqual([root.id, reply.id, second.id])
     await mockCommunity(`/comments/${root.id}`, 'DELETE')
     expect(await ids()).toEqual([root.id, reply.id, second.id])

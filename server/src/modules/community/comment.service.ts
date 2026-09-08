@@ -1,6 +1,7 @@
-import { visibleComment } from './governance-policy'
+import { activeSanction, visibleComment } from './governance-policy'
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import type { CommunityCommentDto, CommunityContentBlock, ContentDetectionResult } from '@ai-learning-hub/contracts'
+import type { CommunityCommentDto, CommunityCommentPageDto, CommunityCommentQuery, CommunityContentBlock, ContentDetectionResult } from '@ai-learning-hub/contracts'
+import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import { CommunityPostService } from './post.service'
 import { CommunityVisibilityPolicyService } from './visibility.service'
@@ -14,23 +15,50 @@ import { ContentDetectionService } from './content-detection.service'
 @Injectable()
 export class CommunityCommentService {
   constructor(private readonly prisma: PrismaService, private readonly posts: CommunityPostService, private readonly visibility: CommunityVisibilityPolicyService, private readonly notifications: CommunityNotificationService, private readonly signals: SignalsService, private readonly detection: ContentDetectionService) {}
-  async list(userId: string, postId: string, admin = false, id?: string): Promise<CommunityCommentDto[]> {
+  async list(userId: string, postId: string, query: CommunityCommentQuery = {}, admin = false, id?: string): Promise<CommunityCommentPageDto> {
     if (!admin) await this.visibility.assertPost(userId, postId)
+    const limit = Math.min(50, Math.max(1, query.limit || 25))
+    const parentId = query.parentId || null
+    if (parentId && !await this.prisma.communityComment.count({ where: { id: parentId, postId, parentId: null } })) throw new NotFoundException('一级评论不存在')
+    const cursor = query.cursor ? await this.prisma.communityComment.findUnique({ where: { id: query.cursor }, select: { postId: true, parentId: true, createdAt: true, id: true } }) : null
+    if (query.cursor && (!cursor || cursor.postId !== postId || cursor.parentId !== parentId)) throw new BadRequestException('评论游标不属于当前讨论')
+    const readable: Prisma.CommunityCommentWhereInput = admin ? {} : { OR: [{ status: { not: 'pending_review' } }, { authorId: userId }] }
+    const visible: Prisma.CommunityCommentWhereInput = admin ? {} : { ...visibleComment(), ...readable }
+    // 父项不可见时仅保留承载可见回复的占位，不返回其正文或作者资料。
+    const rootScope: Prisma.CommunityCommentWhereInput = { OR: [visible, { replies: { some: visible } }] }
+    const where: Prisma.CommunityCommentWhereInput = {
+      postId,
+      ...(id ? { id, OR: [visible, { parentId: null, ...rootScope }] } : {
+        parentId,
+        AND: [
+          parentId ? visible : rootScope,
+          ...(cursor ? [{ OR: [{ createdAt: { gt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { gt: cursor.id } }] }] : []),
+        ],
+      }),
+    }
     const [rows, question, feedback] = await Promise.all([
-      this.prisma.communityComment.findMany({ where: { postId, ...(id ? { id } : {}), ...(!admin ? { ...visibleComment(), OR: [{ status: { not: 'pending_review' } }, { authorId: userId }] } : {}) }, include: { author: { include: authorInclude }, reactions: { where: { userId } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: id ? 1 : 500 }),
+      this.prisma.communityComment.findMany({ where, include: {
+        author: { include: {
+          ...authorInclude,
+          _count: { select: { receivedModeration: { where: activeSanction('ban') } } },
+        } },
+        moderationActions: { where: activeSanction('takedown'), select: { id: true }, take: 1 },
+        reactions: { where: { userId }, select: { userId: true } },
+        _count: { select: { replies: { where: visible } } },
+      }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: id ? 1 : limit + 1 }),
       this.prisma.communityQuestionState.findUnique({ where: { postId } }),
       this.visibility.authorExclusions(userId),
     ])
-    const targets = rows.filter((row) => admin || row.authorId === userId).map((row) => ({ targetId: row.id, contentRevision: row.revision }))
+    const page = rows.slice(0, id ? 1 : limit)
+    const targets = page.filter((row) => admin || row.authorId === userId).map((row) => ({ targetId: row.id, contentRevision: row.revision }))
     const reviews = new Map((targets.length ? await this.prisma.contentReview.findMany({ where: { targetType: 'comment', OR: targets } }) : []).map((row) => [row.targetId, row]))
-    const order = new Map(rows.map((row, index) => [row.id, index]))
-    rows.sort((a, b) => (order.get(a.parentId || a.id) ?? rows.length) - (order.get(b.parentId || b.id) ?? rows.length) || Number(!!a.parentId) - Number(!!b.parentId))
-    return rows.map((row) => {
-      const deleted = !!row.deletedAt || row.status !== 'published' && !(row.status === 'pending_review' && (admin || row.authorId === userId)) || row.author.status !== 'active' || (!admin && feedback.authors.includes(row.authorId))
+    const items = page.map((row) => {
+      const deleted = !!row.deletedAt || row.status !== 'published' && !(row.status === 'pending_review' && (admin || row.authorId === userId)) || row.author.status !== 'active' || row.author._count.receivedModeration > 0 || row.moderationActions.length > 0 || (!admin && feedback.authors.includes(row.authorId))
       const review = !deleted ? reviews.get(row.id) : undefined
       const detection = review ? { ...review.findings as unknown as ContentDetectionResult, review: { id: review.id, status: review.status as NonNullable<ContentDetectionResult['review']>['status'], reason: review.reason } } : undefined
-      return { id: row.id, revision: row.revision, status: row.status as CommunityCommentDto['status'], detection, postId, author: deleted ? { id: '', username: '', displayName: '不可见用户', avatar: null, school: null, major: null, verifiedType: 'none' } : authorDto(row.author), parentId: row.parentId, rootId: row.rootId, body: deleted ? '该评论已删除或不可见' : row.body, contentBlocks: deleted ? [] : row.contentBlocks as CommunityContentBlock[], deleted, likes: deleted ? 0 : row.likeCount, liked: row.reactions.length > 0, accepted: !deleted && row.status === 'published' && question?.acceptedCommentId === row.id, createdAt: row.createdAt.toISOString() }
+      return { id: row.id, revision: row.revision, status: row.status as CommunityCommentDto['status'], detection, postId, author: deleted ? { id: '', username: '', displayName: '不可见用户', avatar: null, school: null, major: null, verifiedType: 'none' as const } : authorDto(row.author), parentId: row.parentId, rootId: row.rootId, body: deleted ? '该评论已删除或不可见' : row.body, contentBlocks: deleted ? [] : row.contentBlocks as CommunityContentBlock[], deleted, likes: deleted ? 0 : row.likeCount, liked: !deleted && row.reactions.length > 0, accepted: !deleted && row.status === 'published' && question?.acceptedCommentId === row.id, createdAt: row.createdAt.toISOString(), replyCount: row._count.replies }
     })
+    return { items, nextCursor: !id && rows.length > limit ? page.at(-1)!.id : null }
   }
   async save(userId: string, postId: string, input: CommentDto, id?: string, key?: string, ip?: string) {
     await this.visibility.assertOperation(userId, 'comment')
@@ -68,7 +96,7 @@ export class CommunityCommentService {
       await request.complete(saved.id)
       return saved
     })
-    const result = (await this.list(userId, postId, false, row.id))[0]
+    const result = (await this.list(userId, postId, {}, false, row.id)).items[0]
     if (!result) throw new NotFoundException('评论已保存，但当前不可见，请重新加载')
     return result
   }

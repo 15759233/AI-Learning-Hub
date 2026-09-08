@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { contentDetectionFields, defaultContentDetectionPolicy, detectContent, type CommunityCommentDto, type CommunityDraftDto, type CommunityPostDetailDto, type CommunityPostInput, type CommunityProfileDto, type CommunityProfileTimelineDto, type CommunityProfileUpdateDto, type CreatorContentSummaryDto, type LearningCollectionDto, type ResourceContributionDetailDto, type ResourceHubListDto, type VideoAssetDto } from '@ai-learning-hub/contracts'
+import { contentDetectionFields, defaultContentDetectionPolicy, detectContent, type CommunityCommentDto, type CommunityCommentPageDto, type CommunityDraftDto, type CommunityPostDetailDto, type CommunityPostInput, type CommunityProfileDto, type CommunityProfileTimelineDto, type CommunityProfileUpdateDto, type CreatorContentSummaryDto, type LearningCollectionDto, type ResourceContributionDetailDto, type ResourceHubListDto, type VideoAssetDto } from '@ai-learning-hub/contracts'
 import { mockCommunity, resetCommunityMock } from './community.mock'
 import { mockResourceHub, resetResourceHubMock } from './resourceHub.mock'
 
@@ -57,7 +57,7 @@ describe('内容检测 Mock 与共享规则的增量契约', () => {
     const saved = await mockCommunity<CommunityCommentDto>(`/comments/${comment.id}`, 'PATCH', { contentBlocks: input().contentBlocks, expectedRevision: comment.revision })
     expect(saved.status).toBe('published')
     await expect(mockCommunity(`/comments/${comment.id}`, 'PATCH', { contentBlocks: input(rejectText).contentBlocks, expectedRevision: saved.revision })).rejects.toMatchObject({ code: 'CONTENT_REJECTED' })
-    expect(await mockCommunity<CommunityCommentDto[]>(`/posts/${post.id}/comments`, 'GET')).toContainEqual(saved)
+    expect((await mockCommunity<CommunityCommentPageDto>(`/posts/${post.id}/comments`, 'GET')).items).toContainEqual(expect.objectContaining(saved))
   })
 
   it('资料复核保留旧公开值，非文字修改重新绑定修订，拒绝不修改资料', async () => {

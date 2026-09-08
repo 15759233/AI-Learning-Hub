@@ -57,10 +57,12 @@ const syncResult = (result: Awaited<ReturnType<typeof communityApi.updateProfile
 const loadTimeline = async (append = false) => {
   if (!profile.value || legacyPanel.value) return
   if (tab.value === 'resources' || tab.value === 'collections') {
-    const result = await resourceHubApi.creator(profile.value.id)
-    resourceItems.value = result.items
-    resourceCollections.value = result.collections
-    posts.value = []; replies.value = []; cursor.value = null
+    const epoch = loadEpoch, currentTab = tab.value, currentKind = resourceKind.value
+    const result = await resourceHubApi.creator(profile.value.id, { kind: resourceKind.value, ...(append && cursor.value ? currentTab === 'collections' ? { collectionsCursor: cursor.value } : { cursor: cursor.value } : {}) })
+    if (epoch !== loadEpoch || currentTab !== tab.value || currentKind !== resourceKind.value) return
+    resourceItems.value = append && currentTab === 'resources' ? [...new Map([...resourceItems.value, ...result.items].map((item) => [item.id, item])).values()] : result.items
+    resourceCollections.value = append && currentTab === 'collections' ? [...new Map([...resourceCollections.value, ...result.collections].map((item) => [item.id, item])).values()] : result.collections
+    posts.value = []; replies.value = []; cursor.value = currentTab === 'collections' ? result.collectionsNextCursor : result.nextCursor
     return
   }
   const result = await communityApi.timeline(profile.value.id, tab.value, append ? cursor.value || undefined : undefined)
@@ -213,6 +215,7 @@ const pin = async (id: string | null) => {
 }
 const joined = computed(() => profile.value ? new Date(profile.value.joinedAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }) : '')
 const filteredResourceItems = computed(() => resourceKind.value === 'all' ? resourceItems.value : resourceItems.value.filter((item) => item.kind === resourceKind.value))
+watch(resourceKind, () => { if (tab.value === 'resources') { cursor.value = null; void loadTimeline().catch((cause) => { error.value = cause instanceof Error ? cause.message : '资源读取失败' }) } })
 watch(() => route.fullPath, load, { immediate: true })
 onBeforeUnmount(() => { loadEpoch++ })
 </script>

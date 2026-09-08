@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { AdminResourceDetailDto, ResourceHubAdminConfigDto, ResourceHubCategoryDto, ResourceHubItemDto, UpdateResourceInput } from '@ai-learning-hub/contracts'
+import type { AdminResourceDetailDto, ResourceHubAdminListDto, ResourceHubPageDto, ResourceProcessingFailureDto, ResourceReportSummaryDto, ResourceAdminCollectionDto, ResourceHubAdminConfigDto, ResourceHubCategoryDto, ResourceHubItemDto, UpdateResourceInput } from '@ai-learning-hub/contracts'
 import { ElMessage } from 'element-plus'
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AdminKpiCard from '../../components/AdminKpiCard.vue'
 import DomainPageShell from '../../components/DomainPageShell.vue'
 import { useDraftEditor } from '../../composables/useDraftEditor'
@@ -23,19 +23,24 @@ const detail = ref<AdminResourceDetailDto | null>(null)
 const file = ref<File | null>(null)
 type HubItem = ResourceHubItemDto & { status: string; visibility: string; reportCount: number; deletedAt: string | null; categoryId: string }
 type HubCategory = ResourceHubCategoryDto & { active: boolean }
-type HubCollection = { id: string; name: string; description: string; learningGoal: string; revision: number; owner: { id: string; username: string; displayName: string }; _count: { items: number; courseLinks: number }; courseLinks: Array<{ courseId: string; courseVersionId: string; sourceRevision: number }> }
+type HubCollection = ResourceAdminCollectionDto
 const hubTab = ref<'legacy' | 'content' | 'home' | 'categories' | 'collections' | 'processing' | 'reports'>('legacy')
 const hubItems = ref<HubItem[]>([])
 const hubKeyword = ref('')
 const hubKind = ref<'all' | 'video' | 'article' | 'document'>('all')
 const hubCategory = ref('')
-const hubExpanded = ref(false)
+const hubNextCursor = ref<string | null>(null), hubLoadingMore = ref(false)
+let hubEpoch = 0, auxiliaryEpoch = 0
+onBeforeUnmount(() => { hubEpoch++; auxiliaryEpoch++ })
 const hubCategories = ref<HubCategory[]>([])
 const hubConfig = ref<ResourceHubAdminConfigDto>({ revision: 0, bannerPostIds: [], sectionCategoryCodes: [] })
-const hubFailures = ref<Array<{ id: string; originalName: string; attempts: number; lastError: string | null; contribution: { postId: string; post: { title: string | null } } | null }>>([])
+const hubFailures = ref<ResourceProcessingFailureDto[]>([])
 const mediaRuntime = ref<MediaRuntimeDto | null>(null)
 const sizeLabel = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`
-const hubReports = ref<Array<{ id: string; postId: string | null; reason: string; description: string; status: string; createdAt: string }>>([])
+const hubReports = ref<ResourceReportSummaryDto[]>([])
+const canReadReports = usePermissionAction('community.report.manage')
+const auxiliaryCursors = reactive<Record<string, string | null>>({ processing: null, reports: null, collections: null })
+const auxiliaryLoading = ref(false)
 const hubCollections = ref<HubCollection[]>([])
 const hubReason = ref('教程中心后台整理')
 const newCategory = reactive({ code: '', name: '', description: '', icon: 'resource', sortOrder: 100, active: true })
@@ -84,29 +89,67 @@ onMounted(async () => {
   labOptions.value = labs.items
   await loadHub()
 })
-const hubItemsPath = () => `/admin/resource-hub/items?${new URLSearchParams({ limit: hubExpanded.value ? '48' : '18', keyword: hubKeyword.value, kind: hubKind.value, category: hubCategory.value })}`
-const loadHubItems = async () => {
-  const items = await api<Omit<HubItem, 'categoryId'>[]>(hubItemsPath())
-  hubItems.value = items.map((item) => ({ ...item, categoryId: item.category?.id || '' }))
+const hubItemsPath = (cursor = '') => `/admin/resource-hub/items?${new URLSearchParams({ limit: '18', keyword: hubKeyword.value, kind: hubKind.value, category: hubCategory.value, ...(cursor ? { cursor } : {}) })}`
+const loadHubItems = async (append = false) => {
+  if (append && (!hubNextCursor.value || hubLoadingMore.value)) return
+  const epoch = ++hubEpoch
+  hubLoadingMore.value = true
+  try {
+    const page = await api<ResourceHubAdminListDto>(hubItemsPath(append ? hubNextCursor.value || '' : ''))
+    if (epoch !== hubEpoch) return
+    const items = page.items.map((item) => ({ ...item, categoryId: item.category?.id || '' }))
+    hubItems.value = append ? [...new Map([...hubItems.value, ...items].map((item) => [item.id, item])).values()] : items
+    hubNextCursor.value = page.nextCursor
+  } catch (cause) { if (epoch === hubEpoch) error.value = cause instanceof Error ? cause.message : '列表读取失败' }
+  finally { if (epoch === hubEpoch) hubLoadingMore.value = false }
 }
 watch(hubTab, async (tab) => {
-  if (tab !== 'content' && tab !== 'home') return
-  hubExpanded.value = tab === 'home'
-  await loadHubItems()
+  if (tab === 'content' || tab === 'home') await loadHubItems()
 })
 const loadHub = async () => {
-  const [items, categories, config, failures, reports, collections, runtime] = await Promise.all([
-    api<Omit<HubItem, 'categoryId'>[]>(hubItemsPath()),
-    api<HubCategory[]>('/admin/resource-hub/categories'),
-    api<ResourceHubAdminConfigDto>('/admin/resource-hub/config'),
-    api<typeof hubFailures.value>('/admin/resource-hub/processing-failures'),
-    api<typeof hubReports.value>('/admin/resource-hub/reports').catch(() => []),
-    api<HubCollection[]>('/admin/resource-hub/collections'),
-    api<MediaRuntimeDto>('/admin/resource-hub/media-runtime'),
-  ])
-  hubItems.value = items.map((item) => ({ ...item, categoryId: item.category?.id || '' })); hubCategories.value = categories; hubConfig.value = config; hubFailures.value = failures; hubReports.value = reports; hubCollections.value = collections
-  mediaRuntime.value = runtime
-  for (const collection of collections) courseDrafts[collection.id] ||= { title: collection.name, slug: `collection-${collection.id.slice(-8).toLowerCase()}` }
+  const epoch = ++auxiliaryEpoch
+  auxiliaryLoading.value = true
+  try {
+    const [, categories, config, failures, reports, collections, runtime] = await Promise.all([
+      loadHubItems(),
+      api<HubCategory[]>('/admin/resource-hub/categories'),
+      api<ResourceHubAdminConfigDto>('/admin/resource-hub/config'),
+      api<ResourceHubPageDto<ResourceProcessingFailureDto>>('/admin/resource-hub/processing-failures'),
+      canReadReports.value ? api<ResourceHubPageDto<ResourceReportSummaryDto>>('/admin/resource-hub/reports') : Promise.resolve({ items: [], nextCursor: null }),
+      api<ResourceHubPageDto<HubCollection>>('/admin/resource-hub/collections'),
+      api<MediaRuntimeDto>('/admin/resource-hub/media-runtime'),
+    ])
+    if (epoch !== auxiliaryEpoch) return
+    hubCategories.value = categories; hubConfig.value = config; hubFailures.value = failures.items; hubReports.value = reports.items; hubCollections.value = collections.items
+    auxiliaryCursors.processing = failures.nextCursor; auxiliaryCursors.reports = reports.nextCursor; auxiliaryCursors.collections = collections.nextCursor
+    mediaRuntime.value = runtime
+    for (const collection of collections.items) courseDrafts[collection.id] ||= { title: collection.name, slug: `collection-${collection.id.slice(-8).toLowerCase()}` }
+  } catch (cause) { if (epoch === auxiliaryEpoch) error.value = cause instanceof Error ? cause.message : '资源后台读取失败' }
+  finally { if (epoch === auxiliaryEpoch) auxiliaryLoading.value = false }
+}
+const loadMoreAuxiliary = async () => {
+  const tab = hubTab.value, cursor = auxiliaryCursors[tab]
+  if (!cursor || auxiliaryLoading.value) return
+  const epoch = auxiliaryEpoch
+  auxiliaryLoading.value = true
+  const query = new URLSearchParams({ cursor })
+  try {
+    if (tab === 'processing') {
+      const page = await api<ResourceHubPageDto<ResourceProcessingFailureDto>>(`/admin/resource-hub/processing-failures?${query}`)
+      if (epoch !== auxiliaryEpoch) return
+      hubFailures.value = [...new Map([...hubFailures.value, ...page.items].map((item) => [item.id, item])).values()]; auxiliaryCursors.processing = page.nextCursor
+    } else if (tab === 'reports') {
+      const page = await api<ResourceHubPageDto<ResourceReportSummaryDto>>(`/admin/resource-hub/reports?${query}`)
+      if (epoch !== auxiliaryEpoch) return
+      hubReports.value = [...new Map([...hubReports.value, ...page.items].map((item) => [item.id, item])).values()]; auxiliaryCursors.reports = page.nextCursor
+    } else if (tab === 'collections') {
+      const page = await api<ResourceHubPageDto<HubCollection>>(`/admin/resource-hub/collections?${query}`)
+      if (epoch !== auxiliaryEpoch) return
+      hubCollections.value = [...new Map([...hubCollections.value, ...page.items].map((item) => [item.id, item])).values()]; auxiliaryCursors.collections = page.nextCursor
+      for (const collection of page.items) courseDrafts[collection.id] ||= { title: collection.name, slug: `collection-${collection.id.slice(-8).toLowerCase()}` }
+    }
+  } catch (cause) { if (epoch === auxiliaryEpoch) error.value = cause instanceof Error ? cause.message : '列表读取失败' }
+  finally { if (epoch === auxiliaryEpoch) auxiliaryLoading.value = false }
 }
 const updateHubItem = async (item: HubItem) => {
   if (!item.postId || !item.categoryId) return
@@ -196,20 +239,20 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
     <header><div><h1>{{ { content: '共创内容', home: '首页配置', categories: '资源分类', collections: '合集与课程引用', processing: '视频处理异常', reports: '资源举报' }[hubTab] }}</h1><p>复用现有资源权限、社区审核和课程版本机制。</p></div><button class="admin-secondary" @click="loadHub">刷新</button></header>
 
     <template v-if="hubTab === 'content'">
-      <form class="resource-admin-filters" @submit.prevent="hubExpanded = false; loadHubItems()">
+      <form class="resource-admin-filters" @submit.prevent="loadHubItems()">
         <input v-model="hubKeyword" maxlength="120" placeholder="搜索标题或正文" />
-        <select v-model="hubKind" @change="hubExpanded = false; loadHubItems()"><option value="all">全部形态</option><option value="video">视频</option><option value="article">图文</option><option value="document">资料</option></select>
-        <select v-model="hubCategory" @change="hubExpanded = false; loadHubItems()"><option value="">全部分类</option><option v-for="category in hubCategories.filter((row) => row.active)" :key="category.id" :value="category.code">{{ category.name }}</option></select>
+        <select v-model="hubKind" @change="loadHubItems()"><option value="all">全部形态</option><option value="video">视频</option><option value="article">图文</option><option value="document">资料</option></select>
+        <select v-model="hubCategory" @change="loadHubItems()"><option value="">全部分类</option><option v-for="category in hubCategories.filter((row) => row.active)" :key="category.id" :value="category.code">{{ category.name }}</option></select>
         <button class="admin-secondary" type="submit">搜索</button>
-        <button class="text-link" type="button" @click="hubKeyword = ''; hubKind = 'all'; hubCategory = ''; hubExpanded = false; loadHubItems()">清空</button>
+        <button class="text-link" type="button" @click="hubKeyword = ''; hubKind = 'all'; hubCategory = ''; loadHubItems()">清空</button>
       </form>
       <label>操作理由<input v-model="hubReason" minlength="4" /></label>
       <div class="resource-admin-list"><article v-for="item in hubItems" :key="item.id"><div><strong>{{ item.title }}</strong><small>{{ item.author?.displayName || '未知作者' }} · {{ item.kind }} · {{ item.status }} · {{ item.mediaStatus || '无媒体处理' }} · {{ item.visibility }} · 举报 {{ item.reportCount }}</small></div><select v-model="item.categoryId"><option v-for="category in hubCategories.filter((row) => row.active)" :key="category.id" :value="category.id">{{ category.name }}</option></select><label><input v-model="item.featured" type="checkbox" />首页精选</label><label><input v-model="item.liveReplay" type="checkbox" />直播回放</label><RouterLink class="admin-secondary" :to="{ path: '/community', query: { postId: item.postId } }">进入治理</RouterLink><button class="admin-secondary" :disabled="!canWrite" @click="updateHubItem(item)">保存</button></article><p v-if="!hubItems.length">没有符合条件的共创内容。</p></div>
-      <button v-if="!hubExpanded && hubItems.length === 18" class="admin-secondary" type="button" @click="hubExpanded = true; loadHubItems()">显示更多共创内容</button>
+      <button v-if="hubNextCursor" class="admin-secondary" type="button" :disabled="hubLoadingMore" @click="loadHubItems(true)">{{ hubLoadingMore ? '加载中…' : '加载更多共创内容' }}</button>
     </template>
 
     <template v-else-if="hubTab === 'home'">
-      <section class="panel domain-section"><h2>主推荐 Banner</h2><p>最多选择 5 条公开、已发布且媒体就绪的共创作品，顺序即前台顺序。</p><label v-for="item in hubItems.filter((row) => row.status === 'published' && row.visibility === 'public' && (row.kind !== 'video' || row.mediaStatus === 'ready'))" :key="item.id"><input v-model="hubConfig.bannerPostIds" type="checkbox" :value="item.postId" :disabled="!hubConfig.bannerPostIds.includes(item.postId!) && hubConfig.bannerPostIds.length >= 5" />{{ item.title }}</label></section>
+      <section class="panel domain-section"><h2>主推荐 Banner</h2><button v-if="hubNextCursor" class="admin-secondary" type="button" :disabled="hubLoadingMore" @click="loadHubItems(true)">加载更多候选作品</button><p>最多选择 5 条公开、已发布且媒体就绪的共创作品，顺序即前台顺序。</p><label v-for="item in hubItems.filter((row) => row.status === 'published' && row.visibility === 'public' && (row.kind !== 'video' || row.mediaStatus === 'ready'))" :key="item.id"><input v-model="hubConfig.bannerPostIds" type="checkbox" :value="item.postId" :disabled="!hubConfig.bannerPostIds.includes(item.postId!) && hubConfig.bannerPostIds.length >= 5" />{{ item.title }}</label></section>
       <section class="panel domain-section"><h2>首页内容分区</h2><label v-for="category in hubCategories.filter((row) => row.active)" :key="category.id"><input v-model="hubConfig.sectionCategoryCodes" type="checkbox" :value="category.code" />{{ category.name }}</label></section>
       <button class="admin-primary" :disabled="!canWrite" @click="saveHubConfig">保存首页配置</button>
     </template>
@@ -238,6 +281,7 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
     <template v-else>
       <div class="resource-admin-list"><article v-for="report in hubReports" :key="report.id"><div><strong>{{ report.reason }}</strong><small>{{ report.status }} · {{ report.description }} · {{ new Date(report.createdAt).toLocaleString('zh-CN') }}</small></div><RouterLink v-if="report.postId" class="admin-secondary" :to="`/community?postId=${report.postId}`">进入社区审核</RouterLink></article></div><p v-if="!hubReports.length">当前没有资源举报。</p>
     </template>
+    <button v-if="auxiliaryCursors[hubTab]" class="admin-secondary" :disabled="auxiliaryLoading" @click="loadMoreAuxiliary">{{ auxiliaryLoading ? '加载中…' : '加载更多' }}</button>
   </section>
 </div></template>
 

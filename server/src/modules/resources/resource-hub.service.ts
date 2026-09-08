@@ -4,9 +4,11 @@ import { REQUEST } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import type { LearningCollection, Prisma } from '@prisma/client'
+import { Prisma, type LearningCollection } from '@prisma/client'
 import type {
   CommunityContentBlock,
+  CreatorContentSection,
+  CreatorContentSummaryDto,
   LearningCollectionDto,
   LearningCollectionInput,
   LearningCollectionSummaryDto,
@@ -24,7 +26,7 @@ import { CommunityVisibilityPolicyService } from '../community/visibility.servic
 import { CourseService } from '../courses/course.service'
 import { STORAGE_SERVICE, type StorageService, type UploadedPathFile } from '../storage/storage.types'
 import { ResourceService } from './resource.service'
-import type { CollectionInputDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubQueryDto } from './resource-hub.dto'
+import { CollectionPageQueryDto, ResourceHubQueryDto, StudioQueryDto, type CollectionInputDto, type ContributionAdminDto, type ResourceCategoryInputDto } from './resource-hub.dto'
 import { VideoProcessingService } from './video-processing.service'
 import { StorageQuotaService } from '../storage/storage-quota.service'
 import { FileAccessService } from '../storage/file-access.service'
@@ -36,6 +38,21 @@ import { authUserDto, authUserInclude } from '../auth/auth.mapper'
 import { assertAdminNetwork } from '../../common/deployment-security'
 
 type HubConfig = { bannerPostIds: string[]; sectionCategoryCodes: string[] }
+type HubCandidate = { sourceType: ResourceHubItemDto['sourceType']; id: string; databaseId: string; publishedAt: Date; views: number; featured: boolean }
+type HubSelection = {
+  sourceType?: ResourceHubItemDto['sourceType']; postIds?: string[]; featuredFirst?: boolean; liveReplay?: boolean; liked?: boolean
+  related?: { postId: string; categoryId: string | null; tags: string[] }; since?: Date
+}
+type HubCursor = { id: string; sourceType: ResourceHubItemDto['sourceType']; publishedAt: string; views: number; asOf: string; filter: string }
+const readRowCursor = (cursor: string, scope: string): { id: string; at: Date } | null => {
+  if (!cursor) return null
+  try {
+    const row = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { id: string; at: string; scope: string }
+    if (!row || row.scope !== scope || typeof row.id !== 'string' || !row.id || row.id.length > 100 || !Number.isFinite(Date.parse(row.at))) throw new Error()
+    return { id: row.id, at: new Date(row.at) }
+  } catch { throw new BadRequestException('分页条件已变化或游标无效，请重新读取第一页') }
+}
+const nextRowCursor = (row: { id: string; updatedAt?: Date; createdAt?: Date }, scope: string) => Buffer.from(JSON.stringify({ id: row.id, at: (row.updatedAt || row.createdAt)!.toISOString(), scope })).toString('base64url')
 
 const defaultConfig: HubConfig = {
   bannerPostIds: [],
@@ -46,14 +63,6 @@ const fileChecksum = async (path: string) => {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
   return hash.digest('hex')
-}
-
-const cursorOffset = (cursor: string) => {
-  if (!cursor) return 0
-  try {
-    const value = Number(Buffer.from(cursor, 'base64url').toString('utf8'))
-    return Number.isSafeInteger(value) && value >= 0 ? value : 0
-  } catch { return 0 }
 }
 
 export function parseSingleRange(header: string | undefined, size: number) {
@@ -203,63 +212,56 @@ export class ResourceHubService {
   }
 
   async list(userId: string, query: ResourceHubQueryDto): Promise<ResourceHubListDto> {
-    const all = await this.allItems(userId)
-    const keyword = query.keyword.trim().toLocaleLowerCase()
-    const items = all.filter((item) =>
-      (!keyword || [item.title, item.summary, item.author?.displayName || '', ...item.tags].some((value) => value.toLocaleLowerCase().includes(keyword))) &&
-      (!query.category || item.category?.code === query.category) &&
-      (query.kind === 'all' || item.kind === query.kind) &&
-      (!query.authorId || item.author?.id === query.authorId))
-    items.sort(query.sort === 'popular'
-      ? (a, b) => b.stats.views - a.stats.views || b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)
-      : (a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id))
-    const offset = cursorOffset(query.cursor)
-    const page = items.slice(offset, offset + query.limit)
-    return { items: page, nextCursor: offset + page.length < items.length ? Buffer.from(String(offset + page.length)).toString('base64url') : null }
+    const filter = createHash('sha256').update(JSON.stringify([userId, query.keyword.trim(), query.category, query.kind, query.authorId, query.sort])).digest('hex')
+    let cursor: HubCursor | undefined
+    if (query.cursor) {
+      try {
+        cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')) as HubCursor
+        if (!cursor || cursor.filter !== filter || !['contribution', 'legacy_resource'].includes(cursor.sourceType) || typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 100 || !Number.isSafeInteger(cursor.views) || cursor.views < 0 || typeof cursor.publishedAt !== 'string' || typeof cursor.asOf !== 'string' || !Number.isFinite(Date.parse(cursor.publishedAt)) || !Number.isFinite(Date.parse(cursor.asOf))) throw new Error()
+      } catch { throw new BadRequestException('分页条件已变化或游标无效，请重新读取第一页') }
+    }
+    const asOf = cursor ? new Date(cursor.asOf) : new Date()
+    const rows = await this.selectItems(userId, query, {}, await this.visibility.publicPostsSql(userId), asOf, cursor)
+    const page = rows.slice(0, query.limit)
+    const items = await this.hydrateItems(userId, page, asOf)
+    const last = page.at(-1)
+    return { items, nextCursor: rows.length > query.limit && last ? Buffer.from(JSON.stringify({ id: last.id, sourceType: last.sourceType, publishedAt: last.publishedAt.toISOString(), views: last.views, asOf: asOf.toISOString(), filter } satisfies HubCursor)).toString('base64url') : null }
   }
 
   async home(userId: string): Promise<ResourceHubHomeDto> {
-    const [items, categories, config, collections] = await Promise.all([
-      this.allItems(userId),
-      this.categories(),
-      this.hubConfig(),
-      this.collections(userId),
+    const [categories, config, collections, scope] = await Promise.all([this.categories(), this.hubConfig(), this.collections(userId, { ...new ResourceHubQueryDto(), limit: 4 }), this.visibility.publicPostsSql(userId)])
+    const asOf = new Date()
+    const select = async (limit: number, options: HubSelection = {}, query: Partial<ResourceHubQueryDto> = {}) => (await this.selectItems(userId, { ...new ResourceHubQueryDto(), limit, ...query }, options, scope, asOf)).slice(0, limit)
+    const sectionCodes = config.sectionCategoryCodes.filter((code) => categories.some((category) => category.code === code))
+    const [configured, priority, sections, week, month, all, likedVideos, liveReplay] = await Promise.all([
+      select(5, { postIds: config.bannerPostIds, sourceType: 'contribution' }),
+      select(3, { featuredFirst: true, sourceType: 'contribution' }),
+      Promise.all(sectionCodes.map((category) => select(6, { sourceType: 'contribution' }, { category }))),
+      select(5, { since: new Date(asOf.getTime() - 7 * 86400000) }, { sort: 'popular' }),
+      select(5, { since: new Date(asOf.getTime() - 30 * 86400000) }, { sort: 'popular' }),
+      select(5, {}, { sort: 'popular' }),
+      select(4, { sourceType: 'contribution', liked: true }, { kind: 'video' }),
+      select(4, { sourceType: 'contribution', liveReplay: true }),
     ])
-    const contributions = items.filter((item) => item.sourceType === 'contribution')
-    const configured = config.bannerPostIds.map((id) => contributions.find((item) => item.postId === id)).filter((item): item is ResourceHubItemDto => !!item)
-    const banners = (configured.length ? configured : contributions.filter((item) => item.featured).concat(contributions)).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index).slice(0, 3)
-    const bannerRows = banners.length ? await this.prisma.communityPost.findMany({ where: { id: { in: banners.map((item) => item.postId!) } }, select: { id: true, contentBlocks: true } }) : []
+    const candidates = [...new Map([configured, priority, ...sections, week, month, all, likedVideos, liveReplay].flat().map((row) => [`${row.sourceType}:${row.id}`, row])).values()]
+    const mapped = new Map((await this.hydrateItems(userId, candidates, asOf)).map((item) => [`${item.sourceType}:${item.id}`, item]))
+    const items = (rows: HubCandidate[], period = false) => rows.flatMap((row) => {
+      const item = mapped.get(`${row.sourceType}:${row.id}`)
+      return item ? [{ ...item, ...(period ? { rankingViews: row.views } : {}) }] : []
+    })
+    const ordered = config.bannerPostIds.flatMap((id) => configured.filter((item) => item.id === id))
+    const banners = items(ordered.length ? ordered.slice(0, 3) : priority)
+    const bannerRows = banners.length ? await this.prisma.communityPost.findMany({ where: { id: { in: banners.map((item) => item.id) } }, select: { id: true, contentBlocks: true }, take: 3 }) : []
     const bannerFiles = new Map(bannerRows.flatMap((row) => {
       const block = (row.contentBlocks as CommunityContentBlock[]).find((item) => item.type === 'image' && item.alt === '资源中心 Banner')
       return block?.type === 'image' ? [[row.id, block.fileId] as const] : []
     }))
-    const featured = contributions.filter((item) => item.featured).concat(contributions).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index).slice(0, 2)
-    const sectionCodes = config.sectionCategoryCodes.filter((code) => categories.some((category) => category.code === code))
-    const sections = sectionCodes.map((code) => ({
-      key: code,
-      title: categories.find((category) => category.code === code)!.name,
-      categoryCode: code,
-      items: contributions.filter((item) => item.category?.code === code).slice(0, 6),
-    })).filter((section) => section.items.length)
-    const likedIds = new Set((await this.prisma.communityPostReaction.findMany({
-      where: { userId, reactionType: 'like', post: { contribution: { is: { kind: 'video' } } } },
-      select: { postId: true },
-      orderBy: { createdAt: 'desc' },
-      take: 12,
-    })).map((row) => row.postId))
     return {
       banners: banners.map((item) => bannerFiles.has(item.id) ? { ...item, coverUrl: this.mediaUrl(bannerFiles.get(item.id)!, userId) } : item),
-      categories,
-      featured,
-      sections,
-      rankings: {
-        week: await this.ranking(items, new Date(Date.now() - 7 * 86400000)),
-        month: await this.ranking(items, new Date(Date.now() - 30 * 86400000)),
-        all: [...items].sort((a, b) => b.stats.views - a.stats.views || b.id.localeCompare(a.id)).slice(0, 5),
-      },
-      collections,
-      likedVideos: contributions.filter((item) => !!item.postId && likedIds.has(item.postId)).slice(0, 4),
-      liveReplay: contributions.filter((item) => item.liveReplay && item.kind === 'video').slice(0, 4),
+      categories, featured: items(priority.slice(0, 2)),
+      sections: sections.map((rows, index) => ({ key: sectionCodes[index], title: categories.find((category) => category.code === sectionCodes[index])!.name, categoryCode: sectionCodes[index], items: items(rows) })).filter((section) => section.items.length),
+      rankings: { week: items(week, true), month: items(month, true), all: items(all, true) },
+      collections: collections.items, likedVideos: items(likedVideos), liveReplay: items(liveReplay),
     }
   }
 
@@ -268,8 +270,11 @@ export class ResourceHubService {
     if (!post.contribution) throw new NotFoundException('资源作品不存在')
     const stored = await this.prisma.resourceContribution.findUnique({ where: { postId }, include: { videoAsset: true } })
     if (!stored) throw new NotFoundException('资源作品不存在')
-    const items = await this.allItems(userId)
-    const currentItem = items.find((item) => item.postId === postId)
+    const asOf = new Date()
+    const relatedRows = await this.selectItems(userId, { ...new ResourceHubQueryDto(), limit: 6 }, { related: { postId, categoryId: stored.categoryId, tags: stored.tags } }, await this.visibility.publicPostsSql(userId), asOf)
+    const related = await this.hydrateItems(userId, relatedRows.slice(0, 6), asOf)
+    const events = await this.prisma.activityEvent.count({ where: { targetType: 'post', targetId: postId, eventType: stored.kind === 'video' ? 'resource_valid_watch' : 'community_post_click', createdAt: { lte: asOf } } })
+    const current = await this.prisma.communityPost.findUniqueOrThrow({ where: { id: postId }, select: { impressionCount: true } })
     const coverFileId = stored.coverFileId || stored.videoAsset?.posterFileId || post.contentBlocks.find((block) => block.type === 'image')?.fileId
     const coverUrl = coverFileId ? this.mediaUrl(coverFileId, userId) : null
     const collection = await this.prisma.learningCollectionItem.findFirst({
@@ -289,89 +294,116 @@ export class ResourceHubService {
     return {
       post,
       contribution,
-      stats: currentItem?.stats || { views: 0, likes: post.stats.likes, comments: post.stats.comments, bookmarks: post.stats.bookmarks, downloads: 0 },
-      collection: collection ? await this.collection(userId, collection.collectionId) : null,
-      related: items.filter((candidate) => candidate.postId !== postId && (candidate.category?.code === post.contribution?.category?.code || candidate.tags.some((tag) => post.contribution?.tags.includes(tag)))).slice(0, 6),
+      stats: { views: events, plays: stored.kind === 'video' ? events : null, impressions: current.impressionCount, likes: post.stats.likes, comments: post.stats.comments, bookmarks: post.stats.bookmarks, downloads: 0 },
+      collection: collection ? await this.collection(userId, collection.collectionId, new CollectionPageQueryDto(), postId) : null,
+      related,
     }
   }
 
-  async studio(userId: string) {
-    const rows = await this.prisma.communityPost.findMany({
-      where: { authorId: userId, deletedAt: null, contribution: { isNot: null } },
-      include: postInclude,
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    })
-    const posts = await this.posts.mapMany(userId, rows)
-    const items = await this.mapContributions(userId, rows, posts)
-    return {
-      items: items.filter((item) => rows.find((row) => row.id === item.postId)?.status === 'published'),
-      drafts: posts.filter((post) => post.status === 'draft'),
-      pendingReview: posts.filter((post) => post.status === 'pending_review'),
-      processing: items.filter((item) => item.mediaStatus === 'uploaded' || item.mediaStatus === 'processing' || item.mediaStatus === 'failed'),
+  async studio(userId: string, query: StudioQueryDto = new StudioQueryDto()): Promise<CreatorContentSummaryDto> {
+    if (query.cursor && !query.section) throw new BadRequestException('工作室翻页需要指定内容分组')
+    const base: Prisma.CommunityPostWhereInput = { authorId: userId, deletedAt: null, contribution: { isNot: null } }
+    const filters: Record<CreatorContentSection, Prisma.CommunityPostWhereInput> = {
+      items: { status: 'published' }, drafts: { status: 'draft' }, pendingReview: { status: 'pending_review' },
+      processing: { contribution: { is: { videoAsset: { status: { in: ['uploaded', 'processing', 'failed'] } } } } },
     }
-  }
-
-  async creator(viewerId: string, userId: string) {
-    const visiblePost = await this.visibility.where(viewerId)
-    const [items, collections] = await Promise.all([
-      this.allItems(viewerId),
-      this.prisma.learningCollection.findMany({
-        where: { ownerId: userId, ...(viewerId === userId ? {} : visibleCollection()) },
-        include: { owner: { include: authorInclude }, items: { where: { contribution: { post: visiblePost } }, include: { contribution: { include: { videoAsset: true } } } } },
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    const pages: Record<CreatorContentSection, HydratedPost[]> = { items: [], drafts: [], pendingReview: [], processing: [] }
+    const nextCursors: CreatorContentSummaryDto['nextCursors'] = { items: null, drafts: null, pendingReview: null, processing: null }
+    const [totals, processing] = await Promise.all([
+      this.prisma.communityPost.groupBy({ by: ['status'], where: base, _count: { _all: true } }),
+      this.prisma.communityPost.count({ where: { AND: [base, filters.processing] } }),
+      ...((query.section ? [query.section] : Object.keys(filters)) as CreatorContentSection[]).map(async (section) => {
+        const scope = `studio:${userId}:${section}`, cursor = readRowCursor(query.cursor, scope)
+        const rows = await this.prisma.communityPost.findMany({
+          where: { AND: [base, filters[section], ...(cursor ? [{ OR: [{ updatedAt: { lt: cursor.at } }, { updatedAt: cursor.at, id: { lt: cursor.id } }] }] : [])] },
+          include: postInclude, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: query.limit + 1,
+        })
+        pages[section] = rows.slice(0, query.limit)
+        nextCursors[section] = rows.length > query.limit ? nextRowCursor(pages[section].at(-1)!, scope) : null
       }),
     ])
-    return { items: items.filter((item) => item.sourceType === 'contribution' && item.author?.id === userId), collections: collections.map((row) => this.collectionSummary(row, viewerId)) }
+    const rows = [...new Map(Object.values(pages).flat().map((row) => [row.id, row])).values()]
+    const posts = rows.length ? await this.posts.mapMany(userId, rows) : []
+    const items = await this.mapContributions(userId, rows, posts)
+    const postById = new Map(posts.map((post) => [post.id, post])), itemById = new Map(items.map((item) => [item.id, item]))
+    const mapped = (section: 'items' | 'processing') => pages[section].flatMap((row) => itemById.has(row.id) ? [itemById.get(row.id)!] : [])
+    const drafts = (section: 'drafts' | 'pendingReview') => pages[section].flatMap((row) => postById.has(row.id) ? [postById.get(row.id)!] : [])
+    const count = (status: string) => totals.find((row) => row.status === status)?._count._all || 0
+    return { items: mapped('items'), drafts: drafts('drafts'), pendingReview: drafts('pendingReview'), processing: mapped('processing'), nextCursors, counts: { items: count('published'), drafts: count('draft'), pendingReview: count('pending_review'), processing } }
   }
 
-  async collections(userId: string): Promise<LearningCollectionSummaryDto[]> {
-    const visiblePost = await this.visibility.where(userId)
+  async creator(viewerId: string, userId: string, query: ResourceHubQueryDto = new ResourceHubQueryDto()) {
+    const scope = `collections:${viewerId}:${userId}`
+    const cursor = readRowCursor(query.collectionsCursor, scope)
+    const [page, collections] = await Promise.all([
+      this.list(viewerId, { ...query, authorId: userId }),
+      this.prisma.learningCollection.findMany({
+        where: { ownerId: userId, AND: [viewerId === userId ? {} : visibleCollection(), ...(cursor ? [{ OR: [{ updatedAt: { lt: cursor.at } }, { updatedAt: cursor.at, id: { lt: cursor.id } }] }] : [])] },
+        include: { owner: { include: authorInclude } },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: 19,
+      }),
+    ])
+    return { ...page, collections: await this.collectionSummaries(viewerId, collections.slice(0, 18)), collectionsNextCursor: collections.length > 18 ? nextRowCursor(collections[17], scope) : null }
+  }
+
+  async collections(userId: string, query: ResourceHubQueryDto = new ResourceHubQueryDto()) {
+    const cursor = query.cursor ? await this.prisma.learningCollection.findFirst({ where: { id: query.cursor, ownerId: userId }, select: { id: true, updatedAt: true, systemKind: true } }) : null
+    if (query.cursor && !cursor) throw new BadRequestException('合集游标无效，请重新读取第一页')
     const rows = await this.prisma.learningCollection.findMany({
-      where: { ownerId: userId },
-      include: {
-        owner: { include: authorInclude },
-        items: { where: { contribution: { post: visiblePost } }, include: { contribution: { include: { videoAsset: true } } } },
-      },
-      orderBy: [{ systemKind: 'desc' }, { updatedAt: 'desc' }],
+      where: { ownerId: userId, ...(cursor ? { OR: [
+        cursor.systemKind === null ? { systemKind: { not: null } } : { systemKind: { lt: cursor.systemKind } },
+        { systemKind: cursor.systemKind, OR: [{ updatedAt: { lt: cursor.updatedAt } }, { updatedAt: cursor.updatedAt, id: { lt: cursor.id } }] },
+      ] } : {}) },
+      include: { owner: { include: authorInclude } },
+      orderBy: [{ systemKind: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
     })
-    return rows.map((row) => this.collectionSummary(row, userId))
+    const page = rows.slice(0, query.limit)
+    return { items: await this.collectionSummaries(userId, page), nextCursor: rows.length > query.limit ? page.at(-1)!.id : null }
   }
 
-  async collection(userId: string, id: string): Promise<LearningCollectionDto> {
+  async collection(userId: string, id: string, query: CollectionPageQueryDto = new CollectionPageQueryDto(), focusPostId?: string): Promise<LearningCollectionDto> {
     const row = await this.prisma.learningCollection.findFirst({
       where: {
         ...(id === 'watch-later' ? { ownerId: userId, systemKind: 'watch_later' } : { id }),
         OR: [{ ownerId: userId }, visibleCollection()],
       },
-      include: {
-        owner: { include: authorInclude },
-        items: {
-          include: { contribution: { include: { videoAsset: true } } },
-          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        },
-      },
+      include: { owner: { include: authorInclude } },
     })
     if (!row) throw new NotFoundException('合集不存在或不可见')
+    const visible = await this.visibility.where(userId)
+    const cursor = query.cursor ? await this.prisma.learningCollectionItem.findFirst({ where: { id: query.cursor, collectionId: row.id }, select: { id: true, sortOrder: true } }) : null
+    if (query.cursor && !cursor) throw new BadRequestException('合集条目游标无效，请重新读取第一页')
+    const focus = !cursor && focusPostId ? await this.prisma.learningCollectionItem.findFirst({ where: { collectionId: row.id, contributionPostId: focusPostId, contribution: { post: visible } }, select: { id: true, sortOrder: true } }) : null
+    const anchor = cursor || focus, before = !!cursor && query.direction === 'before'
+    const boundary: Prisma.LearningCollectionItemWhereInput = anchor ? { OR: [
+      { sortOrder: before ? { lt: anchor.sortOrder } : { gt: anchor.sortOrder } },
+      { sortOrder: anchor.sortOrder, id: before ? { lt: anchor.id } : focus ? { gte: anchor.id } : { gt: anchor.id } },
+    ] } : {}
+    const candidates = await this.prisma.learningCollectionItem.findMany({
+      where: { collectionId: row.id, contribution: { post: visible }, ...boundary },
+      select: { id: true, sortOrder: true, contributionPostId: true },
+      orderBy: [{ sortOrder: before ? 'desc' : 'asc' }, { id: before ? 'desc' : 'asc' }], take: query.limit + 1,
+    })
+    const page = candidates.slice(0, query.limit)
+    if (before) page.reverse()
     const visibleRows = await this.prisma.communityPost.findMany({
-      where: { AND: [await this.visibility.where(userId), { id: { in: row.items.map((item) => item.contributionPostId) } }] },
-      include: postInclude,
+      where: { AND: [visible, { id: { in: page.map((item) => item.contributionPostId) } }] },
+      include: postInclude, take: query.limit,
     })
     const visiblePosts = await this.posts.mapMany(userId, visibleRows)
-    const visible = new Map(visiblePosts.map((post) => [post.id, post]))
-    const sourceRows = visibleRows.filter((post) => visible.has(post.id))
-    const mapped = await this.mapContributions(userId, sourceRows, sourceRows.map((post) => visible.get(post.id)!))
-    const items = row.items.flatMap((item) => {
+    const mapped = await this.mapContributions(userId, visibleRows, visiblePosts)
+    const items = page.flatMap((item) => {
         const contribution = mapped.find((candidate) => candidate.postId === item.contributionPostId)
         return contribution ? [{ id: item.id, sortOrder: item.sortOrder, contribution }] : []
       })
-    const videos = items.filter((item) => item.contribution.kind === 'video')
+    const hasPrevious = before ? candidates.length > query.limit : cursor ? true : focus ? !!await this.prisma.learningCollectionItem.findFirst({ where: { collectionId: row.id, contribution: { post: visible }, OR: [{ sortOrder: { lt: focus.sortOrder } }, { sortOrder: focus.sortOrder, id: { lt: focus.id } }] }, select: { id: true } }) : false
+    const hasNext = before ? true : candidates.length > query.limit
     return {
-      ...this.collectionSummary(row, userId),
+      ...(await this.collectionSummaries(userId, [row]))[0],
       ...(row.ownerId === userId ? { detection: await this.detection.result('collection', row.id, row.revision) } : {}),
-      itemCount: items.length,
-      videoCount: videos.length,
-      durationSeconds: videos.reduce((total, item) => total + (item.contribution.durationSeconds || 0), 0),
-      items,
+      items, nextCursor: hasNext && page.length ? page.at(-1)!.id : null, previousCursor: hasPrevious && page.length ? page[0].id : null,
     }
   }
 
@@ -449,10 +481,11 @@ export class ResourceHubService {
     await this.prisma.$transaction(async (tx) => {
       await lockFileReferences(tx)
       await tx.$queryRaw`SELECT id FROM learning_collections WHERE id = ${id} FOR UPDATE`
-      const collection = await tx.learningCollection.findFirst({ where: { id, ownerId: userId, revision: expectedRevision }, include: { items: true } })
+      const collection = await tx.learningCollection.findFirst({ where: { id, ownerId: userId, revision: expectedRevision } })
       if (!collection) throw new ConflictException('合集已变化、不可编辑或不存在')
-      if (collection.items.length !== itemIds.length || collection.items.some((item) => !itemIds.includes(item.id))) throw new BadRequestException('排序项必须与合集当前内容一致')
-      for (const [sortOrder, itemId] of itemIds.entries()) await tx.learningCollectionItem.update({ where: { id: itemId }, data: { sortOrder } })
+      const slots = await tx.learningCollectionItem.findMany({ where: { collectionId: id, id: { in: itemIds } }, select: { id: true, sortOrder: true }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], take: itemIds.length })
+      if (!itemIds.length || slots.length !== itemIds.length) throw new BadRequestException('排序项必须属于当前合集且不能重复')
+      for (const [index, itemId] of itemIds.entries()) await tx.learningCollectionItem.update({ where: { id: itemId }, data: { sortOrder: slots[index].sortOrder } })
       await this.detectCollection(tx, await tx.learningCollection.update({ where: { id }, data: { revision: { increment: 1 } } }))
     })
     return this.collection(userId, id)
@@ -558,6 +591,8 @@ export class ResourceHubService {
   }
 
   async adminItems(userId: string, query: ResourceHubQueryDto) {
+    const scope = createHash('sha256').update(JSON.stringify(['admin-resources', userId, query.keyword, query.kind, query.category])).digest('hex')
+    const cursor = readRowCursor(query.cursor, scope)
     const contribution = {
       ...(query.category ? { category: { code: query.category } } : {}),
       ...(query.kind === 'all' ? {} : { kind: query.kind }),
@@ -565,18 +600,20 @@ export class ResourceHubService {
     const rows = await this.prisma.communityPost.findMany({
       where: {
         contribution: Object.keys(contribution).length ? { is: contribution } : { isNot: null },
-        AND: [await this.visibility.adminWhere()],
+        AND: [await this.visibility.adminWhere(), ...(cursor ? [{ OR: [{ updatedAt: { lt: cursor.at } }, { updatedAt: cursor.at, id: { lt: cursor.id } }] }] : [])],
         ...(query.keyword ? { OR: [{ title: { contains: query.keyword, mode: 'insensitive' } }, { plainText: { contains: query.keyword, mode: 'insensitive' } }] } : {}),
       },
       include: { ...postInclude, _count: { select: { reports: true } } },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: query.limit,
+      take: query.limit + 1,
     })
-    const mapped = await this.mapContributions(userId, rows, await this.posts.mapMany(userId, rows))
-    return rows.flatMap((row) => {
+    const page = rows.slice(0, query.limit)
+    const mapped = await this.mapContributions(userId, page, await this.posts.mapMany(userId, page))
+    const items = page.flatMap((row) => {
       const item = mapped.find((candidate) => candidate.postId === row.id)
       return item ? [{ ...item, status: row.status, visibility: row.visibility, reportCount: row._count.reports, deletedAt: row.deletedAt?.toISOString() || null }] : []
     })
+    return { items, nextCursor: rows.length > query.limit ? nextRowCursor(page.at(-1)!, scope) : null }
   }
 
   async updateContribution(actorId: string, postId: string, input: ContributionAdminDto) {
@@ -616,13 +653,16 @@ export class ResourceHubService {
     return row
   }
 
-  processingFailures() {
-    return this.prisma.videoAsset.findMany({
-      where: { status: 'failed' },
+  async processingFailures(query: ResourceHubQueryDto = new ResourceHubQueryDto()) {
+    const cursor = readRowCursor(query.cursor, 'processing')
+    const rows = await this.prisma.videoAsset.findMany({
+      where: { status: 'failed', ...(cursor ? { OR: [{ updatedAt: { lt: cursor.at } }, { updatedAt: cursor.at, id: { lt: cursor.id } }] } : {}) },
       select: { id: true, originalName: true, attempts: true, lastError: true, updatedAt: true, uploader: { select: { id: true, displayName: true } }, contribution: { select: { postId: true, post: { select: { title: true } } } } },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: 100,
+      take: query.limit + 1,
     })
+    const items = rows.slice(0, query.limit)
+    return { items, nextCursor: rows.length > query.limit ? nextRowCursor(items.at(-1)!, 'processing') : null }
   }
 
   capacity(userId: string) { return this.quota.capacity(userId) }
@@ -639,18 +679,22 @@ export class ResourceHubService {
     return { capacity, queue: rows.map(({ sourceFile, leaseExpiresAt, ...row }) => ({ ...row, leaseExpiresAt: leaseExpiresAt?.toISOString() ?? null, retryable: row.status === 'failed' && !sourceFile.quarantinedAt && row.attempts < Math.max(1, Math.min(5, Number(this.config.get('VIDEO_PROCESSING_MAX_ATTEMPTS') || 3))) })), scan: { configured: !!this.config.get('MEDIA_CLAMSCAN_PATH'), unavailableFiles, quarantinedFiles }, cleanup: { pending, failures } }
   }
 
-  resourceReports() {
-    return this.prisma.communityReport.findMany({
-      where: { post: { contribution: { isNot: null } } },
+  async resourceReports(query: ResourceHubQueryDto = new ResourceHubQueryDto()) {
+    const cursor = readRowCursor(query.cursor, 'reports')
+    const rows = await this.prisma.communityReport.findMany({
+      where: { post: { contribution: { isNot: null } }, ...(cursor ? { OR: [{ createdAt: { lt: cursor.at } }, { createdAt: cursor.at, id: { lt: cursor.id } }] } : {}) },
       select: { id: true, postId: true, reason: true, description: true, status: true, createdAt: true, handledAt: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 100,
+      take: query.limit + 1,
     })
+    const items = rows.slice(0, query.limit)
+    return { items, nextCursor: rows.length > query.limit ? nextRowCursor(items.at(-1)!, 'reports') : null }
   }
 
-  adminCollections() {
-    return this.prisma.learningCollection.findMany({
-      where: { visibility: 'community' },
+  async adminCollections(query: ResourceHubQueryDto = new ResourceHubQueryDto()) {
+    const cursor = readRowCursor(query.cursor, 'admin-collections')
+    const rows = await this.prisma.learningCollection.findMany({
+      where: { visibility: 'community', ...(cursor ? { OR: [{ updatedAt: { lt: cursor.at } }, { updatedAt: cursor.at, id: { lt: cursor.id } }] } : {}) },
       select: {
         id: true,
         name: true,
@@ -664,51 +708,92 @@ export class ResourceHubService {
         courseLinks: { select: { courseId: true, courseVersionId: true, sourceRevision: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 5 },
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: 100,
+      take: query.limit + 1,
+    })
+    const items = rows.slice(0, query.limit)
+    return { items, nextCursor: rows.length > query.limit ? nextRowCursor(items.at(-1)!, 'admin-collections') : null }
+  }
+
+  private async selectItems(userId: string, query: ResourceHubQueryDto, options: HubSelection, scope: Prisma.Sql, asOf = new Date(), cursor?: HubCursor): Promise<HubCandidate[]> {
+    const popular = query.sort === 'popular'
+    const keyword = query.keyword.trim()
+    const postFilters = [scope, Prisma.sql`COALESCE(p.published_at, p.created_at) <= ${asOf}`, Prisma.sql`(c.kind <> 'video' OR v.status = 'ready')`]
+    if (query.category) postFilters.push(Prisma.sql`category.code = ${query.category}`)
+    if (query.authorId) postFilters.push(Prisma.sql`p.author_id = ${query.authorId}`)
+    if (query.kind !== 'all') postFilters.push(Prisma.sql`c.kind::text = ${query.kind}`)
+    if (options.sourceType === 'legacy_resource') postFilters.push(Prisma.sql`FALSE`)
+    if (options.postIds) postFilters.push(options.postIds.length ? Prisma.sql`p.id IN (${Prisma.join(options.postIds)})` : Prisma.sql`FALSE`)
+    if (options.liveReplay) postFilters.push(Prisma.sql`c.live_replay = true AND c.kind = 'video'`)
+    if (options.liked) postFilters.push(Prisma.sql`EXISTS (SELECT 1 FROM community_post_reactions reaction WHERE reaction.user_id = ${userId} AND reaction.post_id = p.id AND reaction.reaction_type = 'like')`)
+    if (options.related) postFilters.push(Prisma.sql`p.id <> ${options.related.postId} AND (c.category_id IS NOT DISTINCT FROM ${options.related.categoryId} OR c.tags && ${options.related.tags}::text[])`)
+    if (keyword) postFilters.push(Prisma.sql`(
+      strpos(lower(COALESCE(p.title, '未命名资源')), lower(${keyword})) > 0
+      OR strpos(lower(left(p.plain_text, 220)), lower(${keyword})) > 0
+      OR EXISTS (SELECT 1 FROM unnest(c.tags) tag WHERE strpos(lower(tag), lower(${keyword})) > 0)
+      OR strpos(lower(CASE WHEN EXISTS (SELECT 1 FROM community_moderation_actions m WHERE m.subject_id = p.author_id AND m.target_type = 'profile' AND m.action = 'takedown' AND m.revoked_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > NOW())) THEN '账号资料暂不可见' ELSE author.display_name END), lower(${keyword})) > 0)`)
+    const legacyData = Prisma.sql`COALESCE(NULLIF(version.snapshot->'data', 'null'::jsonb), version.snapshot->'payload', '{}'::jsonb)`
+    const legacyTags = Prisma.sql`CASE WHEN jsonb_typeof(${legacyData}->'tags') = 'array' THEN ${legacyData}->'tags' ELSE '[]'::jsonb END`
+    const legacyFilters = [Prisma.sql`r.deleted_at IS NULL AND r.status = 'published' AND COALESCE(r.published_at, version.created_at) <= ${asOf}`]
+    if (options.sourceType === 'contribution' || query.category || query.authorId || !['all', 'document'].includes(query.kind) || options.postIds || options.liveReplay || options.liked) legacyFilters.push(Prisma.sql`FALSE`)
+    if (keyword) legacyFilters.push(Prisma.sql`(strpos(lower(COALESCE(version.snapshot->>'title', '')), lower(${keyword})) > 0 OR strpos(lower(COALESCE(version.snapshot->>'summary', '')), lower(${keyword})) > 0 OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(${legacyTags}) tag WHERE strpos(lower(tag), lower(${keyword})) > 0))`)
+    if (options.related?.categoryId) legacyFilters.push(Prisma.sql`${legacyTags} ?| ${options.related.tags}::text[]`)
+    const postCounts = popular ? Prisma.sql`LEFT JOIN (
+      SELECT target_id, event_type, count(*)::double precision AS views FROM activity_events
+      WHERE target_type = 'post' AND event_type IN ('resource_valid_watch', 'community_post_click') AND created_at <= ${asOf}
+        ${options.since ? Prisma.sql`AND created_at >= ${options.since}` : Prisma.empty}
+      GROUP BY target_id, event_type
+    ) metrics ON metrics.target_id = p.id AND metrics.event_type = CASE WHEN c.kind = 'video' THEN 'resource_valid_watch' ELSE 'community_post_click' END` : Prisma.empty
+    const legacyCounts = popular ? Prisma.sql`LEFT JOIN (
+      SELECT resource_id, count(*)::double precision AS views FROM resource_views WHERE created_at <= ${asOf}
+        ${options.since ? Prisma.sql`AND created_at >= ${options.since}` : Prisma.empty}
+      GROUP BY resource_id
+    ) metrics ON metrics.resource_id = r.id` : Prisma.empty
+    const seek = cursor ? Prisma.sql`WHERE ${popular ? Prisma.sql`(views, published_at, id COLLATE "C", source_type COLLATE "C") < (${cursor.views}, ${new Date(cursor.publishedAt)}, ${cursor.id}, ${cursor.sourceType})` : Prisma.sql`(published_at, id COLLATE "C", source_type COLLATE "C") < (${new Date(cursor.publishedAt)}, ${cursor.id}, ${cursor.sourceType})`}` : Prisma.empty
+    return this.prisma.$queryRaw<HubCandidate[]>(Prisma.sql`
+      WITH candidates AS (
+        SELECT 'contribution'::text AS source_type, p.id, p.id AS database_id, COALESCE(p.published_at, p.created_at) AS published_at, ${popular ? Prisma.sql`COALESCE(metrics.views, 0)` : Prisma.sql`0::double precision`} AS views, c.featured
+        FROM community_posts p JOIN resource_contributions c ON c.post_id = p.id
+        JOIN users author ON author.id = p.author_id
+        LEFT JOIN resource_categories category ON category.id = c.category_id
+        LEFT JOIN video_assets v ON v.id = c.video_asset_id
+        ${postCounts} WHERE ${Prisma.join(postFilters, ' AND ')}
+        UNION ALL
+        SELECT 'legacy_resource'::text, r.slug, r.id, COALESCE(r.published_at, version.created_at), ${popular ? Prisma.sql`COALESCE(metrics.views, 0)` : Prisma.sql`0::double precision`}, COALESCE((${legacyData}->>'featured') = 'true', false)
+        FROM resources r JOIN resource_versions version ON version.id = r.published_version_id
+        ${legacyCounts} WHERE ${Prisma.join(legacyFilters, ' AND ')}
+      )
+      SELECT source_type AS "sourceType", id, database_id AS "databaseId", published_at AS "publishedAt", views, featured
+      FROM candidates ${seek}
+      ORDER BY ${options.featuredFirst ? Prisma.sql`featured DESC,` : Prisma.empty} ${popular ? Prisma.sql`views DESC,` : Prisma.empty} published_at DESC, id COLLATE "C" DESC, source_type COLLATE "C" DESC
+      LIMIT ${query.limit + 1}`)
+  }
+
+  private async hydrateItems(userId: string, candidates: HubCandidate[], asOf = new Date()): Promise<ResourceHubItemDto[]> {
+    if (!candidates.length) return []
+    const contributionIds = candidates.filter((item) => item.sourceType === 'contribution').map((item) => item.id)
+    const legacyIds = candidates.filter((item) => item.sourceType === 'legacy_resource').map((item) => item.databaseId)
+    const [rows, legacy] = await Promise.all([
+      contributionIds.length ? this.prisma.communityPost.findMany({ where: { id: { in: contributionIds }, AND: [await this.visibility.where(userId)] }, include: postInclude, take: contributionIds.length }) : [],
+      legacyIds.length ? this.resources.list({ page: 1, pageSize: legacyIds.length, keyword: '' }, true, legacyIds) : { items: [] },
+    ])
+    const contributions = rows.length ? await this.mapContributions(userId, rows, await this.posts.mapMany(userId, rows), asOf) : []
+    const mapped = new Map<string, ResourceHubItemDto>(contributions.map((item) => [`contribution:${item.id}`, item]))
+    for (const item of legacy.items) mapped.set(`legacy_resource:${item.slug}`, {
+      sourceType: 'legacy_resource', id: item.slug, postId: null, title: item.title, summary: item.summary, kind: 'document', category: null,
+      tags: Array.isArray(item.data.tags) ? item.data.tags : [], coverUrl: typeof item.data.cover === 'string' ? item.data.cover : null, author: null,
+      stats: { views: item.views, likes: 0, comments: 0, bookmarks: Number(item.data.favorites || 0), downloads: item.downloads },
+      durationSeconds: null, videoAssetId: null, mediaStatus: null, publishedAt: item.publishedAt || item.updatedAt,
+      route: `/resources?preview=${encodeURIComponent(item.slug)}`, featured: Boolean(item.data.featured), liveReplay: false,
+    })
+    return candidates.flatMap((candidate) => {
+      const item = mapped.get(`${candidate.sourceType}:${candidate.id}`)
+      return item ? [{ ...item, publishedAt: candidate.publishedAt.toISOString() }] : []
     })
   }
 
-  private async allItems(userId: string): Promise<ResourceHubItemDto[]> {
-    // ponytail: 校园规模先在服务端合并两种来源；达到万级内容后再改为数据库 UNION 游标。
-    const where = await this.visibility.where(userId)
-    const rows = await this.prisma.communityPost.findMany({
-      where: { AND: [where, { contribution: { isNot: null } }, { OR: [{ contribution: { is: { kind: { not: 'video' } } } }, { contribution: { is: { videoAsset: { is: { status: 'ready' } } } } }] }] },
-      include: postInclude,
-      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-    })
-    const posts = await this.posts.mapMany(userId, rows)
-    const contributions = await this.mapContributions(userId, rows, posts)
-    const legacy = []
-    let page = 1
-    for (;;) {
-      const result = await this.resources.list({ page, pageSize: 100, keyword: '' }, true)
-      legacy.push(...result.items.map((item): ResourceHubItemDto => ({
-        sourceType: 'legacy_resource',
-        id: item.slug,
-        postId: null,
-        title: item.title,
-        summary: item.summary,
-        kind: 'document',
-        category: null,
-        tags: Array.isArray(item.data.tags) ? item.data.tags : [],
-        coverUrl: typeof item.data.cover === 'string' ? item.data.cover : null,
-        author: null,
-        stats: { views: item.views, likes: 0, comments: 0, bookmarks: Number(item.data.favorites || 0), downloads: item.downloads },
-        durationSeconds: null,
-        videoAssetId: null,
-        mediaStatus: null,
-        publishedAt: item.publishedAt || item.updatedAt,
-        route: `/resources?preview=${encodeURIComponent(item.slug)}`,
-        featured: Boolean(item.data.featured),
-        liveReplay: false,
-      })))
-      if (page * 100 >= result.total) break
-      page++
-    }
-    return [...contributions, ...legacy]
-  }
-
-  private async mapContributions(userId: string, rows: HydratedPost[], posts: Awaited<ReturnType<CommunityPostService['mapMany']>>) {
+  private async mapContributions(userId: string, rows: HydratedPost[], posts: Awaited<ReturnType<CommunityPostService['mapMany']>>, asOf = new Date()) {
+    const counts = rows.length ? await this.prisma.activityEvent.groupBy({ by: ['targetId', 'eventType'], where: { targetType: 'post', targetId: { in: rows.map((row) => row.id) }, eventType: { in: ['resource_valid_watch', 'community_post_click'] }, createdAt: { lte: asOf } }, _count: { _all: true } }) : []
+    const views = new Map(counts.map((row) => [`${row.targetId}:${row.eventType}`, row._count._all]))
     return rows.flatMap((row): ResourceHubItemDto[] => {
       const post = posts.find((candidate) => candidate.id === row.id)
       const contribution = row.contribution
@@ -725,7 +810,7 @@ export class ResourceHubService {
         tags: contribution.tags,
         coverUrl: coverFileId ? this.mediaUrl(coverFileId, userId) : null,
         author: post.author,
-        stats: { views: row.impressionCount, likes: row.likeCount, comments: row.commentCount, bookmarks: row.bookmarkCount, downloads: 0 },
+        stats: { views: views.get(`${row.id}:${contribution.kind === 'video' ? 'resource_valid_watch' : 'community_post_click'}`) || 0, plays: contribution.kind === 'video' ? views.get(`${row.id}:resource_valid_watch`) || 0 : null, impressions: row.impressionCount, likes: row.likeCount, comments: post.stats.comments, bookmarks: row.bookmarkCount, downloads: 0 },
         durationSeconds: contribution.videoAsset?.durationSeconds || null,
         videoAssetId: contribution.videoAssetId,
         mediaStatus: contribution.videoAsset?.status || null,
@@ -737,12 +822,26 @@ export class ResourceHubService {
     })
   }
 
+  private async collectionSummaries(userId: string, rows: Array<LearningCollection & { owner: Parameters<typeof authorDto>[0] }>) {
+    if (!rows.length) return []
+    const scope = await this.visibility.publicPostsSql(userId)
+    const counts = await this.prisma.$queryRaw<Array<{ id: string; itemCount: number; videoCount: number; durationSeconds: number }>>(Prisma.sql`
+      SELECT item.collection_id AS id, count(*)::integer AS "itemCount", count(v.id)::integer AS "videoCount",
+        COALESCE(sum(v.duration_seconds), 0)::double precision AS "durationSeconds"
+      FROM learning_collection_items item
+      JOIN resource_contributions c ON c.post_id = item.contribution_post_id
+      JOIN community_posts p ON p.id = c.post_id
+      LEFT JOIN video_assets v ON v.id = c.video_asset_id
+      WHERE item.collection_id IN (${Prisma.join(rows.map((row) => row.id))}) AND ${scope}
+      GROUP BY item.collection_id`)
+    const byId = new Map(counts.map((row) => [row.id, row]))
+    return rows.map((row) => this.collectionSummary(row, userId, byId.get(row.id) || { itemCount: 0, videoCount: 0, durationSeconds: 0 }))
+  }
+
   private collectionSummary(row: {
     id: string; name: string; description: string; learningGoal: string; visibility: 'private' | 'community'; contentStatus: string; systemKind: string | null; revision: number; updatedAt: Date
     ownerId: string; owner: Parameters<typeof authorDto>[0]
-    items: Array<{ contribution: { videoAsset: { durationSeconds: number | null } | null } }>
-  }, userId: string): LearningCollectionSummaryDto {
-    const videos = row.items.map((item) => item.contribution.videoAsset).filter((video): video is NonNullable<typeof video> => !!video)
+  }, userId: string, counts: Pick<LearningCollectionSummaryDto, 'itemCount' | 'videoCount' | 'durationSeconds'>): LearningCollectionSummaryDto {
     return {
       id: row.id,
       name: row.name,
@@ -751,25 +850,12 @@ export class ResourceHubService {
       contentStatus: row.contentStatus as LearningCollectionSummaryDto['contentStatus'],
       systemKind: row.systemKind === 'watch_later' ? 'watch_later' : null,
       learningGoal: row.learningGoal,
-      itemCount: row.items.length,
-      videoCount: videos.length,
-      durationSeconds: videos.reduce((total, video) => total + (video.durationSeconds || 0), 0),
+      ...counts,
       owner: authorDto(row.owner),
       isOwner: row.ownerId === userId,
       revision: row.revision,
       updatedAt: row.updatedAt.toISOString(),
     }
-  }
-
-  private async ranking(items: ResourceHubItemDto[], since: Date) {
-    const [postEvents, legacyEvents] = await Promise.all([
-      this.prisma.activityEvent.findMany({ where: { eventType: 'resource_valid_watch', targetId: { in: items.flatMap((item) => item.postId ? [item.postId] : []) }, createdAt: { gte: since } }, select: { targetId: true } }),
-      this.prisma.resourceView.findMany({ where: { resource: { slug: { in: items.filter((item) => item.sourceType === 'legacy_resource').map((item) => item.id) } }, createdAt: { gte: since } }, select: { resource: { select: { slug: true } } } }),
-    ])
-    const counts = new Map<string, number>()
-    for (const row of postEvents) if (row.targetId) counts.set(row.targetId, (counts.get(row.targetId) || 0) + 1)
-    for (const row of legacyEvents) counts.set(row.resource.slug, (counts.get(row.resource.slug) || 0) + 1)
-    return [...items].sort((a, b) => (counts.get(b.postId || b.id) || 0) - (counts.get(a.postId || a.id) || 0) || b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)).slice(0, 5)
   }
 
   private async assertMediaPost(userId: string, media: Prisma.CommunityPostWhereInput, targetId: string) {

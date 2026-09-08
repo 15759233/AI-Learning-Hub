@@ -9,7 +9,7 @@ import type { AuthUser } from '../auth/auth.types'
 import { CommunityUploadGuard } from '../community/visibility.service'
 import { Permissions } from '../auth/permissions.decorator'
 import { PermissionsGuard } from '../auth/permissions.guard'
-import { CollectionCourseDto, CollectionInputDto, CollectionItemDto, CollectionReorderDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubConfigDto, ResourceHubQueryDto, WatchProgressDto } from './resource-hub.dto'
+import { CollectionCourseDto, CollectionInputDto, CollectionItemDto, CollectionPageQueryDto, CollectionReorderDto, ContributionAdminDto, ResourceCategoryInputDto, ResourceHubConfigDto, ResourceHubQueryDto, StudioQueryDto, WatchProgressDto } from './resource-hub.dto'
 import { parseSingleRange, ResourceHubService } from './resource-hub.service'
 
 @Controller('resource-hub')
@@ -20,9 +20,9 @@ export class ResourceHubController {
   @Get('home') home(@CurrentUser() user: AuthUser) { return this.hub.home(user.id) }
   @Get('categories') categories() { return this.hub.categories() }
   @Get('items') list(@CurrentUser() user: AuthUser, @Query() query: ResourceHubQueryDto) { return this.hub.list(user.id, query) }
-  @Get('studio') studio(@CurrentUser() user: AuthUser) { return this.hub.studio(user.id) }
+  @Get('studio') studio(@CurrentUser() user: AuthUser, @Query() query: StudioQueryDto) { return this.hub.studio(user.id, query) }
   @Get('capacity') capacity(@CurrentUser() user: AuthUser) { return this.hub.capacity(user.id) }
-  @Get('creators/:userId') creator(@CurrentUser() user: AuthUser, @Param('userId') userId: string) { return this.hub.creator(user.id, userId) }
+  @Get('creators/:userId') creator(@CurrentUser() user: AuthUser, @Param('userId') userId: string, @Query() query: ResourceHubQueryDto) { return this.hub.creator(user.id, userId, query) }
   @Get('contributions/:postId') detail(@CurrentUser() user: AuthUser, @Param('postId') postId: string) { return this.hub.detail(user.id, postId) }
 
   @Post('uploads/video')
@@ -48,9 +48,9 @@ export class ResourceHubController {
   @Get('videos/:id/playback') playback(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.hub.playback(user.id, id) }
   @Put('videos/:id/progress') progress(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: WatchProgressDto) { return this.hub.progress(user.id, id, input) }
 
-  @Get('collections') collections(@CurrentUser() user: AuthUser) { return this.hub.collections(user.id) }
+  @Get('collections') collections(@CurrentUser() user: AuthUser, @Query() query: ResourceHubQueryDto) { return this.hub.collections(user.id, query) }
   @Post('collections') createCollection(@CurrentUser() user: AuthUser, @Body() input: CollectionInputDto, @Headers('idempotency-key') key?: string) { return this.hub.createCollection(user.id, input, key) }
-  @Get('collections/:id') collection(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.hub.collection(user.id, id) }
+  @Get('collections/:id') collection(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query() query: CollectionPageQueryDto) { return this.hub.collection(user.id, id, query) }
   @Patch('collections/:id') updateCollection(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CollectionInputDto) { return this.hub.updateCollection(user.id, id, input) }
   @Post('collections/:id/items') add(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CollectionItemDto) { return this.hub.addToCollection(user.id, id, input.postId) }
   @Delete('collections/:id/items/:itemId') remove(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('itemId') itemId: string) { return this.hub.removeFromCollection(user.id, id, itemId) }
@@ -77,7 +77,7 @@ export class ResourceHubAdminController {
   @Patch('categories/:id') @Permissions('resource.write')
   updateCategory(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: ResourceCategoryInputDto) { return this.hub.updateCategory(user.id, id, input) }
 
-  @Get('processing-failures') failures() { return this.hub.processingFailures() }
+  @Get('processing-failures') failures(@Query() query: ResourceHubQueryDto) { return this.hub.processingFailures(query) }
   @Get('media-runtime') runtime() { return this.hub.mediaRuntime() }
   @Post('processing-failures/:id/retry') @Permissions('resource.write')
   retry(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.hub.retryVideo(user.id, id, true) }
@@ -85,8 +85,8 @@ export class ResourceHubAdminController {
   cleanup(@CurrentUser() user: AuthUser) { return this.hub.cleanupVideoOrphans(user.id) }
 
   @Get('reports') @Permissions('community.report.manage')
-  reports() { return this.hub.resourceReports() }
-  @Get('collections') collections() { return this.hub.adminCollections() }
+  reports(@Query() query: ResourceHubQueryDto) { return this.hub.resourceReports(query) }
+  @Get('collections') collections(@Query() query: ResourceHubQueryDto) { return this.hub.adminCollections(query) }
   @Post('collections/:id/course') @Permissions('course.write')
   toCourse(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() input: CollectionCourseDto) { return this.hub.collectionToCourse(user.id, id, input) }
 }

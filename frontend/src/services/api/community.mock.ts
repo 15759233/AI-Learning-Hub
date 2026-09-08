@@ -141,6 +141,7 @@ let verification = structuredClone(initialVerification)
 let governance: GovernanceMineDto = { actions: [], reports: [], appeals: [], reviews: [] }
 const joinedAt = '2026-08-30T08:00:00.000Z'
 const storageKey = 'ai-learning-community:demo-v5'
+export const mockResourceActivity: Array<{ targetId: string; eventType: 'community_post_click' | 'resource_valid_watch' | 'impression'; createdAt: number; eventKey?: string }> = []
 let restored = false
 const restoreMock = () => {
 if (restored) return
@@ -149,6 +150,7 @@ try {
   const stored = JSON.parse(localStorage.getItem(storageKey) || 'null')
   if (stored?.version === 5) {
     posts = stored.posts; comments = stored.comments; notifications = stored.notifications
+    mockResourceActivity.splice(0, mockResourceActivity.length, ...(stored.resourceActivity || []))
     for (const id of stored.hidden) hidden.add(id)
     for (const id of stored.muted) muted.add(id)
     for (const id of stored.blocked) blocked.add(id)
@@ -163,11 +165,12 @@ try {
   }
 } catch { /* 损坏的本地演示状态使用可重置的初始数据。 */ }
 }
-const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification, pendingChanges, profileDetection, governance })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
+const persist = () => { try { localStorage.setItem(storageKey, JSON.stringify({ version: 5, posts, comments, notifications, resourceActivity: mockResourceActivity, hidden: [...hidden], muted: [...muted], blocked: [...blocked], following: [...following], topicIds: topics.filter((t) => t.following).map((t) => t.id), bio, headline, location, websiteUrl, expertiseTopics, bannerUrl, pinnedPostId, avatar: authors[0].avatar, allowAchievementDrafts, userRevision, profileRevision, verification, pendingChanges, profileDetection, governance })) } catch { throw new Error('本地演示存储已满，请清理浏览器空间') } }
 export const resetCommunityMock = () => {
   resetMockImages()
   restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
+  mockResourceActivity.length = 0
   hidden.clear(); muted.clear(); blocked.clear(); following.clear(); cursors.clear(); initialFollowing.forEach((id) => following.add(id))
   topics.forEach((topic) => { topic.following = false; topic.followerCount = 0 })
   bio = ''; headline = ''; location = ''; websiteUrl = ''; expertiseTopics = []; bannerUrl = null; pinnedPostId = null; allowAchievementDrafts = false; userRevision = 1; profileRevision = 1; verification = structuredClone(initialVerification); authors[0].avatar = null
@@ -178,6 +181,13 @@ export const resetCommunityMock = () => {
 const context = (): CommunityContextDto => ({ todayPlan: null, continueCourse: null, continueLab: null, currentChallenge: null, trendingTopics: topics.slice(0, 6), suggestedUsers: authors.filter((user) => user.verifiedType !== 'none'), needsInterests: topics.filter((t) => t.following).length < 3 })
 export const mockTargetUnavailable = (type: string, id: string, authorId: string) => governance.actions.some((row) => !row.revokedAt && (!row.expiresAt || Date.parse(row.expiresAt) > Date.now()) && (row.action === 'ban' && authorId === authors[0].id || row.action === 'takedown' && row.target.id === id && (row.target.type === type || ['post', 'resource'].includes(type) && ['post', 'resource'].includes(row.target.type))))
 const visible = (ownDrafts = false) => posts.filter((p) => !mockTargetUnavailable('post', p.id, p.author.id) && !hidden.has(p.id) && !muted.has(p.author.id) && !blocked.has(p.author.id) && (p.status === 'published' || p.status === 'limited' || (ownDrafts && ['draft', 'pending_review'].includes(p.status) && p.author.id === authors[0].id)))
+export const recordMockResourceActivity = (targetId: string, eventType: typeof mockResourceActivity[number]['eventType'], eventKey?: string) => {
+  restoreMock()
+  if (!visible().some((post) => post.id === targetId)) throw new Error('动态不可见或已删除')
+  if (eventKey && mockResourceActivity.some((event) => event.eventKey === eventKey)) return
+  mockResourceActivity.push({ targetId, eventType, createdAt: Date.now(), ...(eventKey ? { eventKey } : {}) })
+  persist()
+}
 export const mockResourceContributionPosts = (ownDrafts = false) => {
   restoreMock()
   return structuredClone(visible(ownDrafts).filter((post) => !!post.contribution))
@@ -378,6 +388,10 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     value = { ...Object.fromEntries(Object.entries(all).map(([key, rows]) => [key, type === 'all' || type === key ? rows.slice(offset, offset + limit) : []])), nextCursor: type !== 'all' && type in all && all[type as keyof typeof all].length > offset + limit ? String(offset + limit) : null }
   } else if (root === 'feed') {
     if (id === 'updates') value = { count: filtered(url).filter((p) => p.publishedAt > (url.searchParams.get('since') || '')).length }
+    else if (id === 'impressions' && method === 'POST') {
+      for (const entry of (body as { items: Array<{ requestId: string; postId: string }> }).items) recordMockResourceActivity(entry.postId, 'impression', `impression:${entry.requestId}:${entry.postId}`)
+      value = { received: true }
+    }
     else if (method !== 'GET') value = { received: true }
     else {
       const cursor = url.searchParams.get('cursor'), type = url.searchParams.get('type') || 'all', mode = url.searchParams.get('mode') || 'for_you'
@@ -402,7 +416,11 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     value = { binding, topicIds: course ? topics.filter((topic) => topic.themeId === course.theme).slice(0, 3).map((topic) => topic.id) : [] }
   }
   else if (root === 'interests') { const selected = (body as { themeIds: string[] }).themeIds; topics.forEach((t) => { if (selected.includes(t.themeId || '')) t.following = true }); value = context() }
-  else if (root === 'signals') value = { recorded: true }
+  else if (root === 'signals') {
+    const input = body as { eventType: string; targetType: string; targetId: string }
+    if (input.eventType === 'community_post_click' && input.targetType === 'post') recordMockResourceActivity(input.targetId, 'community_post_click')
+    value = { recorded: true }
+  }
   else if (root === 'topics') {
     if (action === 'follow') { const topic = topics.find((t) => t.id === id)!; topic.following = method === 'PUT'; value = { active: topic.following } }
     else if (action === 'posts') value = visible().filter((p) => p.topics.some((t) => t.slug === id))
@@ -523,8 +541,22 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
         const comment: CommunityCommentDto = { id: randomId(), revision: 1, status: detection.action === 'review' ? 'pending_review' : 'published', detection, postId: id, author: authors[0], parentId: input.parentId || null, rootId: input.parentId || null, body: text(input.contentBlocks), contentBlocks: input.contentBlocks, deleted: false, likes: 0, liked: false, accepted: false, createdAt: new Date().toISOString() }
         comments.push(comment); if (comment.status === 'published') post!.stats.comments++; value = comment
       } else {
-        const rows = comments.filter((c) => c.postId === id && ((c.status || 'published') === 'published' || c.author.id === authors[0].id)), order = new Map(rows.map((row, index) => [row.id, index]))
-        value = rows.sort((a, b) => (order.get(a.parentId || a.id) ?? rows.length) - (order.get(b.parentId || b.id) ?? rows.length) || Number(!!a.parentId) - Number(!!b.parentId)).map((c) => muted.has(c.author.id) ? { ...c, body: '该评论不可见', contentBlocks: [], deleted: true } : c)
+        const readable = (c: CommunityCommentDto) => c.status !== 'pending_review' || c.author.id === authors[0].id
+        const all = comments.filter((c) => c.postId === id)
+        const candidates = all.filter((c) => readable(c) || !c.parentId && all.some((reply) => reply.parentId === c.id && readable(reply)))
+        const parentId = url.searchParams.get('parentId') || null, cursorId = url.searchParams.get('cursor')
+        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 25))
+        if (parentId && !all.some((c) => c.id === parentId && !c.parentId)) throw new Error('一级评论不存在')
+        const cursor = cursorId ? all.find((c) => c.id === cursorId) : null
+        if (cursorId && (!cursor || cursor.parentId !== parentId)) throw new Error('评论游标不属于当前讨论')
+        const compare = (a: CommunityCommentDto, b: CommunityCommentDto) => a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+        const rows = candidates.filter((c) => fourth ? c.id === fourth : c.parentId === parentId && (!cursor || compare(c, cursor) > 0)).sort(compare)
+        const items = rows.slice(0, fourth ? 1 : limit).map((c) => {
+          const deleted = c.deleted || muted.has(c.author.id) || (c.status || 'published') !== 'published' && !(c.status === 'pending_review' && c.author.id === authors[0].id)
+          return { ...c, ...(deleted ? { author: { id: '', username: '', displayName: '不可见用户', avatar: null, school: null, major: null, verifiedType: 'none' }, body: '该评论已删除或不可见', contentBlocks: [], deleted: true, detection: undefined, likes: 0, liked: false, accepted: false } : {}), replyCount: all.filter((reply) => reply.parentId === c.id && readable(reply)).length }
+        })
+        if (fourth && !items.length) throw new Error('评论不存在或不可见')
+        value = fourth ? items[0] : { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null }
       }
     } else if (action === 'pin') {
       requireOwner(post!.author.id)

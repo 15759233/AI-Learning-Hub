@@ -27,8 +27,9 @@ export class ResourceService {
     }
   }
 
-  async list(query: PageQueryDto, publicOnly = false) {
+  async list(query: PageQueryDto, publicOnly = false, ids?: string[]) {
     const where: Prisma.ResourceWhereInput = this.support.where(publicOnly ? { ...query, keyword: '' } : query, publicOnly)
+    if (ids) where.id = { in: ids }
     if (publicOnly) where.publishedVersion = { is: query.keyword ? { OR: [
       { snapshot: { path: ['title'], string_contains: query.keyword, mode: 'insensitive' } },
       { snapshot: { path: ['summary'], string_contains: query.keyword, mode: 'insensitive' } },

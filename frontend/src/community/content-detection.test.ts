@@ -5,10 +5,10 @@ import { contentDetectionNotice } from './labels'
 import { flushRender, setupComponent } from './test-renderer'
 import { communityApi } from '../services/api/community'
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: { postId: 'synthetic-post' }, fullPath: '/community/post/synthetic-post' }) }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ params: { postId: 'synthetic-post' }, fullPath: '/community/post/synthetic-post', hash: '' }) }))
 vi.mock('../stores/auth', () => ({ useAuthStore: () => ({ user: { id: 'synthetic-owner', communityWriteEnabled: true } }) }))
 vi.mock('../services/api/community', () => ({ communityApi: { post: vi.fn(), comments: vi.fn(), comment: vi.fn() } }))
-beforeEach(() => { vi.resetAllMocks(); vi.mocked(communityApi.comments).mockResolvedValue([]) })
+beforeEach(() => { vi.resetAllMocks(); vi.mocked(communityApi.comments).mockResolvedValue({ items: [], nextCursor: null }) })
 
 const detection: ContentDetectionResult = { action: 'review', ruleVersion: 1, hits: [], mediaReview: 'not_performed' }
 interface ViewState { post: CommunityPostDetailDto | null; body: string; error: string; notice: string; submit(): Promise<void> }

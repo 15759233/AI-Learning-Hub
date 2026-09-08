@@ -55,6 +55,7 @@ export interface ResourceContributionDto extends ResourceContributionInput {
 }
 
 export interface ResourceHubItemDto {
+  rankingViews?: number
   sourceType: 'contribution' | 'legacy_resource'
   id: string
   postId: string | null
@@ -65,7 +66,7 @@ export interface ResourceHubItemDto {
   tags: string[]
   coverUrl: string | null
   author: CommunityAuthorDto | null
-  stats: { views: number; likes: number; comments: number; bookmarks: number; downloads: number }
+  stats: { views: number; plays?: number | null; impressions?: number | null; likes: number; comments: number; bookmarks: number; downloads: number }
   durationSeconds: number | null
   videoAssetId: string | null
   mediaStatus: VideoProcessingStatus | null
@@ -108,7 +109,12 @@ export interface LearningCollectionItemDto {
 
 export interface LearningCollectionDto extends LearningCollectionSummaryDto {
   items: LearningCollectionItemDto[]
+  nextCursor: string | null
+  previousCursor: string | null
 }
+
+export interface CollectionPageQuery { cursor?: string; direction?: 'before' | 'after' }
+export type CreatorContentSection = 'items' | 'drafts' | 'pendingReview' | 'processing'
 
 export interface LearningCollectionInput {
   name: string
@@ -136,6 +142,29 @@ export interface ResourceHubHomeDto {
 export interface ResourceHubListDto {
   items: ResourceHubItemDto[]
   nextCursor: string | null
+}
+export interface ResourceHubCreatorDto extends ResourceHubListDto {
+  collections: LearningCollectionSummaryDto[]
+  collectionsNextCursor: string | null
+}
+export interface ResourceHubAdminItemDto extends ResourceHubItemDto {
+  status: string; visibility: string; reportCount: number; deletedAt: string | null
+}
+export interface ResourceHubAdminListDto { items: ResourceHubAdminItemDto[]; nextCursor: string | null }
+export interface ResourceHubPageDto<T> { items: T[]; nextCursor: string | null }
+export interface ResourceProcessingFailureDto {
+  id: string; originalName: string; attempts: number; lastError: string | null; updatedAt: string
+  uploader: { id: string; displayName: string }
+  contribution: { postId: string; post: { title: string | null } } | null
+}
+export interface ResourceReportSummaryDto {
+  id: string; postId: string | null; reason: string; description: string; status: string; createdAt: string; handledAt: string | null
+}
+export interface ResourceAdminCollectionDto {
+  id: string; name: string; description: string; learningGoal: string; revision: number; contentStatus: string; updatedAt: string
+  owner: { id: string; username: string; displayName: string }
+  _count: { items: number; courseLinks: number }
+  courseLinks: Array<{ courseId: string; courseVersionId: string; sourceRevision: number; createdAt: string }>
 }
 
 export interface ResourceContributionDetailDto {
@@ -165,6 +194,8 @@ export interface WatchProgressInput {
 }
 
 export interface CreatorContentSummaryDto {
+  counts: Record<CreatorContentSection, number>
+  nextCursors: Record<CreatorContentSection, string | null>
   items: ResourceHubItemDto[]
   drafts: CommunityPostSummaryDto[]
   pendingReview: CommunityPostSummaryDto[]

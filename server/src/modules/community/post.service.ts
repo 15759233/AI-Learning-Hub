@@ -251,8 +251,8 @@ export class CommunityPostService {
       this.prisma.communityPostReaction.findMany({ where: { userId, postId: { in: ids } } }),
       this.prisma.communityBookmark.findMany({ where: { userId, postId: { in: ids } } }),
       this.prisma.communityUserFollow.findMany({ where: { followerId: userId, followeeId: { in: rows.map((row) => row.authorId) } } }),
-      this.prisma.communityTopicFollow.findMany({ where: { userId } }),
-      this.prisma.communityComment.findMany({ where: { ...commentWhere, author: { ...availableAccount(), communityProfile: { verifiedType: { in: ['teacher', 'mentor'] } }, userRoles: { some: { role: { code: { in: ['teacher', 'mentor'] } } } } } }, select: { postId: true } }),
+      this.prisma.communityTopicFollow.findMany({ where: { userId, topicId: { in: rows.flatMap((row) => row.topics.map((entry) => entry.topicId)) } } }),
+      this.prisma.communityComment.groupBy({ by: ['postId'], where: { ...commentWhere, author: { ...availableAccount(), communityProfile: { verifiedType: { in: ['teacher', 'mentor'] } }, userRoles: { some: { role: { code: { in: ['teacher', 'mentor'] } } } } } } }),
       this.prisma.communityComment.groupBy({ by: ['postId'], where: commentWhere, _count: { _all: true } }),
       this.prisma.communityComment.findMany({ where: { ...commentWhere, id: { in: rows.flatMap((row) => row.question?.acceptedCommentId ? [row.question.acceptedCommentId] : []) } }, select: { id: true } }),
     ])

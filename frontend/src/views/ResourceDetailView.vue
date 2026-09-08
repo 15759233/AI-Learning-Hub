@@ -8,6 +8,7 @@ import ResourceHubCard from '../components/ResourceHubCard.vue'
 import CommunityPostCard from '../community/CommunityPostCard.vue'
 import CommunityPostView from '../community/CommunityPostView.vue'
 import { resourceHubApi } from '../services/api/resourceHub'
+import { communityApi } from '../services/api/community'
 import { useCommunityAccess } from '../community/composables/useCommunityAccess'
 
 const route = useRoute(), router = useRouter()
@@ -16,29 +17,67 @@ const detail = ref<ResourceContributionDetailDto | null>(null)
 const playback = ref<VideoPlaybackDto | null>(null)
 const player = ref<HTMLVideoElement>()
 const collections = ref<LearningCollectionSummaryDto[]>([])
+const collectionsCursor = ref<string | null>(null), collectionsLoading = ref(false), seriesLoading = ref(false)
 const collectionOpen = ref(false)
 const error = ref('')
 const notice = ref('')
 let lastSavedAt = 0
 let watchedSeconds = 0
 let lastPosition: number | null = null
+let loadEpoch = 0
+let displayedPostId = ''
 const nextItem = computed(() => {
   const items = detail.value?.collection?.items || []
   const index = items.findIndex((item) => item.contribution.postId === detail.value?.post.id)
   return index >= 0 ? items[index + 1]?.contribution || null : null
 })
 const load = async () => {
+  const epoch = ++loadEpoch, postId = String(route.params.postId)
   error.value = ''; detail.value = null; playback.value = null
+  collectionsCursor.value = null; collectionsLoading.value = false; seriesLoading.value = false
   try {
-    detail.value = await resourceHubApi.detail(String(route.params.postId))
-    collections.value = await resourceHubApi.collections()
-    if (detail.value.contribution.video) {
-      playback.value = await resourceHubApi.playback(detail.value.contribution.video.id)
+    const resource = await resourceHubApi.detail(postId)
+    if (epoch !== loadEpoch) return
+    detail.value = resource
+    if (displayedPostId !== postId && resource.contribution.kind !== 'video') void communityApi.signals({ eventType: 'community_post_click', targetType: 'post', targetId: postId }).catch(() => undefined)
+    displayedPostId = postId
+    const choices = await resourceHubApi.collections()
+    if (epoch !== loadEpoch) return
+    collections.value = choices.items; collectionsCursor.value = choices.nextCursor
+    if (resource.contribution.video) {
+      const currentPlayback = await resourceHubApi.playback(resource.contribution.video.id)
+      if (epoch !== loadEpoch) return
+      playback.value = currentPlayback
       watchedSeconds = playback.value.progress?.watchedSeconds || 0
       await nextTick()
-      if (player.value && playback.value.progress?.positionSeconds) player.value.currentTime = playback.value.progress.positionSeconds
+      if (epoch === loadEpoch && player.value && currentPlayback.progress?.positionSeconds) player.value.currentTime = currentPlayback.progress.positionSeconds
     }
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '资源读取失败' }
+  } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '资源读取失败' }
+}
+const moreCollections = async () => {
+  if (!collectionsCursor.value || collectionsLoading.value) return
+  const epoch = loadEpoch
+  collectionsLoading.value = true
+  try {
+    const page = await resourceHubApi.collections(collectionsCursor.value)
+    if (epoch !== loadEpoch) return
+    collections.value = [...new Map([...collections.value, ...page.items].map((item) => [item.id, item])).values()]; collectionsCursor.value = page.nextCursor
+  } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '合集读取失败' }
+  finally { if (epoch === loadEpoch) collectionsLoading.value = false }
+}
+const moreSeries = async (direction: 'before' | 'after') => {
+  const current = detail.value?.collection, cursor = direction === 'before' ? current?.previousCursor : current?.nextCursor
+  if (!current || !cursor || seriesLoading.value) return
+  const epoch = loadEpoch
+  seriesLoading.value = true
+  try {
+    const page = await resourceHubApi.collection(current.id, { cursor, direction })
+    if (epoch !== loadEpoch || !detail.value) return
+    if (page.revision !== current.revision) { await load(); return }
+    const merged = direction === 'before' ? [...page.items, ...current.items] : [...current.items, ...page.items]
+    detail.value.collection = { ...page, items: [...new Map(merged.map((item) => [item.id, item])).values()], previousCursor: direction === 'before' ? page.previousCursor : current.previousCursor, nextCursor: direction === 'after' ? page.nextCursor : current.nextCursor }
+  } catch (cause) { if (epoch === loadEpoch) error.value = cause instanceof Error ? cause.message : '播放列表读取失败' }
+  finally { if (epoch === loadEpoch) seriesLoading.value = false }
 }
 const saveProgress = async (completed = false) => {
   if (!player.value || !playback.value || !Number.isFinite(player.value.currentTime)) return
@@ -93,7 +132,7 @@ const share = async () => {
   } catch (cause) { if (!(cause instanceof DOMException && cause.name === 'AbortError')) error.value = '分享失败' }
 }
 watch(() => route.params.postId, load, { immediate: true })
-onBeforeUnmount(() => { void saveProgress() })
+onBeforeUnmount(() => { loadEpoch++; void saveProgress() })
 </script>
 
 <template>
@@ -111,11 +150,13 @@ onBeforeUnmount(() => { void saveProgress() })
         </section>
         <aside v-if="detail.collection" class="resource-detail-series">
           <span>所在合集</span><h2>{{ detail.collection.name }}</h2>
-          <RouterLink v-for="(entry, index) in detail.collection.items" :key="entry.id" :to="entry.contribution.route" :class="{ active: entry.contribution.postId === detail.post.id }"><b>{{ index + 1 }}</b><span>{{ entry.contribution.title }}</span></RouterLink>
+          <button v-if="detail.collection.previousCursor" class="text-link" :disabled="seriesLoading" @click="moreSeries('before')">加载前面的内容</button>
+          <RouterLink v-for="entry in detail.collection.items" :key="entry.id" :to="entry.contribution.route" :class="{ active: entry.contribution.postId === detail.post.id }"><b>{{ entry.sortOrder + 1 }}</b><span>{{ entry.contribution.title }}</span></RouterLink>
+          <button v-if="detail.collection.nextCursor" class="text-link" :disabled="seriesLoading" @click="moreSeries('after')">加载后面的内容</button>
         </aside>
       </div>
       <CommunityPostCard :post="detail.post" detail @changed="load" @hidden="router.push('/resources')" />
-      <p class="resource-detail-observation">观看 {{ detail.stats.views.toLocaleString('zh-CN') }} 次 · 发布于 {{ new Date(detail.post.publishedAt).toLocaleDateString('zh-CN') }}</p>
+      <p class="resource-detail-observation">{{ detail.contribution.kind === 'video' ? '有效播放' : '浏览' }} {{ detail.stats.views.toLocaleString('zh-CN') }} 次 · 发布于 {{ new Date(detail.post.publishedAt).toLocaleDateString('zh-CN') }}</p>
       <div class="resource-detail-actions">
         <button v-if="detail.contribution.attachment" class="button primary" @click="download"><AppIcon name="download" />下载 {{ detail.contribution.attachment.name }}</button>
         <button class="button secondary" @click="addToWatchLater"><AppIcon name="bookmark" />稍后再看</button>
@@ -126,5 +167,5 @@ onBeforeUnmount(() => { void saveProgress() })
       <section v-if="detail.related.length" class="resource-detail-related"><div class="resource-section-heading"><div><span>继续探索</span><h2>相关推荐</h2></div></div><div class="resource-hub-grid three"><ResourceHubCard v-for="item in detail.related" :key="item.id" :item="item" /></div></section>
     </template>
   </section>
-  <AppDialog v-model="collectionOpen" title="加入学习合集"><div class="resource-collection-picker"><button v-for="item in collections" :key="item.id" @click="add(item.id)"><strong>{{ item.name }}</strong><small>{{ item.itemCount }} 项 · {{ item.visibility === 'private' ? '私有' : '社区可见' }}</small></button><button @click="add('watch-later')"><strong>稍后再看</strong><small>仅自己可见</small></button></div></AppDialog>
+  <AppDialog v-model="collectionOpen" title="加入学习合集"><div class="resource-collection-picker"><button v-for="item in collections" :key="item.id" @click="add(item.id)"><strong>{{ item.name }}</strong><small>{{ item.itemCount }} 项 · {{ item.visibility === 'private' ? '私有' : '社区可见' }}</small></button><button v-if="collectionsCursor" :disabled="collectionsLoading" @click="moreCollections">加载更多合集</button><button @click="add('watch-later')"><strong>稍后再看</strong><small>仅自己可见</small></button></div></AppDialog>
 </template>
