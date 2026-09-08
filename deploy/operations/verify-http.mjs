@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process'
 const prisma = new PrismaClient()
 const base = 'http://127.0.0.1:3000/api/v1'
 const checks = []
+let stage = 'readiness'
 async function json(path, token, init = {}) {
   const response = await fetch(base + path, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...init.headers }, signal: AbortSignal.timeout(10000) })
   const body = await response.json()
@@ -22,8 +23,14 @@ try {
   }
   assert(ready, '恢复应用未就绪')
   checks.push('readiness')
+  stage = 'student-admin-static-and-proxy'
   for (const origin of input.frontends) {
-    const page = await fetch(origin, { signal: AbortSignal.timeout(5000) })
+    let page
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try { page = await fetch(origin, { signal: AbortSignal.timeout(2000) }); if (page.ok) break; await page.arrayBuffer() } catch { /* Nginx 入口仍在初始化 */ }
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    assert(page?.ok, '恢复前端未就绪')
     assert.equal(page.status, 200)
     const html = await page.text()
     assert.match(html, /<html/i)
@@ -41,10 +48,12 @@ try {
     assert.equal(api.status, 200)
   }
   checks.push('student-admin-static-and-proxy')
+  stage = 'existing-login'
   const login = async role => json('/auth/login', '', { method: 'POST', body: JSON.stringify({ identifier: input.credentials[`${role}Identifier`], password: input.credentials[`${role}Password`], remember: false }) })
   const student = await login('student'), admin = await login('admin')
   assert(student.user.id && admin.user.id)
   checks.push('existing-student-and-admin-login')
+  stage = 'admin-boundary'
   const anonymous = await fetch(base + '/admin/persistence', { signal: AbortSignal.timeout(5000) })
   assert.equal(anonymous.status, 401)
   const forbidden = await fetch(base + '/admin/persistence', { headers: { authorization: `Bearer ${student.accessToken}` }, signal: AbortSignal.timeout(5000) })
@@ -57,18 +66,21 @@ try {
     assert.equal(response.status, 403)
   }
   checks.push('admin-boundary')
+  stage = 'post-read'
   const posts = await json('/community/posts?limit=20', student.accessToken)
-  assert(Array.isArray(posts.items) && posts.items.length, '恢复库没有可验证的可见帖子')
-  await json(`/community/posts/${encodeURIComponent(posts.items[0].id)}`, student.accessToken)
+  assert(Array.isArray(posts) && posts.length, '恢复库没有可验证的可见帖子')
+  await json(`/community/posts/${encodeURIComponent(posts[0].id)}`, student.accessToken)
   checks.push('post-read')
+  stage = 'comment-read'
   let commentFound = false
-  for (const post of posts.items) {
+  for (const post of posts.slice(0, 20)) {
     const comments = await json(`/community/posts/${encodeURIComponent(post.id)}/comments`, student.accessToken)
-    const rows = Array.isArray(comments) ? comments : comments.items
-    if (rows?.length) { commentFound = true; break }
+    assert(Array.isArray(comments), '评论返回格式不符合现有契约')
+    if (comments.length) { commentFound = true; break }
   }
   assert(commentFound, '恢复库抽样未覆盖评论，不得把空列表当作验证通过')
   checks.push('comment-read')
+  stage = 'course-version-relations'
   const courses = await prisma.course.findMany({ where: { status: 'published', deletedAt: null, publishedVersionId: { not: null } }, include: { publishedVersion: true }, take: 10 })
   assert(courses.length, '恢复库没有可验证的发布课程')
   for (const course of courses) {
@@ -76,6 +88,7 @@ try {
     await json(`/courses/${encodeURIComponent(course.slug)}`, student.accessToken)
   }
   checks.push('course-version-relations')
+  stage = 'file-download'
   const files = await prisma.fileRecord.findMany({ where: { visibility: 'public', quarantinedAt: null, objectKey: { startsWith: 'catalog/' } }, take: 1 })
   assert(files.length, '恢复库没有可验证的公共文件')
   const file = files[0]
@@ -85,10 +98,25 @@ try {
   assert.equal(bytes.length, file.size)
   assert.equal(createHash('sha256').update(bytes).digest('hex'), file.checksum)
   checks.push('file-authorized-download-and-hash')
-  const hub = await json('/resource-hub/items?limit=50', student.accessToken)
-  const video = hub.items.find(item => item.videoAssetId && item.mediaStatus === 'ready')
-  assert(video, '恢复库没有可验证的视频，必须补充演练样本，不能声称播放通过')
-  const playback = await json(`/resource-hub/videos/${encodeURIComponent(video.videoAssetId)}/playback`, student.accessToken)
+  stage = 'video-range-and-decode'
+  const hub = await json('/resource-hub/items?limit=48&kind=video', admin.accessToken)
+  let playback, video
+  for (const candidate of hub.items.filter(item => item.videoAssetId && item.mediaStatus === 'ready')) {
+    const response = await fetch(`${base}/resource-hub/videos/${encodeURIComponent(candidate.videoAssetId)}/playback`, { headers: { authorization: `Bearer ${admin.accessToken}` }, signal: AbortSignal.timeout(10000) })
+    // 旧内容的发布者仍受当前资格检查；必须找到一个获准播放的真实样本。
+    if (response.status === 403) { await response.arrayBuffer(); continue }
+    assert.equal(response.status, 200)
+    const body = await response.json(); assert.equal(body.code, 0)
+    playback = body.data; video = candidate; break
+  }
+  assert(playback && video, '恢复库没有获准播放的真实视频，不能声称播放通过')
+  const eligibility = await json('/community/eligibility', student.accessToken)
+  const decision = eligibility.operations.upload
+  const expectedAccess = decision.allowed || decision.reasonCode === 'COMMUNITY_OPERATION_RESTRICTED'
+  const studentPlayback = await fetch(`${base}/resource-hub/videos/${encodeURIComponent(video.videoAssetId)}/playback`, { headers: { authorization: `Bearer ${student.accessToken}` }, signal: AbortSignal.timeout(10000) })
+  assert.equal(studentPlayback.status, expectedAccess ? 200 : 403)
+  await studentPlayback.arrayBuffer()
+  checks.push('media-eligibility-enforced')
   const playbackUrl = new URL(playback.sources[0].src, base)
   assert.equal(playbackUrl.origin, 'http://127.0.0.1:3000')
   const partial = await fetch(playbackUrl, { headers: { range: 'bytes=0-1023' }, signal: AbortSignal.timeout(10000) })
@@ -99,6 +127,7 @@ try {
   execFileSync('ffmpeg', ['-v', 'error', '-i', playbackUrl.href, '-t', '1', '-f', 'null', '-'], { timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] })
   checks.push('video-range-and-decode')
   if (!input.previous) {
+    stage = 'expiry-cleanup'
     const { cleanExpiredCredentials } = createRequire(import.meta.url)(process.cwd() + '/dist/modules/persistence/maintenance.js')
     const nonce = 'drill-' + randomUUID()
     const samples = []
@@ -126,7 +155,7 @@ try {
     }
   }
   console.log(JSON.stringify({ passed: true, checks }))
-} catch {
-  console.log(JSON.stringify({ passed: false, checks, reason: '恢复验证未覆盖全部要求或断言失败' }))
+} catch (error) {
+  console.log(JSON.stringify({ passed: false, checks, stage, reason: '恢复验证未覆盖全部要求或断言失败', errorType: error?.name, actual: typeof error?.actual === 'number' ? error.actual : undefined, expected: typeof error?.expected === 'number' ? error.expected : undefined }))
   process.exitCode = 1
 } finally { await prisma.$disconnect() }

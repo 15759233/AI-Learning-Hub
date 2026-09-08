@@ -7,9 +7,19 @@ from unittest.mock import patch
 
 from backup import Snapshot, backup, fingerprint_sql, media_path, private_json, restore, validate_repository, verify_media, verify_remote_file
 from monitor import problems, transition, notify_wecom
+from drill import validate_clone
 
 
 class OperationsTests(unittest.TestCase):
+    def test_clone_digest_check_ignores_query_order_but_rejects_changed_rows(self):
+        rows = [{'table': 'course_versions', 'rows': 2, 'digest': 'first'}, {'table': 'users', 'rows': 3, 'digest': 'second'}]
+        unordered = '\n'.join(json.dumps(row) for row in reversed(rows))
+        with patch('drill.query', side_effect=[unordered, '0', '1']):
+            self.assertTrue(validate_clone('isolated', {'tables': rows})['allDigestsMatch'])
+        changed = [{**rows[0], 'digest': 'changed'}, rows[1]]
+        with patch('drill.query', return_value='\n'.join(json.dumps(row) for row in changed)), self.assertRaisesRegex(RuntimeError, 'course_versions'):
+            validate_clone('isolated', {'tables': rows})
+
     def test_configuration_failure_marks_attempt_failed_immediately(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch('backup.validate_repository', side_effect=ValueError('配置失效')), self.assertRaises(ValueError):

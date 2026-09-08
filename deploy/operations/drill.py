@@ -36,10 +36,11 @@ def query(container, sql):
 
 
 def validate_clone(container, manifest, after_migration=False):
-    expected = [row for row in manifest['tables'] if not after_migration or row['table'] != '_prisma_migrations']
-    actual = [json.loads(line) for line in query(container, fingerprint_sql([x['table'] for x in expected])).splitlines()]
+    expected = sorted([row for row in manifest['tables'] if not after_migration or row['table'] != '_prisma_migrations'], key=lambda row: row['table'])
+    actual = sorted([json.loads(line) for line in query(container, fingerprint_sql([x['table'] for x in expected])).splitlines()], key=lambda row: row['table'])
     if actual != expected:
-        raise RuntimeError('恢复库全表行数或摘要不一致')
+        changed = [row['table'] for row in expected if row not in actual]
+        raise RuntimeError('恢复库全表行数或摘要不一致：' + ','.join(changed))
     invalid = query(container, "SELECT count(*) FROM pg_constraint WHERE connamespace='public'::regnamespace AND NOT convalidated")
     primary = query(container, "SELECT count(*) FROM pg_constraint WHERE conrelid='public.users'::regclass AND contype='p'")
     if invalid != '0' or primary != '1':
