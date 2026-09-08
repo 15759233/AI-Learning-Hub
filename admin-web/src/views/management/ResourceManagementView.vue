@@ -255,9 +255,7 @@ const archive = async () => { if (list.selected.value) { await publishing.archiv
 .resource-admin-list article > div { display: flex; flex: 1; flex-direction: column; min-width: 180px; }
 .resource-admin-list article strong, .resource-admin-list article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resource-admin-list .resource-source-change { color: var(--el-color-warning); }
-.resource-admin-list :is(input, select), .resource-category-create input { min-width: 120px; height: 36px; }
-.resource-admin-list label, .domain-section label { display: flex; align-items: center; gap: 6px; }
-.resource-admin-list label input, .domain-section label input[type="checkbox"] { min-width: auto; height: auto; }
+.resource-admin-list :is(input:not([type="checkbox"]), select), .resource-category-create input { min-width: 120px; height: 36px; }
 .resource-admin-filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .resource-admin-filters :is(input, select) { min-width: 150px; height: 36px; }
 .resource-category-create { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)) auto; gap: 8px; }
