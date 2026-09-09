@@ -152,13 +152,12 @@ onMounted(async () => {
     <p v-if="contribution.kind !== 'article' && !uploadDecision.allowed" class="community-notice">{{ uploadDecision.message }}<span v-if="availability('upload')">{{ availability('upload') }}</span><RouterLink v-if="uploadDecision.nextAction" class="text-link" :to="uploadDecision.nextAction.route">{{ uploadDecision.nextAction.label }}</RouterLink></p>
     <div v-if="uploadStatus" class="resource-upload-state" role="status"><progress :value="uploadProgress" max="100" /><span>{{ uploadStatus }}</span><button v-if="cancelUpload" type="button" class="text-link" @click="cancelUpload()">取消上传</button></div>
     <p v-if="scanNotice" class="composer-privacy">{{ scanNotice }}</p>
-    <CommunityCoverField v-if="showCover" v-model="contribution.coverFileId" />
+    <CommunityCoverField v-if="showCover && contribution.kind === 'article'" v-model="contribution.coverFileId" />
     <template v-if="contribution.kind === 'article'">
       <label>参考来源名称（选填）<input v-model="contribution.sourceName" maxlength="120" placeholder="原创内容可留空" /></label>
       <label>参考来源链接（选填）<input v-model="contribution.sourceUrl" type="url" maxlength="500" placeholder="https://…" /></label>
     </template>
     <label class="community-checkbox"><input v-model="contribution.teachingReuseConsent" type="checkbox" />允许平台在保留作者署名和原帖链接的前提下，将本作品引用到站内课程草稿</label>
-    <label v-if="form.visibility === 'public'" class="community-checkbox"><input v-model="form.portalConsent" type="checkbox" :disabled="saving" />允许未登录门户展示本内容摘要、署名及公开主页简介（可随时编辑撤回）</label>
     <p class="composer-privacy">请确认你有权分享所上传的内容；此授权仅用于站内署名教学引用，不等同于公共开源许可。</p>
   </section>
 </template>
