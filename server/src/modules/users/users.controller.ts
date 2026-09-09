@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Headers, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '../auth/auth.guard'
 import { PermissionsGuard } from '../auth/permissions.guard'
 import { Permissions } from '../auth/permissions.decorator'
 import { CurrentUser } from '../auth/current-user.decorator'
 import type { AuthUser } from '../auth/auth.types'
 import { UsersService } from './users.service'
-import { CampusIdentityVerificationInputDto, IdentityReviewDto, UserQuery, UserReasonDto, UserStatusUpdateDto, UserUpdateDto } from './users.dto'
+import { CampusIdentityVerificationInputDto, IdentityReviewDto, ModeratorGrantUpdateDto, UserQuery, UserReasonDto, UserStatusUpdateDto, UserUpdateDto } from './users.dto'
 import { PrismaService } from '../../prisma/prisma.service'
 
 @Controller('admin/users')
@@ -36,6 +36,8 @@ export class UsersController {
   reject(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() input: IdentityReviewDto) { return this.users.reviewIdentity(actor, id, 'reject', input) }
   @Post(':id/verification/revoke') @Permissions('user.read', 'user.identity.review')
   revokeIdentity(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() input: IdentityReviewDto) { return this.users.reviewIdentity(actor, id, 'revoke', input) }
+  @Put(':id/moderator-grants') @Permissions('user.moderator.manage')
+  moderatorGrants(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() input: ModeratorGrantUpdateDto, @Headers('idempotency-key') key?: string) { return this.users.updateModeratorGrants(actor, id, input, key) }
   @Patch(':id') @Permissions('user.write')
   update(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() input: UserUpdateDto) { return this.users.update(actor, id, input, actor.permissions.includes('user.identity.read')) }
   @Patch(':id/status') @Permissions('user.write')

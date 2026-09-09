@@ -10,6 +10,8 @@ const call = <T>(path: string, method = 'GET', body?: unknown, key?: string): Pr
   ? method === 'GET' ? request<T>(`/community${path}`) : writeRequest<T>(`/community${path}`, method, body, key)
   : mockCommunity<T>(path, method, body)
 export const communityApi = {
+  moderationTarget: (type: string, id: string) => call<import('@ai-learning-hub/contracts').ModeratorTargetDto>(`/moderation/targets/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
+  moderate: (type: string, id: string, input: import('@ai-learning-hub/contracts').ModeratorDecisionInput) => call<{ handled: boolean; actionId: string }>(`/moderation/targets/${encodeURIComponent(type)}/${encodeURIComponent(id)}/decision`, 'POST', input),
   governance: (page = 1) => call<GovernanceMineDto>(`/governance/mine?page=${page}`),
   reportTarget: (targetType: GovernanceTarget, targetId: string, input: GovernanceReportInput) => call<{ reported: boolean; id: string }>('/governance/reports', 'POST', { targetType, targetId, ...input }),
   appeal: (input: GovernanceAppealInput) => call('/governance/appeals', 'POST', input),

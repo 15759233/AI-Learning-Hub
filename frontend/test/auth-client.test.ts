@@ -13,6 +13,16 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it('账号封禁立即显示服务端原因，停止会话且不刷新重放写请求', async () => {
+    const cleared = vi.fn()
+    window.addEventListener(AUTH_SESSION_CLEARED_EVENT, cleared)
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 401, errorCode: 'ACCOUNT_BANNED', message: '账号已被封禁：重复发布垃圾广告。' }), { status: 401 }))
+    vi.stubGlobal('fetch', fetcher)
+    await expect(request('/community/posts', { method: 'POST', body: '{}' })).rejects.toMatchObject({ code: 'ACCOUNT_BANNED', status: 401 })
+    expect(fetcher).toHaveBeenCalledOnce(); expect(cleared).toHaveBeenCalledOnce()
+    expect(cleared.mock.calls[0][0].detail.message).toContain('重复发布垃圾广告')
+    expect(studentSession.token()).toBeNull()
+  })
   it('替代通知立即中止进行中的视频与附件上传，重新登录不会自动续传', async () => {
     const stopped = vi.fn(), sent = vi.fn()
     vi.stubGlobal('XMLHttpRequest', class {

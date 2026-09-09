@@ -95,6 +95,8 @@ model User {
   updatedAt                 DateTime                    @updatedAt @map("updated_at")
   refreshTokens             RefreshToken[]
   userRoles                 UserRole[]
+  moderatorGrants           FrontendModeratorGrant[]    @relation("ModeratorUser")
+  issuedModeratorGrants     FrontendModeratorGrant[]    @relation("ModeratorGrantor")
   favorites                 Favorite[]
   notes                     LearningNote[]
   lessonProgress            LessonProgress[]
@@ -293,6 +295,29 @@ model RefreshToken {
   @@index([userId, expiresAt])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+enum ModeratorScope {
+  community
+  tutorials
+}
+
+model FrontendModeratorGrant {
+  id          String         @id @default(cuid())
+  userId      String         @map("user_id")
+  scope       ModeratorScope
+  canDelete   Boolean        @default(false) @map("can_delete")
+  canMute     Boolean        @default(false) @map("can_mute")
+  canBan      Boolean        @default(false) @map("can_ban")
+  enabled     Boolean        @default(true)
+  grantedById String         @map("granted_by_id")
+  revision    Int            @default(1)
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  user        User           @relation("ModeratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy   User           @relation("ModeratorGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@unique([userId, scope])
+  @@map("frontend_moderator_grants")
 }
 
 model Role {

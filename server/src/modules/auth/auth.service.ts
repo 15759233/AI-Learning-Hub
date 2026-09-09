@@ -11,12 +11,12 @@ import { Prisma, type User } from '@prisma/client'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { actionEvent, lockUser, rateLimit } from '../../common/persistence'
 import { isEmail } from 'class-validator'
-import { activeSanction, availableAccount } from '../community/governance-policy'
+import { availableAccount } from '../community/governance-policy'
 import { generate, generateSecret, generateURI, verify } from 'otplib'
 import type { DeviceSessionDto, MfaChallengeDto, ReauthenticateInput, SessionClient } from '@ai-learning-hub/contracts'
 import { decryptMfa, encryptMfa } from './mfa-crypto'
 import { assertAdminNetwork } from '../../common/deployment-security'
-import { assertNotReplaced } from './session-revocation'
+import { assertNotBanned, assertNotReplaced } from './session-revocation'
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 type SessionOptions = { client?: SessionClient; mfaVerified?: boolean; device?: string; sessionId?: string }
@@ -110,7 +110,7 @@ export class AuthService {
     await lockUser(tx, user.id)
     const current = await tx.user.findUniqueOrThrow({ where: { id: user.id }, include: authUserInclude })
     if (current.status !== 'active' || current.sessionVersion !== (user.sessionVersion || 0)) throw new UnauthorizedException('账号会话已变化，请重新登录')
-    if (await tx.communityModerationAction.count({ where: { ...activeSanction('ban'), subjectId: user.id } })) throw new UnauthorizedException('账号被限制登录，请通过账号恢复与申诉入口查看处理决定')
+    await assertNotBanned(tx, user.id)
     user = authUserDto(current)
     const client = options.client || 'student'
     if (client === 'student' && user.permissions.length) throw new ForbiddenException('管理账号请使用管理后台完成 MFA')
@@ -153,17 +153,22 @@ export class AuthService {
         },
       },
     })
-    if (stored?.client === client) assertNotReplaced(stored)
-    if (!stored || stored.client !== client || stored.revokedAt || stored.expiresAt <= new Date() || stored.user.status !== 'active') {
+    if (!stored || stored.client !== client) {
       throw new UnauthorizedException('刷新凭据已失效')
     }
+    let previousVersion: number | undefined
     if (bearer) {
       try {
         // 过期 Access Token 仅证明旧标签所属设备，不能代替有效刷新 Cookie。
         const previous = await this.jwt.verifyAsync<AuthUser>(bearer, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'], ignoreExpiration: true })
-        if (previous.id !== stored.userId || previous.sessionId !== stored.id || previous.sessionClient !== client || previous.sessionVersion !== stored.user.sessionVersion) throw new Error()
+        if (previous.id !== stored.userId || previous.sessionId !== stored.id || previous.sessionClient !== client) throw new Error()
+        previousVersion = previous.sessionVersion || 0
       } catch { throw new UnauthorizedException('浏览器登录账号或设备已变化，请重新登录') }
     }
+    await assertNotBanned(this.prisma, stored.userId)
+    assertNotReplaced(stored)
+    if (stored.revokedAt || stored.expiresAt <= new Date() || stored.user.status !== 'active') throw new UnauthorizedException('刷新凭据已失效')
+    if (bearer && previousVersion !== stored.user.sessionVersion) throw new UnauthorizedException('浏览器登录账号或设备已变化，请重新登录')
     return this.prisma.$transaction(async (tx) => {
       await lockUser(tx, stored.userId)
       const current = await tx.refreshToken.findUnique({ where: { id: stored.id }, include: { user: { include: authUserInclude } } })

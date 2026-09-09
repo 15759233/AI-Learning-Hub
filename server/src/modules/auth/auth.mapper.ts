@@ -1,10 +1,12 @@
 import { Prisma } from '@prisma/client'
 import type { AuthUser } from '@ai-learning-hub/contracts'
 import { profileMediaUrl } from '../community/community.mapper'
+import { moderatorActions } from '../community/moderator-grants'
 export const authUserInclude = {
   school: true,
   communityProfile: true,
   identityVerification: { select: { status: true } },
+  moderatorGrants: { where: { enabled: true } },
   userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
 } satisfies Prisma.UserInclude
 export function authUserDto(user: Prisma.UserGetPayload<{ include: typeof authUserInclude }>): AuthUser {
@@ -19,6 +21,7 @@ export function authUserDto(user: Prisma.UserGetPayload<{ include: typeof authUs
     identityVerificationStatus: user.identityVerification?.status || 'unsubmitted',
     communityWriteEnabled: trusted || user.identityVerification?.status === 'approved',
     roles,
+    moderatorCapabilities: (user.moderatorGrants || []).map((grant) => ({ scope: grant.scope, actions: moderatorActions(grant) })),
     permissions: [...new Set(user.userRoles.flatMap((row) => row.role.permissions.map((grant) => grant.permission.code)))],
   }
 }

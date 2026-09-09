@@ -8,12 +8,14 @@ import { CommunityVisibilityPolicyService } from './visibility.service'
 import { CommunityNotificationService } from './notification.service'
 import { ContentDetectionService } from './content-detection.service'
 import { activeSanction, visibleCollection, visibleProfile, visibleComment } from './governance-policy'
+import { moderatorActions } from './moderator-grants'
+import type { ModeratorAction, ModeratorDecisionInput, ModeratorScope, ModeratorTargetDto } from '@ai-learning-hub/contracts'
 import type { ReportDto } from './community.dto'
 import type { GovernanceQueryDto } from './governance.dto'
 
 const openStatuses = ['pending', 'reviewing']
 const sanctionActions = Object.keys(sanctionLabels)
-type Target = GovernanceTargetDto & { subjectId: string; postId?: string; commentId?: string; collectionId?: string; profileId?: string }
+type Target = GovernanceTargetDto & { subjectId: string; postId?: string; commentId?: string; collectionId?: string; profileId?: string; scope?: ModeratorScope; contentPostId?: string }
 type Tx = Prisma.TransactionClient
 
 @Injectable()
@@ -30,13 +32,13 @@ export class CommunityGovernanceService {
       const row = await tx.communityPost.findUnique({ where: { id }, include: { contribution: { select: { postId: true } } } })
       if (!row || type === 'resource' && !row.contribution) throw new NotFoundException('举报对象不存在')
       const available = row.status !== 'draft' && (!!row.publishedAt || !!await tx.contentReview.count({ where: { targetType: 'post', targetId: id } }))
-      return { type: row.contribution ? 'resource' : 'post', id, subjectId: row.authorId, postId: id, revision: row.revision, title: available ? row.title || row.plainText.slice(0, 160) : '内容当前未公开', text: available ? row.plainText : undefined, available, route: available ? `/community/post/${id}` : null }
+      return { type: row.contribution ? 'resource' : 'post', scope: row.contribution ? 'tutorials' : 'community', id, subjectId: row.authorId, postId: id, revision: row.revision, title: available ? row.title || row.plainText.slice(0, 160) : '内容当前未公开', text: available ? row.plainText : undefined, available, route: available ? `/community/post/${id}` : null }
     }
     if (type === 'comment') {
-      const row = await tx.communityComment.findUnique({ where: { id }, include: { post: { select: { status: true, publishedAt: true } } } })
+      const row = await tx.communityComment.findUnique({ where: { id }, include: { post: { select: { status: true, publishedAt: true, contribution: { select: { postId: true } } } } } })
       if (!row) throw new NotFoundException('举报对象不存在')
       const available = row.post.status !== 'draft' && (!!row.post.publishedAt || !!await tx.contentReview.count({ where: { targetType: 'post', targetId: row.postId } }))
-      return { type, id, subjectId: row.authorId, commentId: id, revision: row.revision, title: available ? row.body.slice(0, 160) : '所属动态当前未公开', text: available ? row.body : undefined, available, route: available ? `/community/post/${row.postId}#comment-${id}` : null }
+      return { type, scope: row.post.contribution ? 'tutorials' : 'community', contentPostId: row.postId, id, subjectId: row.authorId, commentId: id, revision: row.revision, title: available ? row.body.slice(0, 160) : '所属动态当前未公开', text: available ? row.body : undefined, available, route: available ? `/community/post/${row.postId}#comment-${id}` : null }
     }
     if (type === 'collection') {
       const row = await tx.learningCollection.findUnique({ where: { id } })
@@ -184,11 +186,44 @@ export class CommunityGovernanceService {
   private assertClaim(actorId: string, assignedToId: string | null) {
     if (assignedToId !== actorId) throw new ConflictException('请先领取此事项；其他管理员已领取时不能并发处理')
   }
-  private async apply(tx: Tx, actor: AuthUser, target: Target, input: GovernanceDecisionInput, startsAt = new Date()) {
-    this.permission(actor, 'community.moderate')
+  private async moderatorGrant(tx: Tx, actor: AuthUser, target: Target, action?: string) {
+    if (actor.sessionClient !== 'student' || actor.permissions.length || !target.scope) throw new ForbiddenException('此入口仅供已授权的前台版主使用')
+    const grant = await tx.frontendModeratorGrant.findUnique({ where: { userId_scope: { userId: actor.id, scope: target.scope } } })
+    const actions = grant?.enabled ? moderatorActions(grant) : []
+    if (!actions.length || action && !actions.includes(action as ModeratorAction)) throw new ForbiddenException('没有此板块的对应管理权限，或授权已撤销')
+    await this.visibility.assertOperation(actor.id, 'post', tx)
+    if (target.subjectId === actor.id) throw new ForbiddenException('不能处理自己的内容或账号')
+    const protectedAccount = await tx.user.count({ where: { id: target.subjectId, OR: [{ userType: 'admin' }, { userRoles: { some: { role: { OR: [{ code: { in: ['admin', 'super_admin'] } }, { permissions: { some: {} } }] } } } }] } })
+    if (protectedAccount) throw new ForbiddenException('前台版主不能处理受保护的管理账号')
+    return actions
+  }
+  private async moderatorVisible(tx: Tx, actor: AuthUser, target: Target) {
+    const post = await tx.communityPost.findFirst({ where: { AND: [await this.visibility.where(actor.id), { id: target.postId || target.contentPostId }] }, select: { id: true } })
+    if (!post || target.commentId && !await tx.communityComment.count({ where: { id: target.commentId, status: 'published', deletedAt: null, ...visibleComment() } })) throw new NotFoundException('内容不存在或当前不可见')
+  }
+  async moderatorTarget(actor: AuthUser, type: string, id: string): Promise<ModeratorTargetDto> {
+    if (!['post', 'resource', 'comment'].includes(type)) throw new ForbiddenException('前台不支持此治理对象')
+    return this.prisma.$transaction(async (tx) => {
+      await lockFileReferences(tx)
+      const target = await this.target(tx, type, id)
+      const actions = await this.moderatorGrant(tx, actor, target)
+      await this.moderatorVisible(tx, actor, target)
+      const author = await tx.user.findUniqueOrThrow({ where: { id: target.subjectId }, select: { id: true, displayName: true } })
+      return { type: target.type as ModeratorTargetDto['type'], id, title: target.title, revision: target.revision!, author, scope: target.scope!, actions }
+    })
+  }
+  async decideModerator(actor: AuthUser, type: string, id: string, input: ModeratorDecisionInput, key?: string) {
+    if (!['post', 'resource', 'comment'].includes(type) || !['takedown', 'mute', 'ban'].includes(input.action)) throw new ForbiddenException('前台不支持此管理操作')
+    if (['mute', 'ban'].includes(input.action) && !input.expiresAt) throw new BadRequestException('前台禁言与封禁必须选择明确期限')
+    if (input.action === 'takedown' && input.expiresAt) throw new BadRequestException('删除内容不设置自动恢复期限')
+    return this.decideTarget(actor, type as GovernanceTarget, id, { ...input, ruleCode: 'frontend_moderation' }, key, 'student')
+  }
+  private async apply(tx: Tx, actor: AuthUser, target: Target, input: GovernanceDecisionInput, startsAt = new Date(), source: 'admin' | 'student' = 'admin') {
+    if (source === 'admin') this.permission(actor, 'community.moderate')
+    else await this.moderatorGrant(tx, actor, target, input.action)
     if (input.action === 'reject') throw new BadRequestException('驳回必须关联举报')
     if (!target.available) throw new ConflictException('内容已变为私人草稿，不能读取或处置当前草稿')
-    if (input.action === 'ban') this.permission(actor, 'user.write', 'user.session.revoke')
+    if (input.action === 'ban' && source === 'admin') this.permission(actor, 'user.write', 'user.session.revoke')
     if (target.subjectId === actor.id) throw new ForbiddenException('不能处理自己的内容或账号')
     const protectedTarget = await tx.userRole.count({ where: { userId: target.subjectId, role: { code: { in: ['admin', 'super_admin'] } } } })
     if (protectedTarget && !actor.roles.includes('super_admin')) throw new ForbiddenException('处理管理员需要超级管理员权限')
@@ -204,13 +239,13 @@ export class CommunityGovernanceService {
     if (expiresAt && startsAt >= expiresAt) throw new BadRequestException('限制结束时间必须晚于开始时间')
     if (expiresAt && expiresAt.getTime() - startsAt.getTime() > 366 * 86400000) throw new BadRequestException('限制持续时间不能超过一年')
     const operations = input.action === 'mute' ? ['post', 'comment'] : input.action === 'restrict' ? [input.operation!] : []
-    const action = await tx.communityModerationAction.create({ data: { actorId: actor.id, subjectId: target.subjectId, targetType: target.type, targetId: target.id, postId: target.postId, commentId: target.commentId, collectionId: target.collectionId, contentRevision: target.revision, action: input.action, reason: input.reason.trim(), ruleCode: input.ruleCode.trim(), expiresAt, metadata: { startsAt: startsAt.toISOString(), operations } } })
+    const action = await tx.communityModerationAction.create({ data: { actorId: actor.id, subjectId: target.subjectId, targetType: target.type, targetId: target.id, postId: target.postId, commentId: target.commentId, collectionId: target.collectionId, contentRevision: target.revision, action: input.action, reason: input.reason.trim(), ruleCode: input.ruleCode.trim(), expiresAt, metadata: { startsAt: startsAt.toISOString(), operations, source, scope: target.scope || null } } })
     if (operations.length) await tx.communityOperationRestriction.create({ data: { userId: target.subjectId, operations, startsAt, endsAt: expiresAt!, reason: input.reason.trim(), createdById: actor.id, moderationActionId: action.id } })
     if (input.action === 'ban') {
       await tx.user.update({ where: { id: target.subjectId }, data: { sessionVersion: { increment: 1 }, revision: { increment: 1 } } })
       await tx.refreshToken.updateMany({ where: { userId: target.subjectId, revokedAt: null }, data: { revokedAt: new Date() } })
     }
-    await this.audit(tx, actor.id, 'governance_sanction_applied', 'moderation_action', action.id, { action: input.action, ruleCode: action.ruleCode, reason: action.reason })
+    await this.audit(tx, actor.id, 'governance_sanction_applied', 'moderation_action', action.id, { action: input.action, ruleCode: action.ruleCode, reason: action.reason, source, scope: target.scope || null, targetType: target.type, targetId: target.id, subjectId: target.subjectId, expiresAt: expiresAt?.toISOString() || null, result: 'applied' })
     await this.notifications.governance(target.subjectId, 'moderation_action', action.id, `收到${sanctionLabels[input.action]}：${action.reason}。可查看规则、期限并申诉。`, tx)
     return action
   }
@@ -233,14 +268,19 @@ export class CommunityGovernanceService {
   }
   async decideDirect(actor: AuthUser, type: GovernanceTarget, id: string, input: GovernanceDecisionInput, key?: string) {
     this.permission(actor, 'community.moderate')
+    return this.decideTarget(actor, type, id, input, key, 'admin')
+  }
+  private async decideTarget(actor: AuthUser, type: GovernanceTarget, id: string, input: GovernanceDecisionInput, key: string | undefined, source: 'admin' | 'student') {
     if (!key) throw new BadRequestException('请携带处置幂等键')
     return this.prisma.$transaction(async (tx) => {
       await lockFileReferences(tx)
-      const request = await idempotency(tx, actor.id, `governance:${type}:${id}`, key, input)
-      if (request.resourceId) return { handled: true, actionId: request.resourceId }
       const target = await this.target(tx, type, id)
+      if (source === 'student') await this.moderatorGrant(tx, actor, target, input.action)
+      const request = await idempotency(tx, actor.id, source === 'admin' ? `governance:${type}:${id}` : `moderator:${target.type}:${id}`, key, input)
+      if (request.resourceId) return { handled: true, actionId: request.resourceId }
+      if (source === 'student') await this.moderatorVisible(tx, actor, target)
       if (target.revision !== input.expectedRevision) throw new ConflictException('当前内容已变化，请重新读取')
-      const action = await this.apply(tx, actor, target, input)
+      const action = await this.apply(tx, actor, target, input, new Date(), source)
       await request.complete(action.id)
       return { handled: true, actionId: action.id }
     })

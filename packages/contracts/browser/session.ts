@@ -1,4 +1,4 @@
-import { SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '../src/auth'
+import { ACCOUNT_BANNED, SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '../src/auth'
 
 type RefreshResult = { status: number; body: { code?: number; errorCode?: string; message?: string; data?: { accessToken: string } } | null }
 let worker: SharedWorker | undefined, sequence = 0
@@ -39,11 +39,11 @@ export function browserSession(client: 'student' | 'admin') {
     token: () => sessionStorage.getItem(key),
     accept(token: string) { generation++; controller.abort(); controller = new AbortController(); sessionStorage.removeItem(endedKey); sessionStorage.setItem(key, token) },
     rotate(token: string) { sessionStorage.setItem(key, token) },
-    end(code?: string, expectedToken?: string | null) {
+    end(code?: string, expectedToken?: string | null, message?: string) {
       if (expectedToken && identity(expectedToken) !== identity(sessionStorage.getItem(key))) return
       if (sessionStorage.getItem(endedKey)) return
       generation++
-      const detail = { code, hadToken: !!sessionStorage.getItem(key), message: code === SESSION_REPLACED ? SESSION_REPLACED_MESSAGE : '登录状态已失效，请重新登录' }
+      const detail = { code, hadToken: !!sessionStorage.getItem(key), message: code === SESSION_REPLACED ? SESSION_REPLACED_MESSAGE : code === ACCOUNT_BANNED ? message || '账号已被封禁，请通过账号恢复与申诉入口查看处理决定。' : '登录状态已失效，请重新登录' }
       // 同步通知编辑器落盘，随后取消请求、清空账号状态；不调用服务端退出接口。
       window.dispatchEvent(new CustomEvent(client + '-auth-before-clear', { detail }))
       sessionStorage.setItem(endedKey, code || 'SESSION_EXPIRED')

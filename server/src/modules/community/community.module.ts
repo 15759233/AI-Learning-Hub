@@ -14,10 +14,10 @@ import { LearningFeedPipeline } from '../feed/feed.service'
 import { CommunitySearchService } from './search.service'
 import { ContentSupportModule } from '../../common/content/content-support.module'
 import { CommunityAdminService } from './admin.service'
-import { CommunityGovernanceController, CommunityGovernanceAdminController, CommunityRecoveryController } from './governance.controller'
+import { CommunityGovernanceController, CommunityGovernanceAdminController, CommunityModeratorController, CommunityRecoveryController } from './governance.controller'
 @Module({
   imports: [AuthModule, StorageModule, SignalsModule, ContentReferenceModule, CommunityVisibilityModule, ContentSupportModule],
-  controllers: [CommunityController, CommunityAdminController, CommunityGovernanceController, CommunityGovernanceAdminController, CommunityRecoveryController],
+  controllers: [CommunityController, CommunityAdminController, CommunityGovernanceController, CommunityGovernanceAdminController, CommunityModeratorController, CommunityRecoveryController],
   providers: [CommunityPostService, CommunityCommentService, CommunityInteractionService, CommunityContextService, LearningFeedPipeline, CommunitySearchService, CommunityAdminService],
   exports: [CommunityPostService],
 })

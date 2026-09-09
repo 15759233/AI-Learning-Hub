@@ -2,6 +2,7 @@ import type { AdminIdentityVerificationDto, AdminUserDetailDto, AdminUserQueryDt
 import { api } from './api'
 export const userQueryString = (query: object) => new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])).toString()
 export const usersApi = {
+  moderatorGrants: (id: string, input: import('@ai-learning-hub/contracts').ModeratorGrantInput, key: string) => api(`/admin/users/${id}/moderator-grants`, { method: 'PUT', body: JSON.stringify(input), headers: { 'idempotency-key': key } }),
   list: (query: AdminUserQueryDto) => api<PageResult<AdminUserSummaryDto>>(`/admin/users?${userQueryString(query)}`),
   detail: (id: string) => api<AdminUserDetailDto>(`/admin/users/${id}`),
   verification: (id: string) => api<AdminIdentityVerificationDto>(`/admin/users/${id}/verification`),

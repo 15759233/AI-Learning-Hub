@@ -18,6 +18,11 @@ export class GovernanceDecisionDto implements GovernanceDecisionInput {
   @IsOptional() @IsDateString() expiresAt?: string
 }
 export class GovernanceRevisionDto { @IsInt() @Min(1) expectedRevision!: number }
+export class ModeratorDecisionDto extends GovernanceRevisionDto {
+  @IsIn(['takedown', 'mute', 'ban']) action!: 'takedown' | 'mute' | 'ban'
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value) @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+  @IsOptional() @IsDateString() expiresAt?: string
+}
 export class GovernancePageDto { @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1 }
 export class GovernanceRevokeDto extends GovernanceRevisionDto { @IsString() @Length(4, 500) @Matches(/\S/) reason!: string }
 export class GovernanceAppealDto {

@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer'
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min } from 'class-validator'
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min } from 'class-validator'
+import { moderatorScopes, type ModeratorGrantInput, type ModeratorScope } from '@ai-learning-hub/contracts'
 import type { AdminUserQueryDto, CampusIdentityVerificationInput, IdentityReviewInput } from '@ai-learning-hub/contracts'
 
 export const queryBoolean = ({ value }: { value: unknown }) => value === 'true' ? true : value === 'false' ? false : value
@@ -38,6 +39,14 @@ export class IdentityReviewDto implements IdentityReviewInput {
 }
 export class UserReasonDto {
   @IsString() @Length(4, 500) @Matches(/\S/) reason!: string
+}
+export class ModeratorGrantUpdateDto extends UserReasonDto implements ModeratorGrantInput {
+  @IsInt() @Min(1) expectedRevision!: number
+  @IsArray() @ArrayMaxSize(2) @ArrayUnique() @IsIn(moderatorScopes, { each: true }) scopes!: ModeratorScope[]
+  @IsBoolean() enabled!: boolean
+  @IsBoolean() canDelete!: boolean
+  @IsBoolean() canMute!: boolean
+  @IsBoolean() canBan!: boolean
 }
 export class UserStatusUpdateDto extends UserReasonDto {
   @IsIn(['active', 'disabled', 'locked']) status!: 'active' | 'disabled' | 'locked'

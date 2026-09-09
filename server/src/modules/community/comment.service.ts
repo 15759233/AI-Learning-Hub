@@ -74,6 +74,7 @@ export class CommunityCommentService {
     if (plainText.length > 6000) throw new BadRequestException('评论最多 6000 字')
     const row = await this.prisma.$transaction(async (tx) => {
       await lockFileReferences(tx)
+      await this.visibility.assertOperation(userId, 'comment', tx)
       const request = await idempotency(tx, userId, `comment:${postId}:${id || 'new'}`, key, input)
       if (request.resourceId) return tx.communityComment.findUniqueOrThrow({ where: { id: request.resourceId } })
       const fileIds = clean.flatMap((block) => block.type === 'image' ? [block.fileId] : [])

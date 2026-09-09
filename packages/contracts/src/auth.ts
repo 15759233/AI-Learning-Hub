@@ -1,4 +1,5 @@
 export const SESSION_REPLACED = 'SESSION_REPLACED'
+export const ACCOUNT_BANNED = 'ACCOUNT_BANNED'
 export const SESSION_REPLACED_MESSAGE = '你的账号已在其他设备登录，当前设备已退出。'
 export type SessionRevocationReason = 'replaced_by_login' | 'manual_logout' | 'security_revoke'
 
@@ -26,6 +27,7 @@ export interface AuthUser {
   communityWriteEnabled: boolean
   roles: string[]
   permissions: string[]
+  moderatorCapabilities?: import('./moderation').ModeratorCapability[]
 }
 export interface AuthSessionDto { user: AuthUser; accessToken: string; expiresIn: number }
 export interface RegisterInput {

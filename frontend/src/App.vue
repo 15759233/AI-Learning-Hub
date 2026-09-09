@@ -10,7 +10,7 @@ import QuizBridgeDialog from './components/QuizBridgeDialog.vue'
 import AuthDialog from './components/AuthDialog.vue'
 import CommunityComposer from './community/CommunityComposer.vue'
 import { AUTH_SESSION_CLEARED_EVENT, COMMUNITY_VERIFICATION_REQUIRED_EVENT, dataMode, studentSession } from './services/api/client'
-import { SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '@ai-learning-hub/contracts'
+import { ACCOUNT_BANNED, SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '@ai-learning-hub/contracts'
 import { useAuthStore } from './stores/auth'
 import { useLearningStore } from './stores/learning'
 import { useAuthUiStore } from './stores/authUi'
@@ -88,6 +88,7 @@ const retry = () => {
 
 onMounted(() => {
   if (studentSession.ended === SESSION_REPLACED) auth.sessionNotice = SESSION_REPLACED_MESSAGE
+  if (studentSession.ended === ACCOUNT_BANNED) auth.sessionNotice = '账号已被封禁，请通过账号恢复与申诉入口查看处理决定。'
   window.addEventListener('quiz-bridge', showBridgeNotice)
   window.addEventListener('api-error', showApiError)
   window.addEventListener(AUTH_SESSION_CLEARED_EVENT, clearApiSession)

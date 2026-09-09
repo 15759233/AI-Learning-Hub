@@ -19,6 +19,7 @@ export interface UserActionEventDto {
 }
 export type AdminUserActivityDto = UserActionEventDto
 export interface AdminUserDetailDto {
+  moderatorGrants?: import('./moderation').ModeratorGrantDto[]
   user: AdminUserSummaryDto & { studentNo?: string | null; teacherNo: string | null; updatedAt: string }
   security: {
     agreementVersion: string | null; agreementAcceptedAt: string | null; emailVerifiedAt: string | null

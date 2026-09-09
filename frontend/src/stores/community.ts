@@ -114,8 +114,9 @@ export const useCommunityStore = defineStore('community', {
         throw cause
       } finally { if (epoch === this.epoch) delete this.operations[key] }
     },
-    removePost(id: string) {
-      for (const [key, feed] of Object.entries(this.feeds)) this.feeds[key] = { ...feed, loaded: false, evicted: false, cursor: null, resumeCursor: undefined, items: feed.items.filter((item) => item.id !== id), publishedPosts: (feed.publishedPosts || []).filter((item) => item.id !== id) }
+    removePost(id: string, authorId?: string) {
+      const keep = (item: FeedUnitDto) => item.id !== id && (!authorId || item.type !== 'post' || item.post.author.id !== authorId)
+      for (const [key, feed] of Object.entries(this.feeds)) this.feeds[key] = { ...feed, loaded: false, evicted: false, cursor: null, resumeCursor: undefined, items: feed.items.filter(keep), publishedPosts: (feed.publishedPosts || []).filter(keep) }
     },
     published(post: CommunityPostDetailDto, keepComposer = false) {
       const query = new URLSearchParams(this.lastFeedLocation.split('?')[1]), mode = query.get('mode') || 'for_you', type = query.get('type') || 'all'

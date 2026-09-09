@@ -148,6 +148,7 @@ export class CommunityPostService {
       if (fileIds.length && await tx.fileRecord.count({ where: { quarantinedAt: null, id: { in: fileIds }, uploadedBy: userId } }) !== new Set(fileIds).size) throw new BadRequestException('图片已失效，请重新上传')
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`community-write:${userId}`},0))::text`
       const latest = id ? await tx.communityPost.findUnique({ where: { id } }) : null
+      if (input.status === 'published' || latest?.status === 'published') await this.visibility.assertOperation(userId, 'post', tx)
       if (id && (!latest || latest.deletedAt || latest.authorId !== userId || !['draft', 'published', 'pending_review'].includes(latest.status))) throw new ConflictException('动态状态已变化，请重新读取')
       if (latest && latest.revision !== input.expectedRevision) throw new ConflictException('已有较新的服务端版本，请保留当前输入并重新读取')
       if (input.status === 'published' && await tx.communityPost.count({ where: { authorId: userId, contentHash, id: { not: id }, status: { in: ['published', 'limited'] } } })) throw new ConflictException('相同内容已发布，请编辑原动态')

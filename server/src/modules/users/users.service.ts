@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
 import type { AdminIdentityVerificationDto, AdminUserSummaryDto, AdminUserDetailDto, AuthUser, CampusIdentityVerificationDto, PageResult } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
-import { actionEvent, lockFileReferences, lockUser } from '../../common/persistence'
+import { actionEvent, idempotency, lockFileReferences, lockUser } from '../../common/persistence'
+import { moderatorGrantDto } from '../community/moderator-grants'
+import type { ModeratorGrantInput } from '@ai-learning-hub/contracts'
 import { ContentDetectionService } from '../community/content-detection.service'
 import { CampusIdentityVerificationInputDto, IdentityReviewDto, UserQuery, UserStatusUpdateDto, UserUpdateDto } from './users.dto'
 import { RegistrationService } from '../auth/registration.service'
@@ -67,7 +69,7 @@ export class UsersService {
   async detail(id: string, includeStudentNo = false): Promise<AdminUserDetailDto> {
     const row = await this.prisma.user.findUnique({ where: { id }, select: {
       ...userSelect, teacherNo: true, agreementVersion: true, agreementAcceptedAt: true,
-      passwordHash: true, communityProfile: true, identities: { select: { provider: true, createdAt: true } },
+      passwordHash: true, communityProfile: true, moderatorGrants: true, identities: { select: { provider: true, createdAt: true } },
       loginLogs: { orderBy: { createdAt: 'desc' }, take: 1, select: { result: true } },
     } })
     if (!row) throw new NotFoundException('用户不存在')
@@ -80,6 +82,7 @@ export class UsersService {
     ])
     return {
       user: { ...summary(row, includeStudentNo), ...(includeStudentNo ? { studentNo: row.studentNo } : {}), teacherNo: row.teacherNo, updatedAt: row.updatedAt.toISOString() },
+      moderatorGrants: row.moderatorGrants.map(moderatorGrantDto),
       security: { agreementVersion: row.agreementVersion, agreementAcceptedAt: row.agreementAcceptedAt?.toISOString() || null,
         emailVerifiedAt: row.emailVerifiedAt?.toISOString() || null, passwordSet: !!row.passwordHash, activeSessions,
         lastLoginResult: row.loginLogs[0]?.result || null, identities: row.identities.map((r) => ({ provider: r.provider, createdAt: r.createdAt.toISOString() })) },
@@ -88,6 +91,31 @@ export class UsersService {
       activities: activities.map((r) => ({ id: r.id, actorId: r.userId, eventType: r.actionType || r.eventType, entityType: r.entityType || r.targetType, entityId: r.entityId || r.targetId, source: r.source, occurredAt: r.occurredAt.toISOString() })),
       audits: audits.map((r) => ({ id: r.id, action: r.action, reason: typeof (r.details as Prisma.JsonObject).reason === 'string' ? String((r.details as Prisma.JsonObject).reason) : '', createdAt: r.createdAt.toISOString() })),
     }
+  }
+  async updateModeratorGrants(actor: AuthUser, userId: string, input: ModeratorGrantInput, key?: string) {
+    if (!actor.permissions.includes('user.moderator.manage')) throw new ForbiddenException('缺少前台版主授权管理权限')
+    if (!key) throw new BadRequestException('请携带授权修改幂等键')
+    if (input.enabled && (!input.scopes.length || !(input.canDelete || input.canMute || input.canBan))) throw new BadRequestException('请选择管理范围和至少一项允许动作')
+    return this.prisma.$transaction(async (tx) => {
+      // 与处置共用短事务锁：撤销返回后，旧页面的下一次处置不能沿用旧授权。
+      await lockFileReferences(tx)
+      await this.assertTarget(actor, userId, tx)
+      const request = await idempotency(tx, actor.id, `moderator-grants:${userId}`, key, input)
+      if (request.resourceId) return { updated: true, revision: Number(request.resourceId) }
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId } })
+      if (user.revision !== input.expectedRevision) throw new ConflictException('用户资料或授权已更新，请重新读取')
+      const before = await tx.frontendModeratorGrant.findMany({ where: { userId } })
+      await tx.frontendModeratorGrant.updateMany({ where: { userId, ...(input.enabled ? { scope: { notIn: input.scopes } } : {}) }, data: { enabled: false, grantedById: actor.id, revision: { increment: 1 } } })
+      if (input.enabled) for (const scope of input.scopes) {
+        const data = { enabled: true, canDelete: input.canDelete, canMute: input.canMute, canBan: input.canBan, grantedById: actor.id }
+        await tx.frontendModeratorGrant.upsert({ where: { userId_scope: { userId, scope } }, create: { userId, scope, ...data }, update: { ...data, revision: { increment: 1 } } })
+      }
+      const after = await tx.frontendModeratorGrant.findMany({ where: { userId } })
+      await tx.user.update({ where: { id: userId }, data: { revision: { increment: 1 } } })
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'frontend_moderator_grants_updated', targetType: 'user', targetId: userId, details: { reason: input.reason.trim(), source: 'admin-web', before: before.map((grant) => ({ ...moderatorGrantDto(grant) })), after: after.map((grant) => ({ ...moderatorGrantDto(grant) })) } } })
+      await request.complete(String(user.revision + 1))
+      return { updated: true, revision: user.revision + 1, grants: after.map(moderatorGrantDto) }
+    })
   }
   async verificationSummary(userId: string): Promise<CampusIdentityVerificationDto> {
     const row = await this.prisma.campusIdentityVerification.findUnique({ where: { userId } })

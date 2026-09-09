@@ -7,6 +7,7 @@ import { PermissionsGuard } from '../auth/permissions.guard'
 import { AuthService } from '../auth/auth.service'
 import { LoginDto } from '../auth/auth.dto'
 import { CommunityGovernanceService } from './governance.service'
+import { ModeratorDecisionDto } from './governance.dto'
 import { GovernanceAppealDecisionDto, GovernanceAppealDto, GovernanceDecisionDto, GovernancePageDto, GovernanceQueryDto, GovernanceReportDto, GovernanceRevisionDto, GovernanceRevokeDto } from './governance.dto'
 
 @Controller('community/governance')
@@ -16,6 +17,15 @@ export class CommunityGovernanceController {
   @Get('mine') mine(@CurrentUser() user: AuthUser, @Query() query: GovernancePageDto) { return this.governance.mine(user.id, query.page) }
   @Post('reports') report(@CurrentUser() user: AuthUser, @Body() input: GovernanceReportDto, @Ip() ip: string) { return this.governance.report(user.id, input.targetType, input.targetId, input, ip) }
   @Post('appeals') appeal(@CurrentUser() user: AuthUser, @Body() input: GovernanceAppealDto, @Ip() ip: string) { return this.governance.appeal(user.id, input, ip) }
+}
+@Controller('community/moderation')
+@UseGuards(AuthGuard)
+export class CommunityModeratorController {
+  constructor(private readonly governance: CommunityGovernanceService) {}
+  @Get('targets/:type/:id')
+  target(@CurrentUser() user: AuthUser, @Param('type') type: string, @Param('id') id: string) { return this.governance.moderatorTarget(user, type, id) }
+  @Post('targets/:type/:id/decision')
+  decide(@CurrentUser() user: AuthUser, @Param('type') type: string, @Param('id') id: string, @Body() input: ModeratorDecisionDto, @Headers('idempotency-key') key?: string) { return this.governance.decideModerator(user, type, id, input, key) }
 }
 @Controller('community/recovery')
 export class CommunityRecoveryController {

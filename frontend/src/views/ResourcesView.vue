@@ -182,7 +182,7 @@ watch(legacySlug, async (slug) => {
 
       <section v-if="isFiltering" class="resource-results">
         <div class="resource-section-heading"><div><span>搜索与筛选</span><h2>{{ category ? home.categories.find((entry) => entry.code === category)?.name : '全部资源' }}</h2></div><strong>{{ results.length }} 项</strong></div>
-        <div v-if="results.length" class="resource-hub-grid three"><ResourceHubCard v-for="entry in results" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" /></div>
+        <div v-if="results.length" class="resource-hub-grid three"><ResourceHubCard v-for="entry in results" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" @changed="load()" /></div>
         <div v-else class="inline-empty"><h3>没有匹配的共创资源</h3><p>调整搜索词或内容形态后再试。</p></div>
         <button v-if="nextCursor" class="button secondary resource-load-more" :disabled="loading" @click="search(false, true)">{{ loading ? '读取中…' : '加载更多' }}</button>
       </section>
@@ -192,11 +192,11 @@ watch(legacySlug, async (slug) => {
           <main>
             <section>
               <div class="resource-section-heading"><div><span>值得先看</span><h2>本周精选</h2></div><button class="text-link" @click="selectKind('video')">查看全部<i class="resource-direction-arrow" aria-hidden="true" /></button></div>
-              <div class="resource-hub-grid featured"><ResourceHubCard v-for="entry in home.featured" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="featured" show-watch-later @watch-later="watchLater" /></div>
+              <div class="resource-hub-grid featured"><ResourceHubCard v-for="entry in home.featured" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="featured" show-watch-later @watch-later="watchLater" @changed="load()" /></div>
             </section>
             <section v-for="section in home.sections" :key="section.key">
               <div class="resource-section-heading"><div><span>师生共创</span><h2>{{ section.title }}</h2></div><button class="text-link" @click="selectCategory(section.categoryCode || '')">更多内容<i class="resource-direction-arrow" aria-hidden="true" /></button></div>
-              <div class="resource-hub-grid three"><ResourceHubCard v-for="entry in section.items.slice(0, 3)" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" /></div>
+              <div class="resource-hub-grid three"><ResourceHubCard v-for="entry in section.items.slice(0, 3)" :key="`${entry.sourceType}:${entry.id}`" :item="entry" show-watch-later @watch-later="watchLater" @changed="load()" /></div>
             </section>
           </main>
           <aside class="resource-hub-rail">
@@ -207,7 +207,7 @@ watch(legacySlug, async (slug) => {
 
         <section v-if="home.liveReplay.length" class="resource-live-replay">
           <div class="resource-section-heading"><div><span>课堂与活动</span><h2>直播回放</h2></div></div>
-          <div class="resource-hub-grid replay"><ResourceHubCard v-for="entry in home.liveReplay" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="compact" show-watch-later @watch-later="watchLater" /></div>
+          <div class="resource-hub-grid replay"><ResourceHubCard v-for="entry in home.liveReplay" :key="`${entry.sourceType}:${entry.id}`" :item="entry" variant="compact" show-watch-later @watch-later="watchLater" @changed="load()" /></div>
         </section>
       </template>
     </template>

@@ -1,7 +1,7 @@
 import { resolveDataMode } from './data-mode'
 import { randomId } from './random-id'
 import { browserSession, serializedRefresh } from '../../../../packages/contracts/browser/session'
-import { SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '@ai-learning-hub/contracts'
+import { ACCOUNT_BANNED, SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '@ai-learning-hub/contracts'
 export const studentSession = browserSession('student')
 export const dataMode = resolveDataMode(import.meta.env.VITE_DATA_MODE, import.meta.env.PROD, import.meta.env.MODE)
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -29,8 +29,9 @@ const refresh = async () => {
   const { status, body } = await serializedRefresh(baseUrl + '/auth/refresh', previous, 'student').catch(() => { throw new ApiError('连接暂时异常，请重新连接', 0) })
   if (generation !== studentSession.generation) return false
   if (status === 401) {
-    studentSession.end(body?.errorCode, previous)
+    studentSession.end(body?.errorCode, previous, body?.message)
     if (body?.errorCode === SESSION_REPLACED) throw new ApiError(SESSION_REPLACED_MESSAGE, 401, SESSION_REPLACED)
+    if (body?.errorCode === ACCOUNT_BANNED) throw new ApiError(body.message || '账号已被封禁', 401, ACCOUNT_BANNED)
     return false
   }
   if (status < 200 || status >= 300) throw new ApiError('服务暂时不可用，请重新连接', status)
@@ -61,6 +62,10 @@ export async function request<T>(path: string, init: RequestInit = {}, retry = t
   }
   const body = await response.json().catch(() => null) as Envelope<T> | null
   if (generation !== studentSession.generation) throw new ApiError('会话已变化，请重新操作', 401)
+  if (response.status === 401 && body?.errorCode === ACCOUNT_BANNED) {
+    studentSession.end(ACCOUNT_BANNED, token, body.message)
+    throw new ApiError(body.message, 401, ACCOUNT_BANNED, body.availableAt, body.nextAction)
+  }
   if (response.status === 401 && body?.errorCode === SESSION_REPLACED) {
     studentSession.end(SESSION_REPLACED, token)
     throw new ApiError(SESSION_REPLACED_MESSAGE, 401, SESSION_REPLACED)

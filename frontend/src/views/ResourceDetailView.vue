@@ -164,7 +164,7 @@ onBeforeUnmount(() => { loadEpoch++; void saveProgress() })
       </div>
       <RouterLink v-if="nextItem" class="resource-detail-next" :to="nextItem.route"><span>下一项</span><strong>{{ nextItem.title }}</strong><i class="resource-direction-arrow" aria-hidden="true" /></RouterLink>
       <CommunityPostView :post-id="detail.post.id" discussion-only />
-      <section v-if="detail.related.length" class="resource-detail-related"><div class="resource-section-heading"><div><span>继续探索</span><h2>相关推荐</h2></div></div><div class="resource-hub-grid three"><ResourceHubCard v-for="item in detail.related" :key="item.id" :item="item" /></div></section>
+      <section v-if="detail.related.length" class="resource-detail-related"><div class="resource-section-heading"><div><span>继续探索</span><h2>相关推荐</h2></div></div><div class="resource-hub-grid three"><ResourceHubCard v-for="item in detail.related" :key="item.id" :item="item" @changed="load()" /></div></section>
     </template>
   </section>
   <AppDialog v-model="collectionOpen" title="加入学习合集"><div class="resource-collection-picker"><button v-for="item in collections" :key="item.id" @click="add(item.id)"><strong>{{ item.name }}</strong><small>{{ item.itemCount }} 项 · {{ item.visibility === 'private' ? '私有' : '社区可见' }}</small></button><button v-if="collectionsCursor" :disabled="collectionsLoading" @click="moreCollections">加载更多合集</button><button @click="add('watch-later')"><strong>稍后再看</strong><small>仅自己可见</small></button></div></AppDialog>

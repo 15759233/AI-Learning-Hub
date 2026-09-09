@@ -34,7 +34,14 @@
 
 ## 接口与部署
 
+前台版主使用独立的 `FrontendModeratorGrant` 范围授权，继续从学生端登录，不取得后台权限。后台“用户与账号”详情通过 `user.moderator.manage` 配置社区、教程中心及允许动作；授权变更必须携带用户修订号、幂等键和原因，并记录授予人、时间与审计。
+
+社区帖子归 `community`，带 `ResourceContribution` 的作品归 `tutorials`，评论跟随父内容。服务端查询真实归属及当前授权，撤权后旧页面和重复请求立即被拒绝。前台只能下架内容、限期禁言或限期封禁，不能处理自己、受保护管理账号或私人草稿。禁言覆盖发帖、评论、教程发布和已发布内容修改；封禁撤销现有会话并向本人返回处理原因。原举报、收藏、屏蔽、申诉和后台 MFA、管理网规则保持。
+
 - `/api/v1/community/governance`：本人记录、举报和申诉。
+- `GET /api/v1/community/moderation/targets/:type/:id`：当前对象与允许动作。
+- `POST /api/v1/community/moderation/targets/:type/:id/decision`：前台版主处置，必填 `expectedRevision`、`action`、`reason` 和 `Idempotency-Key`；禁言、封禁还须填写 `expiresAt`。
+- `PUT /api/v1/admin/users/:id/moderator-grants`：后台配置或撤销前台授权。
 - `/api/v1/community/recovery`：身份验证、本人记录和申诉。
 - `/api/v1/admin/community/governance`：治理工作台、领取、决定和撤销。
 - 原举报、操作限制入口复用同一治理事务；旧直接隐藏或封号接口须改用有依据的治理决定。
@@ -43,6 +50,10 @@
 
 前端正式构建必须设置 `VITE_DATA_MODE=api`；网络或鉴权失败直接显示错误，不回退 Mock。显式 Mock 仅供开发演示。
 
+前台版主增量迁移为 `20260909130000_frontend_moderators`；迁移后执行现有 `bootstrap` 注册专门权限，不重新导入演示数据。已有帖子、教程、文件及后台角色保持。
+
 ## 验证
 
 本地分别在 `server`、`admin-web` 执行 `npm run check`，在 `frontend` 执行 `VITE_DATA_MODE=api npm run check`。治理集成测试为 `server/test/governance.e2e.spec.ts`，只允许专属隔离 PostgreSQL `127.0.0.1:55439/community_governance`。内容检测回归使用另一个专属空库 `community_content_detection`。运行前先迁移空库，测试仅创建合成账号与数据；不得指向现行业务库。
+
+前台版主真实回归使用 `test/frontend-moderators.e2e.spec.ts`，要求 `FRONT_MODERATOR_ISOLATED=true` 且 PostgreSQL 为 `127.0.0.1:55439/frontend_moderators` 的专属空库，覆盖授权撤销、跨范围处罚、事务回滚、处罚期限、共享文件和旧视频 Range 地址。
