@@ -298,6 +298,13 @@ describe('校园部署：真实数据库与认证执行链', () => {
     expect((await readCover()).status).toBe(404)
     await db.fileRecord.update({ where: { id: cover.id }, data: { quarantinedAt: null } })
     expect((await readCover()).status).toBe(200)
+    // 历史公开作品的作者尚未校园认证，访客仍应能预览封面。
+    await db.communityPost.update({ where: { id: saved.data.id }, data: { authorId: otherId } })
+    await db.fileRecord.update({ where: { id: cover.id }, data: { uploadedBy: otherId } })
+    expect((await readCover()).status).toBe(200)
+    await db.user.update({ where: { id: otherId }, data: { status: 'disabled' } })
+    expect((await readCover()).status).toBe(404)
+    await db.user.update({ where: { id: otherId }, data: { status: 'active' } })
   })
   it('换邮箱必须重新认证并确认新地址，确认前保持原邮箱，之后撤销校园认证和所有会话', async () => {
     const student = await login(), other = await login()

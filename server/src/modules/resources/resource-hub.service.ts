@@ -542,7 +542,8 @@ export class ResourceHubService {
         OR p.content_blocks @> ${JSON.stringify([{ type: 'image', fileId, alt: '资源中心 Banner' }])}::jsonb
       ) LIMIT 1`)
     if (!rows.length) throw new NotFoundException('封面不存在或内容未公开')
-    await this.visibility.assertMediaEligibility(file.uploadedBy)
+    // 已发布的公开预览不要求上传者继续具备校园发帖资格；账号封禁仍立即生效。
+    if (!await this.prisma.user.count({ where: { id: file.uploadedBy, AND: [availableAccount()] } })) throw new NotFoundException('封面不存在或账号不可用')
     return this.storage.open(fileId)
   }
 
