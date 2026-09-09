@@ -19,7 +19,7 @@ const community = useCommunityStore()
 const auth = useAuthStore()
 const legacyResources = useResourcesStore()
 const home = ref<ResourceHubHomeDto | null>(null)
-const primaryCategoryCodes = ['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice']
+const primaryCategoryCodes = ['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice', 'tool-tutorial']
 const primaryCategories = computed(() => primaryCategoryCodes.flatMap((code) => home.value?.categories.filter((entry) => entry.code === code) || []))
 const moreCategories = computed(() => home.value?.categories.filter((entry) => entry.code !== 'uncategorized' && !primaryCategoryCodes.includes(entry.code)) || [])
 const results = ref<ResourceHubItemDto[]>([])
@@ -160,8 +160,8 @@ watch(legacySlug, async (slug) => {
       </section>
 
       <nav class="resource-category-nav" aria-label="资源分类">
-        <button :class="{ active: !category }" @click="selectCategory('')"><AppIcon name="resource" :size="25" /><span>全部资源</span></button>
-        <button v-for="entry in primaryCategories" :key="entry.id" :class="{ active: category === entry.code }" @click="selectCategory(entry.code)"><AppIcon :name="entry.icon" :size="25" /><span>{{ entry.name }}</span></button>
+        <button :class="{ active: !category }" @click="selectCategory('')"><img src="/images/resource-categories/all.svg" alt="" width="44" height="44" /><span>全部资源</span></button>
+        <button v-for="entry in primaryCategories" :key="entry.id" :class="{ active: category === entry.code }" @click="selectCategory(entry.code)"><img :src="`/images/resource-categories/${entry.code}.svg`" alt="" width="44" height="44" /><span>{{ entry.name }}</span></button>
       </nav>
       <details v-if="moreCategories.length" class="resource-category-more">
         <summary><span class="when-closed">展开</span><span class="when-open">收起</span>其他分类</summary>

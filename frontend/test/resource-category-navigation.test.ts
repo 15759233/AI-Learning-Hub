@@ -17,7 +17,7 @@ vi.mock('../src/community/coop/RichEditPanel.vue', () => ({ default: { render: (
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
-it('固定四类加全部资源，其他分类仍可使用原筛选入口', async () => {
+it('固定五类加全部资源，工具教程与其他分类仍可使用原筛选入口', async () => {
   vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: vi.fn() })
   vi.stubGlobal('window', { scrollY: 0 })
   const codes = ['handbook', 'creator-share', 'agent-practice', 'lab-demo', 'ai-foundation', 'model-deployment', 'tool-tutorial', 'new-category', 'uncategorized']
@@ -26,8 +26,10 @@ it('固定四类加全部资源，其他分类仍可使用原筛选入口', asyn
   const view = setupComponent<{ primaryCategories: { code: string }[]; moreCategories: { code: string }[]; selectCategory(code: string): Promise<void>; category: string }>(ResourcesView)
   try {
     await flushRender()
-    expect(view.state.primaryCategories.map((entry) => entry.code)).toEqual(['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice'])
-    expect(view.state.moreCategories.map((entry) => entry.code)).toEqual(['handbook', 'creator-share', 'tool-tutorial', 'new-category'])
+    expect(view.state.primaryCategories.map((entry) => entry.code)).toEqual(['ai-foundation', 'lab-demo', 'model-deployment', 'agent-practice', 'tool-tutorial'])
+    expect(view.state.moreCategories.map((entry) => entry.code)).toEqual(['handbook', 'creator-share', 'new-category'])
+    await view.state.selectCategory('tool-tutorial')
+    expect(resourceHubApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'tool-tutorial' }))
     await view.state.selectCategory('handbook')
     expect(resourceHubApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'handbook' }))
     expect(replace).toHaveBeenLastCalledWith({ query: expect.objectContaining({ category: 'handbook' }) })
