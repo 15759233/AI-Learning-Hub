@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, AUTH_SESSION_CLEARED_EVENT, request, restoreRefresh, studentSession } from '../src/services/api/client'
 import { authApi } from '../src/services/api/auth'
 import { assessmentApi } from '../src/services/api/assessments'
+import { resourceHubApi } from '../src/services/api/resourceHub'
 import { api as adminApi, adminSession } from '../../admin-web/src/services/api'
 const stored = new Map<string, string>()
 beforeEach(() => {
@@ -12,6 +13,24 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it('替代通知立即中止进行中的视频与附件上传，重新登录不会自动续传', async () => {
+    const stopped = vi.fn(), sent = vi.fn()
+    vi.stubGlobal('XMLHttpRequest', class {
+      upload = {}; onabort?: () => void
+      open() {} setRequestHeader() {} send() { sent() }
+      abort() { stopped(); this.onabort?.() }
+    })
+    const file = new File(['隔离上传数据'], 'pending.txt', { type: 'text/plain' })
+    const video = resourceHubApi.uploadVideo(file, () => {})
+    const attachment = resourceHubApi.uploadDocument(file, () => {})
+    const pending = Promise.allSettled([video.promise, attachment.promise])
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ errorCode: 'SESSION_REPLACED' }), { status: 401 })))
+    await expect(request('/me')).rejects.toMatchObject({ code: 'SESSION_REPLACED' })
+    expect((await pending).every(row => row.status === 'rejected')).toBe(true)
+    expect(stopped).toHaveBeenCalledTimes(2)
+    studentSession.accept('new-login-token')
+    expect(sent).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenCalledOnce()
+  })
   it.each(['student', 'admin'])('%s 替代错误只通知一次，不刷新、不重放写请求且先保稿后清空', async client => {
     const state = client === 'student' ? studentSession : adminSession
     state.accept(client + '-replaced-token')
