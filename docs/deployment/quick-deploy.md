@@ -28,6 +28,10 @@ docker compose --env-file deploy/compose/.env \
 
 数据和上传文件保存在 Docker 命名卷中，`.env` 不进入 Git。
 
+显式配置 `DEPLOYMENT_PROFILE=experience` 时，管理员密码验证后显示当前可用的六位动态验证码，到期自动刷新；已使用的验证码会等待下一个时间窗。其他环境不提供提示码，仍需认证器完成 MFA。
+
+访客可浏览教程中心的已发布公开资源标题和封面，正文、视频播放、附件及个人合集仍需登录。未发布、下架、校内可见或隔离的封面不通过公开入口提供。
+
 ## 注册与邮件
 
 默认开放学生邮箱注册。启动依次执行 `migrate`、`bootstrap`、API，不重播演示 Seed。`bootstrap` 只补必要角色、权限、设置和首个管理员；`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` 不覆盖已有账号。首次开放注册前，管理员须创建并发布至少三个学习方向，供首次引导选择；注册设置在「系统设置」维护。

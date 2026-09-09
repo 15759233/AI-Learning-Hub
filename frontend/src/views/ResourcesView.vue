@@ -9,6 +9,7 @@ import { behaviorApi } from '../services/api/behavior'
 import { dataMode } from '../services/api/client'
 import { useCommunityStore } from '../stores/community'
 import { useAuthStore } from '../stores/auth'
+import { useAuthUiStore } from '../stores/authUi'
 import { mapSelectedResource, useResourcesStore } from '../stores/content/resources'
 import { resourceHubApi } from '../services/api/resourceHub'
 
@@ -49,6 +50,7 @@ const legacyPreviewOpen = computed({
   },
 })
 const publish = (value: ResourceContributionKind) => {
+  if (!auth.user) { useAuthUiStore().open({ redirect: '/resources', reason: '登录后可发布教程与学习资料' }); return }
   if (community.composerOpen) { community.openComposer(); return }
   community.openComposer({
     type: value === 'video' ? 'lab_result' : value === 'article' ? 'frontier_discussion' : 'note',
@@ -110,6 +112,7 @@ onMounted(async () => {
   if (saved > 0) window.scrollTo({ top: saved })
 })
 onBeforeUnmount(() => sessionStorage.setItem(`resource-hub-scroll:${route.fullPath}`, String(window.scrollY)))
+watch(() => auth.user?.id, () => { void load(); if (isFiltering.value) void search(false) })
 watch(() => [route.query.q, route.query.category, route.query.kind], ([q, nextCategory, nextKind]) => {
   const normalizedKind = ['video', 'article', 'document'].includes(String(nextKind)) ? nextKind as ResourceContributionKind : 'all'
   const normalizedQ = typeof q === 'string' ? q : ''
@@ -198,7 +201,7 @@ watch(legacySlug, async (slug) => {
           </main>
           <aside class="resource-hub-rail">
             <section><h2>热门榜单</h2><div class="resource-ranking-tabs"><button v-for="entry in [{ key: 'week', label: '近7天' }, { key: 'month', label: '近30天' }, { key: 'all', label: '总榜' }]" :key="entry.key" :class="{ active: rankingPeriod === entry.key }" @click="rankingPeriod = entry.key as typeof rankingPeriod">{{ entry.label }}</button></div><ol><li v-for="(entry, index) in ranking" :key="`${entry.sourceType}:${entry.id}`"><b>{{ index + 1 }}</b><RouterLink :to="entry.route"><img v-if="entry.coverUrl" :src="entry.coverUrl" alt="" loading="lazy" /><span><strong>{{ entry.title }}</strong><small><AppIcon name="play" :size="12" />{{ (entry.rankingViews ?? entry.stats.views).toLocaleString() }}</small></span></RouterLink></li></ol></section>
-            <section><div class="resource-rail-title"><h2>我的播放列表</h2><RouterLink to="/resources/studio">查看全部</RouterLink></div><RouterLink class="resource-playlist-row" to="/resources/collections/watch-later"><AppIcon name="bookmark" /><span><strong>稍后再看</strong><small>仅自己可见</small></span></RouterLink><RouterLink v-for="entry in home.collections.slice(0, 3)" :key="entry.id" class="resource-playlist-row" :to="`/resources/collections/${entry.id}`"><AppIcon name="folder" /><span><strong>{{ entry.name }}</strong><small>{{ entry.itemCount }} 项 · {{ entry.visibility === 'private' ? '私有' : '社区可见' }}</small></span></RouterLink><RouterLink class="resource-playlist-row" :to="`/community/user/${auth.user?.username || 'student'}?tab=liked`"><AppIcon name="heart" /><span><strong>喜欢的视频</strong><small>{{ home.likedVideos.length }} 项</small></span></RouterLink><button class="button primary full-width" @click="publish('video')"><AppIcon name="upload" :size="16" />上传视频</button></section>
+            <section v-if="auth.user"><div class="resource-rail-title"><h2>我的播放列表</h2><RouterLink to="/resources/studio">查看全部</RouterLink></div><RouterLink class="resource-playlist-row" to="/resources/collections/watch-later"><AppIcon name="bookmark" /><span><strong>稍后再看</strong><small>仅自己可见</small></span></RouterLink><RouterLink v-for="entry in home.collections.slice(0, 3)" :key="entry.id" class="resource-playlist-row" :to="`/resources/collections/${entry.id}`"><AppIcon name="folder" /><span><strong>{{ entry.name }}</strong><small>{{ entry.itemCount }} 项 · {{ entry.visibility === 'private' ? '私有' : '社区可见' }}</small></span></RouterLink><RouterLink class="resource-playlist-row" :to="`/community/user/${auth.user?.username || 'student'}?tab=liked`"><AppIcon name="heart" /><span><strong>喜欢的视频</strong><small>{{ home.likedVideos.length }} 项</small></span></RouterLink><button class="button primary full-width" @click="publish('video')"><AppIcon name="upload" :size="16" />上传视频</button></section>
           </aside>
         </div>
 

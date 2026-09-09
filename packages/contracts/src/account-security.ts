@@ -19,7 +19,9 @@ export interface MfaChallengeDto {
   enrollment: boolean
   secret?: string
   uri?: string
+  experienceHint?: boolean
 }
+export interface MfaHintDto { code: string | null; expiresAt: number }
 export interface MfaVerifyInput { challenge: string; code: string; remember?: boolean }
 export interface ReauthenticateInput { currentPassword: string; mfaCode?: string }
 export interface ChangePasswordInput extends ReauthenticateInput { password: string }

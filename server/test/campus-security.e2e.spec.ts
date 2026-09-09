@@ -126,6 +126,11 @@ describe('校园部署：真实数据库与认证执行链', () => {
     const challenge = await adminChallenge(); mfaSecret = challenge.secret
     const before = await db.user.findUniqueOrThrow({ where: { id: adminId } })
     expect(before.mfaSecretEncrypted).not.toContain(mfaSecret)
+    expect(challenge.experienceHint).toBe(true)
+    const hint = await request('/admin-auth/mfa-hint', { method: 'POST', input: { challenge: challenge.challenge } })
+    expect(hint.status).toBe(201)
+    expect(hint.data.code).toMatch(/^\d{6}$/)
+    expect(hint.data.expiresAt).toBeGreaterThan(Date.now())
     const result = await request('/admin-auth/mfa', { method: 'POST', input: { challenge: challenge.challenge, code: await generate({ secret: mfaSecret }) } })
     expect(result.status).toBe(201)
     adminToken = result.data.accessToken; recoveryCodes = result.data.recoveryCodes
@@ -136,6 +141,7 @@ describe('校园部署：真实数据库与认证执行链', () => {
     expect(after.mfaRecoveryHashes).toEqual(recoveryCodes.map(sha))
     expect((await request('/me', { token: adminToken })).data.mfaVerified).toBe(true)
     expect((await request('/admin-auth/mfa', { method: 'POST', input: { challenge: challenge.challenge, code: recoveryCodes[0] } })).status).toBe(401)
+    expect((await request('/admin-auth/mfa-hint', { method: 'POST', input: { challenge: challenge.challenge } })).status).toBe(401)
     expect((await request('/auth/login', { method: 'POST', input: { identifier: before.username, password } })).status).toBe(403)
   })
   it('TOTP 不可重放，恢复码只能成功使用一次', async () => {
@@ -249,6 +255,49 @@ describe('校园部署：真实数据库与认证执行链', () => {
       expect((await read(adminUrl)).status).toBe(403)
       expect((await request('/admin/users', { token: adminToken })).status).toBe(403)
     } finally { configuration.set('ADMIN_NETWORK_CIDRS', allowed) }
+  })
+
+  it('访客只预览已发布公开资源封面，撤下和隔离立即失效，正文及附件仍需登录', async () => {
+    const session = await login()
+    const sharp = (await import('sharp')).default
+    const bytes = await sharp({ create: { width: 320, height: 180, channels: 3, background: '#304c70' } }).png().toBuffer()
+    const upload = (name: string) => app.get(STORAGE_SERVICE).upload({ originalname: name, mimetype: 'image/png', size: bytes.length, buffer: bytes }, { uploadedBy: studentId, visibility: 'public' })
+    const cover = await upload('public-cover.png'), bodyImage = await upload('body-only.png')
+    const saved = await request('/community/posts', { method: 'POST', token: session.data.accessToken, input: {
+      type: 'general', title: prefix + '公开封面', contentBlocks: [{ type: 'paragraph', text: '仅公开预览封面 ' + randomUUID() }, { type: 'image', fileId: bodyImage.id, alt: '正文图片' }],
+      bindings: [], topicIds: [], visibility: 'public', status: 'published',
+      contribution: { kind: 'article', tags: [], teachingReuseConsent: true, coverFileId: cover.id },
+    } })
+    expect(saved.status).toBe(201)
+    const url = base + '/resource-hub/covers/' + cover.id
+    const readCover = async () => { const response = await fetch(url); await response.arrayBuffer(); return response }
+    const list = await request('/resource-hub/public/items?keyword=' + prefix)
+    expect(list.status).toBe(200)
+    const item = list.data.items.find((entry: { id: string }) => entry.id === saved.data.id)
+    expect(item.coverUrl).toBe('/api/v1/resource-hub/covers/' + cover.id)
+    expect(item.body).toBeUndefined()
+    expect(item.summary).toBe('')
+    expect(item.author).toBeNull()
+    expect((await request('/resource-hub/public/items?keyword=' + encodeURIComponent('仅公开预览封面'))).data.items.some((entry: { id: string }) => entry.id === saved.data.id)).toBe(false)
+    const first = await readCover()
+    expect(first.status).toBe(200); expect(first.headers.get('content-type')).toContain('image/png')
+    expect(first.headers.get('cache-control')).toContain('no-store')
+    expect((await fetch(base + '/resource-hub/covers/' + bodyImage.id)).status).toBe(404)
+    expect((await request('/resource-hub/contributions/' + saved.data.id)).status).toBe(401)
+    const home = await request('/resource-hub/public/home')
+    expect(home.status).toBe(200); expect(home.data.collections).toEqual([]); expect(home.data.likedVideos).toEqual([])
+    for (const status of ['draft', 'pending_review', 'hidden', 'limited'] as const) {
+      await db.communityPost.update({ where: { id: saved.data.id }, data: { status } })
+      expect((await readCover()).status).toBe(404)
+      expect((await request('/resource-hub/public/items?keyword=' + prefix)).data.items.some((entry: { id: string }) => entry.id === saved.data.id)).toBe(false)
+    }
+    await db.communityPost.update({ where: { id: saved.data.id }, data: { status: 'published', visibility: 'school' } })
+    expect((await readCover()).status).toBe(404)
+    await db.communityPost.update({ where: { id: saved.data.id }, data: { visibility: 'public' } })
+    await db.fileRecord.update({ where: { id: cover.id }, data: { quarantinedAt: new Date() } })
+    expect((await readCover()).status).toBe(404)
+    await db.fileRecord.update({ where: { id: cover.id }, data: { quarantinedAt: null } })
+    expect((await readCover()).status).toBe(200)
   })
   it('换邮箱必须重新认证并确认新地址，确认前保持原邮箱，之后撤销校园认证和所有会话', async () => {
     const student = await login(), other = await login()

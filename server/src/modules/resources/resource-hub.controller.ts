@@ -95,6 +95,18 @@ export class ResourceHubAdminController {
 export class ResourceHubMediaController {
   constructor(private readonly hub: ResourceHubService) {}
 
+  @Get('public/home') publicHome() { return this.hub.home('') }
+  @Get('public/categories') publicCategories() { return this.hub.categories() }
+  @Get('public/items') publicItems(@Query() query: ResourceHubQueryDto) { return this.hub.list('', query) }
+
+  @Get('covers/:id') @RawResponse()
+  async cover(@Param('id') id: string, @Res({ passthrough: true }) response: Response) {
+    const file = await this.hub.publicCover(id)
+    response.set({ 'Content-Type': file.mimeType, 'Content-Length': String(file.size), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" })
+    response.once('close', () => file.stream.destroy())
+    return new StreamableFile(file.stream)
+  }
+
   @Get('play/:id')
   @Head('play/:id')
   @RawResponse()

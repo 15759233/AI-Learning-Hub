@@ -5,7 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service'
 import { AuthGuard } from './auth.guard'
 import { AuthService, deviceLabel } from './auth.service'
 import { CurrentUser } from './current-user.decorator'
-import { BindWechatDto, ChangeEmailDto, ChangePasswordDto, ForgotPasswordDto, LoginDto, MfaVerifyDto, ReauthenticateDto, RegisterDto, ResetPasswordDto, UpdateProfileDto, VerificationDto, WechatCodeDto } from './auth.dto'
+import { BindWechatDto, ChangeEmailDto, ChangePasswordDto, ForgotPasswordDto, LoginDto, MfaChallengeInputDto, MfaVerifyDto, ReauthenticateDto, RegisterDto, ResetPasswordDto, UpdateProfileDto, VerificationDto, WechatCodeDto } from './auth.dto'
 import { RegistrationService } from './registration.service'
 import type { AuthUser } from './auth.types'
 import { durationMs } from './auth-ttl'
@@ -64,6 +64,12 @@ export class AuthController {
     const result = await this.auth.verifyMfa(input.challenge, input.code, ip, deviceLabel(request.get('user-agent')))
     this.setRefreshCookie(response, result.refreshToken, input.remember, 'admin')
     return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn, recoveryCodes: result.recoveryCodes }
+  }
+
+  @Post('admin-auth/mfa-hint')
+  mfaHint(@Body() input: MfaChallengeInputDto, @Ip() ip: string, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store')
+    return this.auth.mfaHint(input.challenge, ip)
   }
 
   @Post('auth/wechat/miniapp')

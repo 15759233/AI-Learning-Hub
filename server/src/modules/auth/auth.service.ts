@@ -11,8 +11,8 @@ import { Prisma, type User } from '@prisma/client'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { actionEvent, lockUser, rateLimit } from '../../common/persistence'
 import { isEmail } from 'class-validator'
-import { activeSanction } from '../community/governance-policy'
-import { generateSecret, generateURI, verify } from 'otplib'
+import { activeSanction, availableAccount } from '../community/governance-policy'
+import { generate, generateSecret, generateURI, verify } from 'otplib'
 import type { DeviceSessionDto, MfaChallengeDto, ReauthenticateInput, SessionClient } from '@ai-learning-hub/contracts'
 import { decryptMfa, encryptMfa } from './mfa-crypto'
 import { assertAdminNetwork } from '../../common/deployment-security'
@@ -184,7 +184,28 @@ export class AuthService {
     const secret = user.mfaEnabledAt ? undefined : generateSecret()
     const challenge = await this.jwt.signAsync({ id: user.id, version: user.sessionVersion, purpose: 'admin-mfa', nonce: randomBytes(24).toString('base64url') }, { secret: this.config.getOrThrow('JWT_SECRET'), algorithm: 'HS256', expiresIn: 300 })
     await tx.user.update({ where: { id: user.id }, data: { mfaChallengeHash: hashToken(challenge), ...(secret ? { mfaSecretEncrypted: encryptMfa(secret, this.config.get('MFA_DATA_KEY'), user.id) } : {}) } })
-    return { mfaRequired: true, challenge, enrollment: !user.mfaEnabledAt, ...(secret ? { secret, uri: generateURI({ issuer: 'AI Learning Hub', label: user.username, secret }) } : {}) }
+    return { mfaRequired: true, challenge, enrollment: !user.mfaEnabledAt, ...(this.config.get('DEPLOYMENT_PROFILE') === 'experience' ? { experienceHint: true } : {}), ...(secret ? { secret, uri: generateURI({ issuer: 'AI Learning Hub', label: user.username, secret }) } : {}) }
+  }
+
+  async mfaHint(challenge: string, ip: string) {
+    assertAdminNetwork(this.config, ip)
+    if (this.config.get('DEPLOYMENT_PROFILE') !== 'experience') throw new ForbiddenException('当前环境不提供验证码提示')
+    await rateLimit(this.prisma, ip, 'mfa-hint:ip', 120, 5 * 60000)
+    const payload = await this.readMfaChallenge(challenge)
+    const user = await this.prisma.user.findUnique({ where: { id: payload.id, AND: [availableAccount()] }, include: authUserInclude })
+    if (!user || user.status !== 'active' || user.sessionVersion !== payload.version || user.mfaChallengeHash !== hashToken(challenge) || !user.mfaSecretEncrypted || !authUserDto(user).permissions.length) throw new UnauthorizedException('MFA 登录请求已失效，请重新登录')
+    const epoch = Math.floor(Date.now() / 1000)
+    const step = Math.floor(epoch / 30)
+    const code = user.mfaLastTimeStep !== null && user.mfaLastTimeStep >= step ? null : await generate({ secret: decryptMfa(user.mfaSecretEncrypted, this.config.get('MFA_DATA_KEY'), user.id), epoch })
+    return { code, expiresAt: (step + 1) * 30000 }
+  }
+
+  private async readMfaChallenge(challenge: string) {
+    try {
+      const payload = await this.jwt.verifyAsync<{ id: string; version: number; purpose: string }>(challenge, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'] })
+      if (payload.purpose !== 'admin-mfa' || !payload.id) throw new Error()
+      return payload
+    } catch { throw new UnauthorizedException('MFA 登录请求已失效，请重新登录') }
   }
 
   private async checkMfa(user: User, code: string, tx: Prisma.TransactionClient) {
@@ -205,11 +226,7 @@ export class AuthService {
   async verifyMfa(challenge: string, code: string, ip: string, device: string) {
     assertAdminNetwork(this.config, ip)
     await rateLimit(this.prisma, ip, 'mfa:ip', 60, 15 * 60000)
-    let payload: { id: string; version: number; purpose: string }
-    try {
-      payload = await this.jwt.verifyAsync(challenge, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'] })
-      if (payload.purpose !== 'admin-mfa' || !payload.id) throw new Error()
-    } catch { throw new UnauthorizedException('MFA 登录请求已失效，请重新登录') }
+    const payload = await this.readMfaChallenge(challenge)
     await rateLimit(this.prisma, payload.id, 'mfa:account', 10, 5 * 60000)
     return this.prisma.$transaction(async (tx) => {
       await lockUser(tx, payload.id)

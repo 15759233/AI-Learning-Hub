@@ -58,8 +58,10 @@ export class WechatCodeDto {
   code!: string
 }
 
-export class MfaVerifyDto {
+export class MfaChallengeInputDto {
   @IsString() @Length(40, 2048) challenge!: string
+}
+export class MfaVerifyDto extends MfaChallengeInputDto {
   @IsString() @Length(6, 64) code!: string
   @IsOptional() @IsBoolean() remember = true
 }

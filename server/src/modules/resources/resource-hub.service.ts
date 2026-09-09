@@ -1,4 +1,4 @@
-import { activeSanction, availableAccount, visibleCollection } from '../community/governance-policy'
+import { activeSanction, availableAccount, visibleCollection, visibleComment } from '../community/governance-policy'
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common'
 import { REQUEST } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
@@ -229,7 +229,7 @@ export class ResourceHubService {
   }
 
   async home(userId: string): Promise<ResourceHubHomeDto> {
-    const [categories, config, collections, scope] = await Promise.all([this.categories(), this.hubConfig(), this.collections(userId, { ...new ResourceHubQueryDto(), limit: 4 }), this.visibility.publicPostsSql(userId)])
+    const [categories, config, collections, scope] = await Promise.all([this.categories(), this.hubConfig(), userId ? this.collections(userId, { ...new ResourceHubQueryDto(), limit: 4 }) : { items: [] }, this.visibility.publicPostsSql(userId)])
     const asOf = new Date()
     const select = async (limit: number, options: HubSelection = {}, query: Partial<ResourceHubQueryDto> = {}) => (await this.selectItems(userId, { ...new ResourceHubQueryDto(), limit, ...query }, options, scope, asOf)).slice(0, limit)
     const sectionCodes = config.sectionCategoryCodes.filter((code) => categories.some((category) => category.code === code))
@@ -240,7 +240,7 @@ export class ResourceHubService {
       select(5, { since: new Date(asOf.getTime() - 7 * 86400000) }, { sort: 'popular' }),
       select(5, { since: new Date(asOf.getTime() - 30 * 86400000) }, { sort: 'popular' }),
       select(5, {}, { sort: 'popular' }),
-      select(4, { sourceType: 'contribution', liked: true }, { kind: 'video' }),
+      userId ? select(4, { sourceType: 'contribution', liked: true }, { kind: 'video' }) : [],
       select(4, { sourceType: 'contribution', liveReplay: true }),
     ])
     const candidates = [...new Map([configured, priority, ...sections, week, month, all, likedVideos, liveReplay].flat().map((row) => [`${row.sourceType}:${row.id}`, row])).values()]
@@ -251,13 +251,13 @@ export class ResourceHubService {
     })
     const ordered = config.bannerPostIds.flatMap((id) => configured.filter((item) => item.id === id))
     const banners = items(ordered.length ? ordered.slice(0, 3) : priority)
-    const bannerRows = banners.length ? await this.prisma.communityPost.findMany({ where: { id: { in: banners.map((item) => item.id) } }, select: { id: true, contentBlocks: true }, take: 3 }) : []
+    const bannerRows = banners.length ? await this.prisma.communityPost.findMany({ where: { id: { in: banners.map((item) => item.id) } }, select: { id: true, contentBlocks: true, visibility: true, status: true }, take: 3 }) : []
     const bannerFiles = new Map(bannerRows.flatMap((row) => {
       const block = (row.contentBlocks as CommunityContentBlock[]).find((item) => item.type === 'image' && item.alt === '资源中心 Banner')
       return block?.type === 'image' ? [[row.id, block.fileId] as const] : []
     }))
     return {
-      banners: banners.map((item) => bannerFiles.has(item.id) ? { ...item, coverUrl: this.mediaUrl(bannerFiles.get(item.id)!, userId) } : item),
+      banners: banners.map((item) => bannerFiles.has(item.id) ? { ...item, coverUrl: bannerRows.some(row => row.id === item.id && row.visibility === 'public' && row.status === 'published') ? this.publicCoverUrl(bannerFiles.get(item.id)!) : this.mediaUrl(bannerFiles.get(item.id)!, userId) } : item),
       categories, featured: items(priority.slice(0, 2)),
       sections: sections.map((rows, index) => ({ key: sectionCodes[index], title: categories.find((category) => category.code === sectionCodes[index])!.name, categoryCode: sectionCodes[index], items: items(rows) })).filter((section) => section.items.length),
       rankings: { week: items(week, true), month: items(month, true), all: items(all, true) },
@@ -530,6 +530,24 @@ export class ResourceHubService {
     return this.storage.open(fileId)
   }
 
+  async publicCover(fileId: string) {
+    const file = await this.prisma.fileRecord.findUnique({ where: { id: fileId } })
+    if (!file || file.quarantinedAt || file.visibility !== 'public' || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.mimeType)) throw new NotFoundException('封面不存在')
+    const scope = await this.visibility.publicPostsSql('')
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT p.id FROM community_posts p JOIN resource_contributions c ON c.post_id = p.id
+      LEFT JOIN video_assets v ON v.id = c.video_asset_id
+      WHERE ${scope} AND (c.kind <> 'video' OR v.status = 'ready') AND (
+        COALESCE(c.cover_file_id, v.poster_file_id, jsonb_path_query_first(p.content_blocks, '$[*] ? (@.type == "image")')->>'fileId') = ${fileId}
+        OR p.content_blocks @> ${JSON.stringify([{ type: 'image', fileId, alt: '资源中心 Banner' }])}::jsonb
+      ) LIMIT 1`)
+    if (!rows.length) throw new NotFoundException('封面不存在或内容未公开')
+    await this.visibility.assertMediaEligibility(file.uploadedBy)
+    return this.storage.open(fileId)
+  }
+
+  private publicCoverUrl(fileId: string) { return `/api/v1/resource-hub/covers/${encodeURIComponent(fileId)}` }
+
   async attachmentFile(fileId: string, token: string) {
     const userId = await this.verify('attachment', fileId, token)
     await this.assertMediaPost(userId, { contribution: { is: { attachmentFileId: fileId } } }, fileId)
@@ -728,9 +746,9 @@ export class ResourceHubService {
     if (options.related) postFilters.push(Prisma.sql`p.id <> ${options.related.postId} AND (c.category_id IS NOT DISTINCT FROM ${options.related.categoryId} OR c.tags && ${options.related.tags}::text[])`)
     if (keyword) postFilters.push(Prisma.sql`(
       strpos(lower(COALESCE(p.title, '未命名资源')), lower(${keyword})) > 0
-      OR strpos(lower(left(p.plain_text, 220)), lower(${keyword})) > 0
+      OR (${!!userId} AND strpos(lower(left(p.plain_text, 220)), lower(${keyword})) > 0)
       OR EXISTS (SELECT 1 FROM unnest(c.tags) tag WHERE strpos(lower(tag), lower(${keyword})) > 0)
-      OR strpos(lower(CASE WHEN EXISTS (SELECT 1 FROM community_moderation_actions m WHERE m.subject_id = p.author_id AND m.target_type = 'profile' AND m.action = 'takedown' AND m.revoked_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > NOW())) THEN '账号资料暂不可见' ELSE author.display_name END), lower(${keyword})) > 0)`)
+      OR (${!!userId} AND strpos(lower(CASE WHEN EXISTS (SELECT 1 FROM community_moderation_actions m WHERE m.subject_id = p.author_id AND m.target_type = 'profile' AND m.action = 'takedown' AND m.revoked_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > NOW())) THEN '账号资料暂不可见' ELSE author.display_name END), lower(${keyword})) > 0))`)
     const legacyData = Prisma.sql`COALESCE(NULLIF(version.snapshot->'data', 'null'::jsonb), version.snapshot->'payload', '{}'::jsonb)`
     const legacyTags = Prisma.sql`CASE WHEN jsonb_typeof(${legacyData}->'tags') = 'array' THEN ${legacyData}->'tags' ELSE '[]'::jsonb END`
     const legacyFilters = [Prisma.sql`r.deleted_at IS NULL AND r.status = 'published' AND COALESCE(r.published_at, version.created_at) <= ${asOf}`]
@@ -776,10 +794,12 @@ export class ResourceHubService {
       contributionIds.length ? this.prisma.communityPost.findMany({ where: { id: { in: contributionIds }, AND: [await this.visibility.where(userId)] }, include: postInclude, take: contributionIds.length }) : [],
       legacyIds.length ? this.resources.list({ page: 1, pageSize: legacyIds.length, keyword: '' }, true, legacyIds) : { items: [] },
     ])
-    const contributions = rows.length ? await this.mapContributions(userId, rows, await this.posts.mapMany(userId, rows), asOf) : []
+    const commentCounts = !userId && rows.length ? await this.prisma.communityComment.groupBy({ by: ['postId'], where: { postId: { in: rows.map(row => row.id) }, status: 'published', deletedAt: null, ...visibleComment() }, _count: { _all: true } }) : []
+    const summaries = !rows.length ? [] : userId ? await this.posts.mapMany(userId, rows) : rows.map(row => ({ id: row.id, author: authorDto(row.author), publishedAt: (row.publishedAt || row.createdAt).toISOString(), stats: { comments: commentCounts.find(count => count.postId === row.id)?._count._all || 0 } }))
+    const contributions = rows.length ? await this.mapContributions(userId, rows, summaries, asOf) : []
     const mapped = new Map<string, ResourceHubItemDto>(contributions.map((item) => [`contribution:${item.id}`, item]))
     for (const item of legacy.items) mapped.set(`legacy_resource:${item.slug}`, {
-      sourceType: 'legacy_resource', id: item.slug, postId: null, title: item.title, summary: item.summary, kind: 'document', category: null,
+      sourceType: 'legacy_resource', id: item.slug, postId: null, title: item.title, summary: userId ? item.summary : '', kind: 'document', category: null,
       tags: Array.isArray(item.data.tags) ? item.data.tags : [], coverUrl: typeof item.data.cover === 'string' ? item.data.cover : null, author: null,
       stats: { views: item.views, likes: 0, comments: 0, bookmarks: Number(item.data.favorites || 0), downloads: item.downloads },
       durationSeconds: null, videoAssetId: null, mediaStatus: null, publishedAt: item.publishedAt || item.updatedAt,
@@ -791,7 +811,7 @@ export class ResourceHubService {
     })
   }
 
-  private async mapContributions(userId: string, rows: HydratedPost[], posts: Awaited<ReturnType<CommunityPostService['mapMany']>>, asOf = new Date()) {
+  private async mapContributions(userId: string, rows: HydratedPost[], posts: Array<{ id: string; author: ResourceHubItemDto['author']; publishedAt: string; stats: { comments: number } }>, asOf = new Date()) {
     const counts = rows.length ? await this.prisma.activityEvent.groupBy({ by: ['targetId', 'eventType'], where: { targetType: 'post', targetId: { in: rows.map((row) => row.id) }, eventType: { in: ['resource_valid_watch', 'community_post_click'] }, createdAt: { lte: asOf } }, _count: { _all: true } }) : []
     const views = new Map(counts.map((row) => [`${row.targetId}:${row.eventType}`, row._count._all]))
     return rows.flatMap((row): ResourceHubItemDto[] => {
@@ -804,12 +824,12 @@ export class ResourceHubService {
         id: row.id,
         postId: row.id,
         title: row.title || '未命名资源',
-        summary: row.plainText.slice(0, 220),
+        summary: userId ? row.plainText.slice(0, 220) : '',
         kind: contribution.kind,
         category: contribution.category ? { id: contribution.category.id, code: contribution.category.code, name: contribution.category.name, description: contribution.category.description, icon: contribution.category.icon, sortOrder: contribution.category.sortOrder } : null,
         tags: contribution.tags,
-        coverUrl: coverFileId ? this.mediaUrl(coverFileId, userId) : null,
-        author: post.author,
+        coverUrl: coverFileId ? row.visibility === 'public' && row.status === 'published' ? this.publicCoverUrl(coverFileId) : this.mediaUrl(coverFileId, userId) : null,
+        author: userId ? post.author : null,
         stats: { views: views.get(`${row.id}:${contribution.kind === 'video' ? 'resource_valid_watch' : 'community_post_click'}`) || 0, plays: contribution.kind === 'video' ? views.get(`${row.id}:resource_valid_watch`) || 0 : null, impressions: row.impressionCount, likes: row.likeCount, comments: post.stats.comments, bookmarks: row.bookmarkCount, downloads: 0 },
         durationSeconds: contribution.videoAsset?.durationSeconds || null,
         videoAssetId: contribution.videoAssetId,

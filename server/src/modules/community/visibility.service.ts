@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { communityOperations, type CommunityEligibilityDecisionDto, type CommunityEligibilityDto, type CommunityEligibilityPolicyDto, type CommunityOperation, type CommunityOperationRestrictionDto } from '@ai-learning-hub/contracts'
 import { PrismaService } from '../../prisma/prisma.service'
 import { idempotency, rateLimit } from '../../common/persistence'
-import { activeSanction, availableAccount } from './governance-policy'
+import { activeSanction, availableAccount, visiblePublicPost } from './governance-policy'
 
 const protectedOperations = communityOperations.filter((operation): operation is Exclude<CommunityOperation, 'read'> => operation !== 'read')
 const trustedRoles = new Set(['super_admin', 'admin', 'community_official', 'teacher', 'mentor'])
@@ -153,6 +153,7 @@ export class CommunityVisibilityPolicyService {
     }
   }
   async where(userId: string, ownDrafts = false): Promise<Prisma.CommunityPostWhereInput> {
+    if (!userId) return visiblePublicPost()
     const [viewer, feedback] = await Promise.all([this.viewer(userId), this.authorExclusions(userId)])
     return {
       deletedAt: null, author: availableAccount(), moderationActions: { none: activeSanction('takedown') },
@@ -166,10 +167,11 @@ export class CommunityVisibilityPolicyService {
   // 资源跨表 UNION 的同一公开读取策略；调用方固定使用 community_posts p。
   // 反馈和处罚保留在数据库内判断，不把所有排除ID加载进应用内存。
   async publicPostsSql(userId: string): Promise<Prisma.Sql> {
-    const viewer = await this.viewer(userId)
+    const viewer = userId ? await this.viewer(userId) : null
     return Prisma.sql`
       p.deleted_at IS NULL AND p.status IN ('published', 'limited')
-      AND (p.visibility = 'public' OR (p.visibility = 'school' AND p.school_id = ${viewer.schoolId}))
+      AND ${userId ? Prisma.sql`TRUE` : Prisma.sql`p.status = 'published' AND p.published_at IS NOT NULL`}
+      AND (p.visibility = 'public' OR (p.visibility = 'school' AND p.school_id = ${viewer?.schoolId || null}))
       AND EXISTS (SELECT 1 FROM users u WHERE u.id = p.author_id AND u.status = 'active')
       AND NOT EXISTS (SELECT 1 FROM community_moderation_actions m
         WHERE m.subject_id = p.author_id AND m.action = 'ban' AND m.revoked_at IS NULL

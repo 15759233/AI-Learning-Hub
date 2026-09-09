@@ -6,7 +6,7 @@ import type { CollectionPageQuery, CreatorContentSection, ResourceHubPageDto } f
 import type { FileScanDto, StorageCapacityDto } from '@ai-learning-hub/contracts'
 
 const call = <T>(path: string, method = 'GET', body?: unknown) => dataMode === 'api'
-  ? method === 'GET' ? request<T>(`/resource-hub${path}`) : writeRequest<T>(`/resource-hub${path}`, method, body)
+  ? method === 'GET' ? request<T>(`/resource-hub${!sessionStorage.getItem('student-access-token') && /^\/(home|categories|items)(\?|$)/.test(path) ? '/public' : ''}${path}`) : writeRequest<T>(`/resource-hub${path}`, method, body)
   : mockResourceHub<T>(path, method, body)
 
 export type UploadHandle<T> = { promise: Promise<T>; cancel: () => void }
