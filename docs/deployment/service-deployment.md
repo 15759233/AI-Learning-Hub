@@ -69,7 +69,7 @@ QUIZ_BOX_*（启用时）
 1. 对生产库执行可恢复备份并验证备份可读。
 2. 以待发布镜像运行一次性 `prisma migrate deploy` 任务。
 3. 迁移后运行 `npm run bootstrap`，再启动新 API；启动检查迁移、必要权限与存储可写性，失败不切流量。
-4. 生产固定 `LOAD_DEMO_DATA=false`；初始化内容由后台创建发布，不运行演示 Seed。首个管理员通过环境变量初始化，已有账号与数据不覆盖。
+4. 生产固定 `LOAD_DEMO_DATA=false`，不运行演示 Seed。配置模板通过 `COMMUNITY_STARTER_PACK=ai-discussions-v1` 启用版本化社区资源，包含100篇原创图文与托管账号；设为`none`或旧环境不配置时关闭。首个管理员通过环境变量初始化，已有账号与数据不覆盖。资源、私有凭据卷和重复执行规则见[社区初始化资源](../../server/resources/community-starter/README.md)。
 5. 发布后的迁移文件不可修改；破坏性变更采用“扩展 → 双写/回填 → 收缩”。
 
 已有版本升级社区落地页时，迁移后使用新服务镜像执行 `node dist/modules/homepage/upgrade-landing.js`，不要重跑完整 Seed。首次只新增五区域与一个发布版本，第二次零写；异常的部分升级需人工核查。新发布保留上一有效旧门户快照兼容段，支持回滚旧应用；旧模块记录、草稿、账号和学习内容不变。

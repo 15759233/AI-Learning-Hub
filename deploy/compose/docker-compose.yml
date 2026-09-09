@@ -57,7 +57,13 @@ services:
     build: *server-build
     restart: "no"
     env_file: ${ENV_FILE:-.env}
-    networks: [data]
+    networks: [edge, data]
+    environment:
+      STORAGE_LOCAL_PATH: /workspace/server/var/uploads
+      COMMUNITY_STARTER_CREDENTIALS_FILE: /workspace/server/var/initialization/community-accounts.json
+    volumes:
+      - uploads_data:/workspace/server/var/uploads
+      - initialization_data:/workspace/server/var/initialization
     command: ["npm", "run", "bootstrap"]
     depends_on:
       migrate:
@@ -177,6 +183,7 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  initialization_data:
 
 networks:
   edge:

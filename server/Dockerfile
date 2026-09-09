@@ -17,7 +17,7 @@ FROM node:22.14.0-bookworm-slim@sha256:1c18d9ab3af4585870b92e4dbc5cac5a0dc77dd13
 ENV NODE_ENV=production
 WORKDIR /workspace/server
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg openssl && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /workspace/server/var/uploads /workspace/server/var/operations/runtime && chown -R node:node /workspace/server/var
+  && mkdir -p /workspace/server/var/uploads /workspace/server/var/initialization /workspace/server/var/operations/runtime && chown -R node:node /workspace/server/var
 COPY --chown=node:node --from=build /workspace/packages /workspace/packages
 COPY --chown=node:node --from=build /workspace/demo /workspace/demo
 COPY --chown=node:node --from=build /workspace/server/node_modules ./node_modules
@@ -28,6 +28,7 @@ COPY --chown=node:node --from=build /workspace/server/prisma ./prisma
 COPY --chown=node:node --from=build /workspace/server/src/modules/homepage/upgrade-landing.ts ./src/modules/homepage/upgrade-landing.ts
 COPY --chown=node:node --from=build /workspace/server/src/modules/persistence/bootstrap.ts ./src/modules/persistence/bootstrap.ts
 COPY --chown=node:node --from=build /workspace/server/dist ./dist
+COPY --chown=node:node --from=build /workspace/server/resources ./resources
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

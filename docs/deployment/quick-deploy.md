@@ -26,7 +26,7 @@ docker compose --env-file deploy/compose/.env \
   -f deploy/compose/docker-compose.yml down
 ```
 
-数据和上传文件保存在 Docker 命名卷中，`.env` 不进入 Git。
+数据、上传文件和私有初始化凭据分别保存在 Docker 命名卷中，`.env` 不进入 Git。
 
 显式配置 `DEPLOYMENT_PROFILE=experience` 时，管理员密码验证后显示当前可用的六位动态验证码，到期自动刷新；已使用的验证码会等待下一个时间窗。其他环境不提供提示码，仍需认证器完成 MFA。
 
@@ -34,7 +34,7 @@ docker compose --env-file deploy/compose/.env \
 
 ## 注册与邮件
 
-默认开放学生邮箱注册。启动依次执行 `migrate`、`bootstrap`、API，不重播演示 Seed。`bootstrap` 只补必要角色、权限、设置和首个管理员；`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` 不覆盖已有账号。首次开放注册前，管理员须创建并发布至少三个学习方向，供首次引导选择；注册设置在「系统设置」维护。
+默认开放学生邮箱注册。启动依次执行 `migrate`、`bootstrap`、API，不重播演示 Seed。`bootstrap` 补必要角色、权限、设置和首个管理员；配置模板还启用[社区初始化资源](../../server/resources/community-starter/README.md)，持久导入100篇原创图文、30个托管账号和200条回复。`COMMUNITY_STARTER_PACK=none`关闭内容包，旧环境缺省不导入；`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` 不覆盖已有账号。首次开放注册前，管理员须创建并发布至少三个学习方向，供首次引导选择；注册设置在「系统设置」维护。
 
 如需演示内容，仅在独立体验库显式执行：
 

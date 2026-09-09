@@ -49,8 +49,17 @@ export async function bootstrapDatabase(prisma: PrismaClient) {
     }
   }, { timeout: 20000 })
 }
+/** 正式初始化入口：基础元数据与版本化内容包分别幂等，旧环境缺省不追加内容。 */
+export async function bootstrapApplication(prisma: PrismaClient) {
+  const selected = process.env.COMMUNITY_STARTER_PACK || 'none'
+  if (!['none', 'ai-discussions-v1'].includes(selected)) throw new Error('COMMUNITY_STARTER_PACK 只允许 none 或 ai-discussions-v1')
+  await bootstrapDatabase(prisma)
+  if (selected === 'none') return { community: 'disabled' }
+  const { importCommunityStarter } = await import('../community/import-starter')
+  return { community: await importCommunityStarter(prisma) }
+}
 // CommonJS runtime 与 tsx CLI 均可直接执行，不依赖其他应用源码。
 if (require.main === module) {
   const prisma = new PrismaClient()
-  bootstrapDatabase(prisma).then(() => console.log('必要数据初始化完成')).catch(() => { console.error('必要数据初始化失败，请核对数据库、角色与初始管理员配置'); process.exitCode = 1 }).finally(() => prisma.$disconnect())
+  bootstrapApplication(prisma).then(result => console.log(JSON.stringify(result))).catch(() => { console.error('初始化失败，请核对数据库、角色、初始管理员、内容资源与私有凭据目录'); process.exitCode = 1 }).finally(() => prisma.$disconnect())
 }
