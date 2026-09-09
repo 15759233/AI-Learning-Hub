@@ -55,28 +55,25 @@ describe('社区生命周期与浏览状态', () => {
     expect(document.body.classList.contains('community-layout-active')).toBe(false)
     expect(document.documentElement.classList.contains('community-layout-active')).toBe(false)
   })
-  it('无限加载和曝光观察当前中栏，缓存Tab切换不重复请求，离开释放观察器/曝光/计时器', async () => {
+  it('无限加载观察当前中栏，缓存Tab切换不重复请求，离开释放观察器和计时器', async () => {
     const router = await routing(), pinia = createPinia()
     const root = ref({ scrollTop: 430, scrollTo: vi.fn(), getBoundingClientRect: () => ({ top: 0, bottom: 700 }) })
-    const view = setupComponent<{ feedRoot: HTMLElement; sentinel: HTMLElement; impressed: Set<string>; visibleAt: Map<string, unknown>; change: (mode: 'latest', type: 'all') => Promise<void> }>(CommunityFeedView, {}, [pinia, router], [[communityScrollRoot, root]]); views.push(view)
+    const view = setupComponent<{ feedRoot: HTMLElement; sentinel: HTMLElement; change: (mode: 'latest', type: 'all') => Promise<void> }>(CommunityFeedView, {}, [pinia, router], [[communityScrollRoot, root]]); views.push(view)
     const postNode = { dataset: { postId: 'p1' } }, rows = { querySelectorAll: vi.fn((selector: string) => selector.includes('community-post') ? [postNode] : []), querySelector: () => null }
     view.state.feedRoot = rows as unknown as HTMLElement; view.state.sentinel = {} as HTMLElement
     await flushRender()
     const store = useCommunityStore(pinia)
     store.feeds['for_you:all'].scroll = 430; root.value.scrollTop = 430
-    expect(Observer.instances).toHaveLength(2)
+    expect(Observer.instances).toHaveLength(1)
     expect(Observer.instances.every((observer) => observer.options.root === root.value)).toBe(true)
-    const impression = Observer.instances[0]
-    impression.callback([{ target: postNode, isIntersecting: true }])
-    expect(view.state.impressed.size).toBe(1); expect(communityApi.impressions).toHaveBeenCalledWith([{ requestId: 'r1', postId: 'p1' }])
+    expect(communityApi.impressions).not.toHaveBeenCalled()
     await view.state.change('latest', 'all'); await flushRender()
-    expect(view.state.impressed.size).toBe(0)
     root.value.scrollTop = 220
     await router.replace('/community'); await flushRender()
     expect(root.value.scrollTop).toBe(430); expect(communityApi.feed).toHaveBeenCalledTimes(2)
     view.unmount(); views.pop()
     expect(Observer.instances.every((observer) => observer.disconnect.mock.calls.length)).toBe(true)
-    expect(vi.getTimerCount()).toBe(0); expect(view.state.visibleAt.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
   })
   it('离开页面后迟到首屏响应不能创建Observer和轮询', async () => {
     let resolve!: (value: CommunityFeedDto) => void
@@ -84,13 +81,13 @@ describe('社区生命周期与浏览状态', () => {
     const router = await routing(), view = setupComponent(CommunityFeedView, {}, [createPinia(), router])
     view.unmount()
     resolve({ items: [], requestId: 'late', nextCursor: null, degraded: false, policyVersion: 'v1' }); await flushRender()
-    expect(Observer.instances).toHaveLength(1); expect(Observer.instances[0].disconnect).toHaveBeenCalled()
+    expect(Observer.instances).toHaveLength(0)
     expect(vi.getTimerCount()).toBe(0)
   })
   it('真实截断才发overflow，ResizeObserver卸载解绑', () => {
     const overflow = vi.fn(), view = setupComponent<{ textRoot: HTMLElement; measure: () => void }>(CommunityBlocks, { blocks: [{ type: 'paragraph', text: '文字' }], compact: true, onOverflow: overflow }); views.push(view)
     const paragraph = { scrollHeight: 30, clientHeight: 30 }
-    view.state.textRoot = { querySelectorAll: () => [paragraph] } as unknown as HTMLElement
+    view.state.textRoot = paragraph as HTMLElement
     view.state.measure(); expect(overflow).toHaveBeenLastCalledWith(false)
     paragraph.scrollHeight = 90; view.state.measure(); expect(overflow).toHaveBeenLastCalledWith(true)
     view.unmount(); views.pop(); expect(Resize.instances[0].disconnect).toHaveBeenCalled()

@@ -349,7 +349,7 @@ describe('COMM-001 真实 HTTP / PostgreSQL 安全与业务闭环', () => {
   it('曝光幂等、停留封顶、信号快照可以完整重建', async () => {
     const feed = (await request<CommunityFeedDto>('/community/feed?mode=latest&limit=10', a)).data
     const post = feed.items.find((item) => item.type === 'post')!
-    const payload = { items: [{ requestId: feed.requestId, postId: post.id }] }
+    const payload = { items: [{ requestId: feed.requestId, postId: post.id, dwellMs: 1000 }] }
     await request('/community/feed/impressions', a, 'POST', payload); await request('/community/feed/impressions', a, 'POST', payload)
     expect(await db.activityEvent.count({ where: { userId: aId, requestId: feed.requestId, targetId: post.id, eventType: 'community_feed_impression' } })).toBe(1)
     expect((await request('/community/feed/dwell', a, 'POST', { items: [{ ...payload.items[0], dwellMs: 120001 }] })).status).toBe(400)

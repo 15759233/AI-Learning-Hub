@@ -90,8 +90,8 @@ describe('资源下载授权只读发布快照', () => {
       return Number(rules.every((rule: { snapshot: { path: string[]; equals: string } }) => snapshot[rule.snapshot.path[0]] === rule.snapshot.equals))
     })
     const prisma = { fileRecord: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, uploadedBy: owner ? 'student' : 'admin' })) }, userRole: { count: vi.fn(async ({ where }) => Number(editor && where.role.permissions.some.permission.code === 'resource.write')) }, resource: { count }, communityPost: { count: vi.fn(async () => 0) }, communityComment: { count: vi.fn(async () => 0) }, communityProfile: { count: vi.fn(async () => 0) } }
-    const visibility = { viewer: vi.fn(), assertMediaEligibility: vi.fn(), auditAdminRead: vi.fn(), where: vi.fn(async () => ({})), authorExclusions: vi.fn(async () => ({ authors: [] })) }
-    return { access: new FileAccessService(prisma as never, visibility as never), count }
+    const visibility = { viewer: vi.fn(), assertOperation: vi.fn(), assertMediaEligibility: vi.fn(), auditAdminRead: vi.fn(), where: vi.fn(async () => ({})), authorExclusions: vi.fn(async () => ({ authors: [] })) }
+    return { access: new FileAccessService(prisma as never, visibility as never), count, visibility }
   }
   it('发布A允许、草稿B拒绝，查询不包含当前附件列', async () => {
     const { access, count } = setup({ fileId: 'published-A', visibility: 'public' })
@@ -107,5 +107,15 @@ describe('资源下载授权只读发布快照', () => {
   it('作者和原资源编辑者的草稿权限保持不变', async () => {
     await expect(setup({}, true).access.assert('student', 'draft-B')).resolves.toMatchObject({ id: 'draft-B' })
     await expect(setup({}, false, true).access.assert('student', 'draft-B')).resolves.toMatchObject({ id: 'draft-B' })
+  })
+  it('读者只需读取资格，上传者资格和文件可见性仍须有效', async () => {
+    const { access, visibility } = setup({ fileId: 'published-A', visibility: 'public' })
+    await expect(access.assert('reader', 'published-A')).resolves.toMatchObject({ id: 'published-A' })
+    expect(visibility.assertOperation).toHaveBeenCalledWith('reader', 'read')
+    expect(visibility.assertMediaEligibility).toHaveBeenCalledExactlyOnceWith('admin')
+    visibility.assertMediaEligibility.mockRejectedValueOnce(new Error('上传者资格已撤销'))
+    await expect(access.assert('reader', 'published-A')).rejects.toThrow('上传者资格已撤销')
+    visibility.assertOperation.mockRejectedValueOnce(new Error('账号不可读'))
+    await expect(access.assert('reader', 'published-A')).rejects.toThrow('账号不可读')
   })
 })

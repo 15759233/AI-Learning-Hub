@@ -36,7 +36,7 @@ export const communityApi = {
   comment: (postId: string, input: CommunityCommentInput, id?: string) => call<CommunityCommentDto>(id ? `/comments/${id}` : `/posts/${postId}/comments`, id ? 'PATCH' : 'POST', input),
   removeComment: (id: string) => call(`/comments/${id}`, 'DELETE'),
   accept: (postId: string, id: string) => call(`/questions/${postId}/accept/${id}`, 'POST'),
-  reaction: (id: string, kind: 'like' | 'useful' | 'bookmark', active: boolean) => call<{ active: boolean; stats?: CommunityPostDetailDto['stats'] }>(`/posts/${id}/${kind === 'bookmark' ? 'bookmark' : `reactions/${kind}`}`, active ? 'PUT' : 'DELETE'),
+  reaction: (id: string, kind: 'like' | 'useful' | 'bookmark', active: boolean) => call<{ active: boolean; stats?: Partial<CommunityPostDetailDto['stats']> }>(`/posts/${id}/${kind === 'bookmark' ? 'bookmark' : `reactions/${kind}`}`, active ? 'PUT' : 'DELETE'),
   commentLike: (id: string, active: boolean) => call(`/comments/${id}/like`, active ? 'PUT' : 'DELETE'),
   follow: (id: string, topic: boolean, active: boolean) => call<{ active: boolean; followerCount?: number }>(`/${topic ? 'topics' : 'users'}/${id}/follow`, active ? 'PUT' : 'DELETE'),
   profile: (username: string) => call<CommunityProfileDto>(`/users/by-username/${encodeURIComponent(username)}`),
@@ -60,7 +60,8 @@ export const communityApi = {
   unread: () => call<{ count: number }>('/notifications/unread-count'),
   read: (id?: string) => call(id ? `/notifications/${id}/read` : '/notifications/read-all', 'POST'),
   signals: (input: CommunitySignalInput) => call('/signals', 'POST', input),
-  impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
+  viewContext: () => call<import('@ai-learning-hub/contracts').CommunityViewContextDto>('/feed/view-context', 'POST', {}),
+  impressions: (items: import('@ai-learning-hub/contracts').CommunityImpressionInput[], dwell = false) => call<import('@ai-learning-hub/contracts').CommunityImpressionsDto>(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
   async upload(file: File, options: { key?: string; signal?: AbortSignal } = {}) {
     if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !/\.(png|jpe?g|webp)$/i.test(file.name)) throw new Error('请选择不超过 5MB 的 PNG、JPEG 或 WebP 图片')
     if (dataMode === 'mock') { assertMockCommunityWrite('upload'); const id = `demo-image-${randomId()}`; demoImages.set(id, file); return { id } }

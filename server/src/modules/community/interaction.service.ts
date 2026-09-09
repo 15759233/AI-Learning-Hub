@@ -31,10 +31,10 @@ export class CommunityInteractionService {
       }
     })
     const [row, exists] = await Promise.all([
-      this.prisma.communityPost.findUniqueOrThrow({ where: { id: postId }, select: { likeCount: true, usefulCount: true, bookmarkCount: true, commentCount: true } }),
+      this.prisma.communityPost.findUniqueOrThrow({ where: { id: postId }, select: { likeCount: true, usefulCount: true, bookmarkCount: true, commentCount: true, impressionCount: true } }),
       type === 'bookmark' ? this.prisma.communityBookmark.count({ where: { userId, postId } }) : this.prisma.communityPostReaction.count({ where: { userId, postId, reactionType: type } }),
     ])
-    return { active: !!exists, stats: { likes: row.likeCount, useful: row.usefulCount, bookmarks: row.bookmarkCount, comments: row.commentCount } }
+    return { active: !!exists, stats: { likes: row.likeCount, useful: row.usefulCount, bookmarks: row.bookmarkCount, comments: row.commentCount, views: row.impressionCount } }
   }
   async commentLike(userId: string, commentId: string, active: boolean, ip?: string) {
     if (active) await this.visibility.assertOperation(userId, 'interaction')

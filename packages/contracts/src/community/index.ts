@@ -108,13 +108,17 @@ export interface CommunityPostSummaryDto {
   id: string; type: CommunityPostType; status: CommunityPostStatus; visibility: CommunityVisibility
   title: string | null; bodyPreview: string; contentBlocks: CommunityContentBlock[]
   author: CommunityAuthorDto; bindings: CommunityBindingDto[]; topics: CommunityTopicDto[]
-  stats: { likes: number; useful: number; comments: number; bookmarks: number }
+  stats: { likes: number; useful: number; comments: number; bookmarks: number; views: number }
   viewerState: CommunityViewerStateDto; recommendationReasons: string[]; labels: string[]
   question: { status: 'open' | 'solved' | 'closed'; acceptedCommentId: string | null; teacherAnswered: boolean } | null
   publishedAt: string; editedAt: string | null
   contribution?: ResourceContributionDto | null
 }
 export interface CommunityPostDetailDto extends CommunityPostSummaryDto { body: string }
+/** 浏览量是实际展示次数，沿用 impressionCount；不是独立访客或完整阅读次数。 */
+export interface CommunityImpressionInput { requestId: string; postId: string; dwellMs?: number }
+export interface CommunityImpressionsDto { received: true; items: Array<{ requestId: string; postId: string; views: number }> }
+export interface CommunityViewContextDto { requestId: string; expiresAt: string }
 export interface CommunityPostInput {
   portalConsent?: boolean
   coverFileId?: string | null

@@ -7,7 +7,7 @@ import { CommunityVisibilityPolicyService } from '../community/visibility.servic
 export class FileAccessService {
   constructor(private readonly prisma: PrismaService, private readonly visibility: CommunityVisibilityPolicyService) {}
   async assert(userId: string, id: string) {
-    await this.visibility.assertMediaEligibility(userId)
+    await this.visibility.assertOperation(userId, 'read')
     const file = await this.prisma.fileRecord.findUnique({ where: { id } })
     if (!file || file.quarantinedAt) throw new NotFoundException('文件不存在')
     await this.visibility.assertMediaEligibility(file.uploadedBy)

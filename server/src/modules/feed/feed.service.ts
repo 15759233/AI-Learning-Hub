@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
-import type { CommunityContextDto, CommunityFeedDto, CommunityFeedPolicyDto, FeedUnitDto } from '@ai-learning-hub/contracts'
+import type { CommunityContextDto, CommunityFeedDto, CommunityFeedPolicyDto, CommunityImpressionsDto, CommunityViewContextDto, FeedUnitDto } from '@ai-learning-hub/contracts'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import { CommunityVisibilityPolicyService } from '../community/visibility.service'
@@ -212,23 +212,38 @@ export class LearningFeedPipeline {
     const nextOffset = offset + selected.length
     return { requestId: session.id, policyVersion: session.policyVersion, items, degraded: session.degraded, nextCursor: nextOffset < entries.length ? this.encode({ session: session.id, offset: nextOffset, viewer: userId, mode: query.mode, type: query.type, policy: session.policyVersion }) : null }
   }
-  async impressions(userId: string, input: ImpressionsDto, dwell = false) {
-    const visible = await this.prisma.communityPost.findMany({ where: { AND: [await this.visibility.where(userId), { id: { in: input.items.map((item) => item.postId) } }] }, select: { id: true } })
-    await this.prisma.$transaction(async (tx) => {
-      for (const item of input.items.filter((item) => visible.some((row) => row.id === item.postId))) {
+  async viewContext(userId: string): Promise<CommunityViewContextDto> {
+    await this.visibility.viewer(userId)
+    const session = await this.prisma.communityFeedSession.create({ data: { viewerId: userId, mode: 'post_view', contentType: 'all', policyVersion: 'visible-1s-v1', entries: [], context: {}, expiresAt: new Date(Date.now() + 3600000) } })
+    return { requestId: session.id, expiresAt: session.expiresAt.toISOString() }
+  }
+  async impressions(userId: string, input: ImpressionsDto, dwell = false): Promise<CommunityImpressionsDto> {
+    const visibility = await this.visibility.where(userId)
+    const sessions = await this.prisma.communityFeedSession.findMany({ where: { id: { in: input.items.map((item) => item.requestId) }, viewerId: userId, expiresAt: { gt: new Date() } } })
+    const items = input.items.filter((item) => sessions.some((session) => session.id === item.requestId) && (dwell || (item.dwellMs || 0) >= 1000))
+    if (!items.length) return { received: true, items: [] }
+    return this.prisma.$transaction(async (tx) => {
+      // 与下架/编辑的帖子行锁保持同一顺序；可见性在锁内重新读取。
+      await tx.$queryRaw`SELECT id FROM community_posts WHERE id IN (${Prisma.join([...new Set(items.map((item) => item.postId))].sort())}) ORDER BY id FOR UPDATE`
+      const visible = await tx.communityPost.findMany({ where: { AND: [visibility, { id: { in: items.map((item) => item.postId) }, status: 'published' }] }, select: { id: true } })
+      const accepted = items.filter((item) => visible.some((row) => row.id === item.postId))
+      // 详情/搜索/作者页使用服务端签发的上下文，复用同一张曝光表和主键去重。
+      if (!dwell) await tx.communityFeedImpression.createMany({ data: accepted.filter((item) => sessions.some((session) => session.id === item.requestId && session.mode === 'post_view')).map((item) => ({ requestId: item.requestId, postId: item.postId, viewerId: userId, position: 0, candidateSource: 'post_view', policyVersion: 'visible-1s-v1', reasonCodes: [], scoreBucket: 0 })), skipDuplicates: true })
+      for (const item of accepted) {
         const where = { requestId: item.requestId, postId: item.postId, viewerId: userId }
-        if (dwell) {
-          const changed = await tx.communityFeedImpression.updateMany({ where: { ...where, impressedAt: { not: null }, dwellMs: { lt: item.dwellMs || 0 } }, data: { dwellMs: item.dwellMs || 0 } })
-          if (changed.count) await this.signals.record(userId, 'community_dwell', 'post', item.postId, { dwellMs: item.dwellMs || 0 }, tx, { requestId: item.requestId })
-        } else {
+        if (!dwell) {
           const changed = await tx.communityFeedImpression.updateMany({ where: { ...where, impressedAt: null }, data: { impressedAt: new Date() } })
           if (changed.count) {
             await tx.communityPost.update({ where: { id: item.postId }, data: { impressionCount: { increment: 1 } } })
             await this.signals.record(userId, 'community_feed_impression', 'post', item.postId, {}, tx, { requestId: item.requestId })
           }
         }
+        const stayed = await tx.communityFeedImpression.updateMany({ where: { ...where, impressedAt: { not: null }, dwellMs: { lt: item.dwellMs || 0 } }, data: { dwellMs: item.dwellMs || 0 } })
+        if (stayed.count) await this.signals.record(userId, 'community_dwell', 'post', item.postId, { dwellMs: item.dwellMs || 0 }, tx, { requestId: item.requestId })
       }
+      const confirmed = await tx.communityFeedImpression.findMany({ where: { viewerId: userId, impressedAt: { not: null }, OR: accepted.map(({ requestId, postId }) => ({ requestId, postId })) }, select: { requestId: true, postId: true } })
+      const counts = await tx.communityPost.findMany({ where: { id: { in: visible.map((row) => row.id) } }, select: { id: true, impressionCount: true } })
+      return { received: true, items: confirmed.map((row) => ({ ...row, views: counts.find((post) => post.id === row.postId)!.impressionCount })) }
     })
-    return { received: true }
   }
 }

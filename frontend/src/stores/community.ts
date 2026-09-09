@@ -88,7 +88,7 @@ export const useCommunityStore = defineStore('community', {
       const snapshots = this.postCopies(post).filter((row) => row.id === post.id).map((row) => ({ row, state: row.viewerState[stateKey], count: row.stats[countKey] }))
       this.operations[key] = true
       for (const { row, state, count } of snapshots) { row.viewerState[stateKey] = active; row.stats[countKey] = Math.max(0, count + (active === state ? 0 : active ? 1 : -1)) }
-      try { const result = await communityApi.reaction(post.id, kind, active); if (epoch === this.epoch && result) for (const { row } of snapshots) { row.viewerState[stateKey] = result.active; if (result.stats) row.stats = { ...result.stats } } }
+      try { const result = await communityApi.reaction(post.id, kind, active); if (epoch === this.epoch && result) for (const { row } of snapshots) { row.viewerState[stateKey] = result.active; if (result.stats) row.stats = { ...row.stats, ...result.stats, views: Math.max(row.stats.views || 0, result.stats.views || 0) } } }
       catch (cause) { if (epoch === this.epoch) for (const { row, state, count } of snapshots) { row.viewerState[stateKey] = state; row.stats[countKey] = count }; throw cause }
       finally { if (epoch === this.epoch) delete this.operations[key] }
     },

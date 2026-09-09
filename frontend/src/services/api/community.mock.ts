@@ -26,7 +26,7 @@ const topics: CommunityTopicDto[] = fixtures.topics.map((topic) => ({
 const fixturePosts: CommunityPostDetailDto[] = fixtures.posts.map((post) => ({
   id: post.id, type: post.type, status: 'published', visibility: post.visibility, portalConsent: false, title: post.title, body: text(post.blocks), bodyPreview: text(post.blocks).slice(0, 320), contentBlocks: post.blocks, author: authors.find((user) => user.id === post.author)!,
   bindings: post.bindings.filter((b) => b.type !== 'lab_run').map((binding) => { const content = (binding.type === 'course' ? demoCourses : binding.type === 'lab' ? demoLabs : demoArticles).find((row) => row.slug === binding.id)!; return { type: binding.type, id: binding.id, slug: binding.id, title: content.title, summary: content.summary, cover: mockFixtureCover(binding.type === 'course' ? 'course' : binding.type === 'lab' ? 'lab' : 'article', content).cover, route: binding.type === 'course' ? `/courses/${binding.id}` : binding.type === 'lab' ? `/labs/${binding.id}` : `/frontier?article=${binding.id}`, status: 'published' } }),
-  topics: topics.filter((topic) => post.topics.includes(topic.id)), stats: { likes: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'like').length, useful: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'useful').length, comments: 2, bookmarks: fixtures.bookmarks.filter((r) => r.postId === post.id).length },
+  topics: topics.filter((topic) => post.topics.includes(topic.id)), stats: { views: 0, likes: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'like').length, useful: fixtures.reactions.filter((r) => r.postId === post.id && r.type === 'useful').length, comments: 2, bookmarks: fixtures.bookmarks.filter((r) => r.postId === post.id).length },
   viewerState: { liked: fixtures.reactions.some((r) => r.postId === post.id && r.username === authors[0].id && r.type === 'like'), markedUseful: fixtures.reactions.some((r) => r.postId === post.id && r.username === authors[0].id && r.type === 'useful'), bookmarked: fixtures.bookmarks.some((r) => r.postId === post.id && r.username === authors[0].id), followingAuthor: fixtures.follows.some((f) => f.follower === authors[0].id && f.followee === post.author) }, recommendationReasons: ['显式演示数据 · 与 Seed 共用语义'], labels: [], question: post.type === 'question' ? { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, publishedAt: post.publishedAt, editedAt: null,
 }))
 const editorialAuthor = authors.find((author) => author.id === 'campus-guide-1')!
@@ -54,7 +54,7 @@ const curatedPosts: CommunityPostDetailDto[] = lczCuratedPosts.map((post) => {
       status: 'published',
     }],
     topics: topics.filter((topic) => post.topics.includes(topic.id)),
-    stats: { likes: 0, useful: 0, comments: 0, bookmarks: 0 },
+    stats: { views: 0, likes: 0, useful: 0, comments: 0, bookmarks: 0 },
     viewerState: { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false },
     recommendationReasons: ['外部社区精选 · 本地固定演示'],
     labels: ['外部社区精选', '本地演示已发布'],
@@ -80,7 +80,7 @@ const resourcePosts: CommunityPostDetailDto[] = demoResourceHubContributions.map
     author,
     bindings: [],
     topics: topics.filter((topic) => item.tags.some((tag) => `${topic.name}${topic.slug}`.toLowerCase().includes(tag.toLowerCase()))).slice(0, 3),
-    stats: { likes: item.likes, useful: 0, comments: item.comments, bookmarks: item.bookmarks },
+    stats: { views: 0, likes: item.likes, useful: 0, comments: item.comments, bookmarks: item.bookmarks },
     viewerState: { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false },
     recommendationReasons: ['资源共创固定演示数据'],
     labels: ['演示内容'],
@@ -133,6 +133,8 @@ let comments = structuredClone(initialComments), notifications = structuredClone
 let posts = structuredClone(initialPosts)
 const initialFollowing = fixtures.follows.filter((f) => f.follower === authors[0].id).map((f) => f.followee)
 const hidden = new Set<string>(), muted = new Set<string>(), blocked = new Set<string>(), following = new Set(initialFollowing)
+const viewSessions = new Map<string, { expiresAt: number; postIds?: Set<string> }>()
+const viewed = new Set<string>()
 const cursors = new Map<string, { ids: string[]; offset: number; mode: string; type: string; requestId: string }>()
 let bio = '', headline = '', location = '', websiteUrl = '', expertiseTopics: string[] = [], bannerUrl: string | null = null, pinnedPostId: string | null = null, allowAchievementDrafts = false, userRevision = 1, profileRevision = 1
 let pendingChanges: CommunityProfileDto['pendingChanges'], profileDetection: ContentDetectionResult | undefined
@@ -149,7 +151,7 @@ restored = true
 try {
   const stored = JSON.parse(localStorage.getItem(storageKey) || 'null')
   if (stored?.version === 5) {
-    posts = stored.posts; comments = stored.comments; notifications = stored.notifications
+    posts = stored.posts; posts.forEach((post) => { post.stats.views ??= 0 }); comments = stored.comments; notifications = stored.notifications
     mockResourceActivity.splice(0, mockResourceActivity.length, ...(stored.resourceActivity || []))
     for (const id of stored.hidden) hidden.add(id)
     for (const id of stored.muted) muted.add(id)
@@ -171,7 +173,7 @@ export const resetCommunityMock = () => {
   restored = true
   posts = structuredClone(initialPosts); comments = structuredClone(initialComments); notifications = structuredClone(initialNotifications)
   mockResourceActivity.length = 0
-  hidden.clear(); muted.clear(); blocked.clear(); following.clear(); cursors.clear(); initialFollowing.forEach((id) => following.add(id))
+  hidden.clear(); muted.clear(); blocked.clear(); following.clear(); cursors.clear(); viewSessions.clear(); viewed.clear(); initialFollowing.forEach((id) => following.add(id))
   topics.forEach((topic) => { topic.following = false; topic.followerCount = 0 })
   bio = ''; headline = ''; location = ''; websiteUrl = ''; expertiseTopics = []; bannerUrl = null; pinnedPostId = null; allowAchievementDrafts = false; userRevision = 1; profileRevision = 1; verification = structuredClone(initialVerification); authors[0].avatar = null
   pendingChanges = undefined; profileDetection = undefined
@@ -349,7 +351,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     }
     throw new Error('不支持的演示治理操作')
   }
-  const readonlyWrite = root === 'verification' || root === 'notifications' || root === 'signals' || method === 'DELETE' || ['hide', 'not-interested', 'mute', 'block', 'unpublish'].includes(action || '') || (root === 'feed' && (id === 'impressions' || id === 'dwell'))
+  const readonlyWrite = root === 'verification' || root === 'notifications' || root === 'signals' || method === 'DELETE' || ['hide', 'not-interested', 'mute', 'block', 'unpublish'].includes(action || '') || (root === 'feed' && (id === 'impressions' || id === 'dwell' || id === 'view-context'))
   const draftWrite = root === 'drafts' || root === 'posts' && (body as CommunityPostInput | undefined)?.status === 'draft'
   if (method !== 'GET' && !readonlyWrite && !draftWrite && root !== 'onboarding') {
     const operation: CommunityOperation = action === 'report' ? 'report' : root === 'comments' || action === 'comments' || root === 'questions' ? 'comment' : root === 'profile' ? 'profile' : root === 'topics' || root === 'users' || action === 'reactions' || action === 'bookmark' ? 'interaction' : 'post'
@@ -388,9 +390,20 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
     value = { ...Object.fromEntries(Object.entries(all).map(([key, rows]) => [key, type === 'all' || type === key ? rows.slice(offset, offset + limit) : []])), nextCursor: type !== 'all' && type in all && all[type as keyof typeof all].length > offset + limit ? String(offset + limit) : null }
   } else if (root === 'feed') {
     if (id === 'updates') value = { count: filtered(url).filter((p) => p.publishedAt > (url.searchParams.get('since') || '')).length }
+    else if (id === 'view-context' && method === 'POST') {
+      const requestId = randomId(), expiresAt = Date.now() + 3600000
+      viewSessions.set(requestId, { expiresAt }); value = { requestId, expiresAt: new Date(expiresAt).toISOString() }
+    }
     else if (id === 'impressions' && method === 'POST') {
-      for (const entry of (body as { items: Array<{ requestId: string; postId: string }> }).items) recordMockResourceActivity(entry.postId, 'impression', `impression:${entry.requestId}:${entry.postId}`)
-      value = { received: true }
+      const items: Array<{ requestId: string; postId: string; views: number }> = []
+      for (const entry of (body as { items: import('@ai-learning-hub/contracts').CommunityImpressionInput[] }).items) {
+        const session = viewSessions.get(entry.requestId), post = visible().find((row) => row.id === entry.postId && row.status === 'published')
+        if (!session || session.expiresAt <= Date.now() || session.postIds && !session.postIds.has(entry.postId) || !post || (entry.dwellMs || 0) < 1000) continue
+        const key = `impression:${entry.requestId}:${entry.postId}`
+        if (!viewed.has(key)) { viewed.add(key); post.stats.views++; recordMockResourceActivity(entry.postId, 'impression', key) }
+        items.push({ requestId: entry.requestId, postId: entry.postId, views: post.stats.views })
+      }
+      value = { received: true, items }
     }
     else if (method !== 'GET') value = { received: true }
     else {
@@ -398,6 +411,8 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
       const session = cursor ? cursors.get(cursor) : { ids: filtered(url).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id)).map((p) => p.id), offset: 0, type, mode, requestId: randomId() }
       if (!session || session.type !== type || session.mode !== mode) throw new Error('游标已失效或筛选不匹配，请刷新')
       const list = visible().filter((p) => session.ids.slice(session.offset, session.offset + 20).includes(p.id)).sort((a, b) => session.ids.indexOf(a.id) - session.ids.indexOf(b.id))
+      if (!viewSessions.has(session.requestId)) viewSessions.set(session.requestId, { expiresAt: Date.now() + 3600000, postIds: new Set() })
+      list.forEach((post) => viewSessions.get(session.requestId)!.postIds!.add(post.id))
       const nextCursor = session.offset + 20 < session.ids.length ? randomId() : null
       if (nextCursor) cursors.set(nextCursor, { ...session, offset: session.offset + 20 })
       value = { requestId: session.requestId, policyVersion: 'demo-fixtures', degraded: false, items: list.map((post) => ({ type: 'post', id: post.id, post })), nextCursor }
@@ -612,7 +627,7 @@ export async function mockCommunity<T>(path: string, method: string, body?: unkn
         attachment: input.contribution.kind === 'document' ? post?.contribution?.attachment || { id: input.contribution.attachmentFileId!, name: '本地演示资料.pdf', size: 120000, mimeType: 'application/pdf' } : null,
       } : post?.contribution
       const detection = input.status === 'published' ? checkMockContent(postDetectionInput(input.title, text(input.contentBlocks), input.contentBlocks, contribution)) : undefined
-      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: savedId, revision: (post?.revision || 0) + 1, type: input.type, status: detection?.action === 'review' ? 'pending_review' : input.status, detection, visibility: input.visibility, portalConsent: input.portalConsent === true && input.visibility === 'public', title: input.title || null, coverFileId: input.coverFileId === undefined ? post?.coverFileId || null : input.coverFileId, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), contribution, publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
+      const saved: CommunityPostDetailDto = { ...structuredClone(initialPosts[0]), id: savedId, revision: (post?.revision || 0) + 1, type: input.type, status: detection?.action === 'review' ? 'pending_review' : input.status, detection, visibility: input.visibility, portalConsent: input.portalConsent === true && input.visibility === 'public', title: input.title || null, coverFileId: input.coverFileId === undefined ? post?.coverFileId || null : input.coverFileId, body: text(input.contentBlocks), bodyPreview: text(input.contentBlocks).slice(0, 320), contentBlocks: input.contentBlocks, author: authors[0], topics: topics.filter((t) => input.topicIds.includes(t.id)), stats: post?.stats || { views: 0, likes: 0, comments: 0, bookmarks: 0, useful: 0 }, viewerState: post?.viewerState || { liked: false, markedUseful: false, bookmarked: false, followingAuthor: false }, question: input.type === 'question' ? post?.question || { status: 'open', acceptedCommentId: null, teacherAnswered: false } : null, bindings: await Promise.all(input.bindings.map(async (binding) => (await mockCommunity<{ binding: CommunityPostDetailDto['bindings'][number] }>(`/bindings/context?${new URLSearchParams({ type: binding.type, id: binding.id })}`, 'GET')).binding)), contribution, publishedAt: post?.publishedAt || now, editedAt: id ? now : null }
       posts = [saved, ...posts.filter((p) => p.id !== saved.id)]; value = saved
     } else value = id ? post : visible().filter((p) => (!url.searchParams.get('keyword') || `${p.title} ${p.body}`.includes(url.searchParams.get('keyword')!)) && (!url.searchParams.get('bindingId') || p.bindings.some((b) => b.id === url.searchParams.get('bindingId'))))
   }

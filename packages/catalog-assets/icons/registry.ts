@@ -15,6 +15,7 @@ export const iconRegistry: Readonly<Record<string, string>> = {
   brain: 'wenda',
   card: 'yingchengka',
   chart: 'shuju',
+  'post-views': 'post-views',
   check: 'chenggong',
   chip: 'jiju',
   close: 'shibai',

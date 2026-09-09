@@ -39,7 +39,8 @@ describe('资源共创 Mock 与正式契约语义', () => {
     expect((await mockResourceHub<ResourceContributionDetailDto>(`/contributions/${article.id}`)).stats).toMatchObject({ views: 6, plays: null })
     const postId = 'resource-demo-ai-literacy', assetId = `video-${postId}`
     const baseline = (await mockResourceHub<ResourceContributionDetailDto>(`/contributions/${postId}`)).stats.plays!
-    const input = { items: [{ requestId: 'metrics-request', postId }] }
+    const context = await mockCommunity<{ requestId: string }>('/feed/view-context', 'POST', {})
+    const input = { items: [{ requestId: context.requestId, postId, dwellMs: 1000 }] }
     await mockCommunity('/feed/impressions', 'POST', input)
     await mockCommunity('/feed/impressions', 'POST', input)
     expect((await mockResourceHub<ResourceContributionDetailDto>(`/contributions/${postId}`)).stats).toMatchObject({ plays: baseline, impressions: 1 })

@@ -54,6 +54,7 @@ export class CommunityController {
   @Get('eligibility') eligibility(@CurrentUser() user: AuthUser) { return this.visibility.eligibility(user.id) }
   @Get('bindings/context') bindingContext(@CurrentUser() user: AuthUser, @Query() input: BindingDto) { return this.context.bindingContext(user.id, input) }
   @Post('feed/impressions') impressions(@CurrentUser() user: AuthUser, @Body() input: ImpressionsDto) { return this.feed.impressions(user.id, input) }
+  @Post('feed/view-context') viewContext(@CurrentUser() user: AuthUser) { return this.feed.viewContext(user.id) }
   @Post('feed/dwell') dwell(@CurrentUser() user: AuthUser, @Body() input: ImpressionsDto) { return this.feed.impressions(user.id, input, true) }
   @Post('feed/feedback') feedback(@CurrentUser() user: AuthUser, @Body() input: FeedbackDto) { return this.interactions.feedback(user.id, input.postId, input.type) }
   @Post('signals') async signal(@CurrentUser() user: AuthUser, @Body() input: SignalDto) {
