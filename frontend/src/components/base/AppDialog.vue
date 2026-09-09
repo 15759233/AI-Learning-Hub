@@ -83,10 +83,10 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <dialog v-bind="$attrs" ref="dialog" class="app-dialog" :aria-labelledby="titleId" @cancel="onCancel" @click="onBackdrop">
       <div class="dialog-card" @click.stop>
-        <div class="dialog-title">
+        <slot name="header" :close="close" :title-id="titleId"><div class="dialog-title">
           <strong :id="titleId">{{ title }}</strong>
           <button class="icon-button" type="button" :aria-label="`关闭${title}`" @click="close"><AppIcon name="close" :size="18" /></button>
-        </div>
+        </div></slot>
         <slot :close="close" />
       </div>
     </dialog>

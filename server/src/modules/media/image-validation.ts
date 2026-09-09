@@ -5,8 +5,8 @@ import sharp from 'sharp'
 import type { UploadedFile } from '../storage/storage.types'
 
 const invalid = () => { throw new BadRequestException('图片内容、类型或尺寸无效；仅支持静态 PNG、JPEG、WebP 与受信任 SVG') }
-const limits = (width: number, height: number) => {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 16 || height < 16 || width > 8192 || height > 8192 || width * height > 32_000_000) invalid()
+const limits = (width: number, height: number, minimumSide = 16) => {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < minimumSide || height < minimumSide || width > 8192 || height > 8192 || width * height > 32_000_000) invalid()
   return { width, height }
 }
 function inspectEnvelope(buffer: Buffer, format: string) {
@@ -66,9 +66,9 @@ export function inspectSvg(buffer: Buffer) {
   return size!
 }
 
-export async function inspectMediaImage(file: UploadedFile, trustedSvg = false) {
+export async function inspectMediaImage(file: UploadedFile, trustedSvg = false, minimumSide = 16) {
   const b = file.buffer, extension = extname(file.originalname).toLowerCase()
-  if (!b.length || b.length !== file.size || b.length > 5 * 1024 * 1024) throw new BadRequestException('封面图片必须在1字节到5MB之间')
+  if (!b.length || b.length !== file.size || b.length > 5 * 1024 * 1024) throw new BadRequestException('图片必须在1字节到5MB之间')
   if (extension === '.svg') {
     if (!trustedSvg) throw new ForbiddenException('SVG 仅允许受信任管理员上传')
     if (file.mimetype !== 'image/svg+xml') invalid()
@@ -81,7 +81,7 @@ export async function inspectMediaImage(file: UploadedFile, trustedSvg = false) 
     const image = sharp(b, { failOn: 'warning', limitInputPixels: 32_000_000, unlimited: false })
     const metadata = await image.metadata()
     if (metadata.format !== format || (metadata.pages || 1) !== 1) invalid()
-    const size = limits(metadata.width!, metadata.height!)
+    const size = limits(metadata.width!, metadata.height!, minimumSide)
     // 完整解码才能拒绝“合法头+截断像素”；仅 metadata() 不足以验证上传。
     await image.raw().toBuffer()
     return size

@@ -3,7 +3,8 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppDialog from '../components/base/AppDialog.vue'
 import { loadCommunityImage } from './imageQueue'
 import { useCommunityScrollRoot } from './composables/useCommunityScrollRoot'
-const props = defineProps<{ images: Array<{ fileId: string; alt?: string }> }>()
+const props = defineProps<{ images: Array<{ fileId: string; alt?: string }>; editable?: boolean }>()
+const emit = defineEmits<{ edit: [fileId: string]; remove: [fileId: string] }>()
 const root = ref<HTMLElement>(), urls = ref<Record<string, string>>({}), failed = ref<string[]>([]), opened = ref(false), selected = ref(0)
 const scrollRoot = useCommunityScrollRoot()
 let epoch = 0, observer: IntersectionObserver | undefined
@@ -18,6 +19,7 @@ const load = async () => {
 }
 const observe = () => {
   if (!root.value) return
+  if (props.editable) { void load(); return }
   observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) void load() }, { root: scrollRoot.value, rootMargin: '300px' })
   observer.observe(root.value)
 }
@@ -29,6 +31,6 @@ onMounted(observe)
 onBeforeUnmount(clear)
 </script>
 <template>
-  <div ref="root" class="community-gallery" :class="`gallery-${images.length}`"><button v-for="(image, index) in images" :key="image.fileId" type="button" :aria-label="`查看图片 ${index + 1}`" :disabled="!urls[image.fileId]" @click.stop="selected = index; opened = true"><img v-if="urls[image.fileId]" :src="urls[image.fileId]" :alt="image.alt || '作者分享的学习图片'" loading="lazy" @load="imageLoaded" /><p v-else>{{ failed.includes(image.fileId) ? '图片不可见或已失效' : '正在读取图片…' }}</p></button></div>
+  <div ref="root" :class="[ `gallery-${images.length}`, editable ? 'composer-image-gallery' : 'community-gallery' ]"><template v-for="(image, index) in images" :key="image.fileId"><figure v-if="editable"><button type="button" :aria-label="`查看图片 ${index + 1}`" :disabled="!urls[image.fileId]" @click.stop="selected = index; opened = true"><img v-if="urls[image.fileId]" :src="urls[image.fileId]" :alt="image.alt || '作者分享的学习图片'" /><span v-else>{{ failed.includes(image.fileId) ? '图片不可见或已失效' : '正在读取图片…' }}</span></button><figcaption><button class="text-link" type="button" :aria-label="`编辑图片 ${index + 1}`" @click="emit('edit', image.fileId)">编辑</button><button class="text-link" type="button" :aria-label="`移除图片 ${index + 1}`" @click="emit('remove', image.fileId)">移除</button></figcaption></figure><button v-else type="button" :aria-label="`查看图片 ${index + 1}`" :disabled="!urls[image.fileId]" @click.stop="selected = index; opened = true"><img v-if="urls[image.fileId]" :src="urls[image.fileId]" :alt="image.alt || '作者分享的学习图片'" loading="lazy" @load="imageLoaded" /><p v-else>{{ failed.includes(image.fileId) ? '图片不可见或已失效' : '正在读取图片…' }}</p></button></template></div>
   <AppDialog v-model="opened" title="查看学习图片" @keydown="keydown"><section v-if="opened" class="community-image-viewer"><img :src="urls[images[selected]!.fileId]" :alt="images[selected]!.alt || '作者分享的学习图片'" /><footer><button v-if="images.length > 1" class="button secondary small" type="button" @click="step(-1)">上一张</button><span>{{ selected + 1 }} / {{ images.length }}</span><button v-if="images.length > 1" class="button secondary small" type="button" @click="step(1)">下一张</button></footer></section></AppDialog>
 </template>

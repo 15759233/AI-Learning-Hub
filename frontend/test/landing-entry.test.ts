@@ -49,14 +49,15 @@ describe('社区化入口', () => {
     expect(source('landing/LandingRenderer.vue')).not.toMatch(/https:\/\/|base64|2222229b585f/)
   })
 
-  it('三入口使用LandingLayout，公开条款不变，全部学习直链要求登录', () => {
+  it('三入口使用LandingLayout，教程列表允许访客，学习内容与创作入口要求登录', () => {
     const router = source('router.ts')
     const route = (path: string) => router.split('\n').find((line) => line.includes(`path: '${path}'`))
     for (const path of ['/', '/welcome', '/__homepage-preview']) expect(route(path)).toContain("layout: 'landing'")
     for (const path of ['/terms', '/privacy', '/reset-password', '/verify-email']) {
       expect(route(path)).toContain("layout: 'public'"); expect(route(path)).toContain('requiresAuth: false')
     }
-    for (const path of ['/topics', '/courses/:courseId', '/labs', '/labs/:labId', '/resources', '/frontier', '/assessments', '/profile', '/bookmarks', '/notifications']) expect(route(path)).toContain('requiresAuth: true')
+    expect(route('/resources')).toContain('requiresAuth: false')
+    for (const path of ['/topics', '/courses/:courseId', '/labs', '/labs/:labId', '/resources/watch/:postId', '/resources/read/:postId', '/resources/studio', '/frontier', '/assessments', '/profile', '/bookmarks', '/notifications']) expect(route(path)).toContain('requiresAuth: true')
     expect(communityNavigation.every((item) => item.requiresAuth)).toBe(true)
     expect(router).toContain('redirect: to.fullPath')
     expect(source('layouts/LandingLayout.vue')).not.toContain('AppHeader')

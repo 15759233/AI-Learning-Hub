@@ -35,6 +35,95 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
+  it('多选逐张确认，预留四张名额；取消不上传，成功后的顺序稳定', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle()
+    const files = [1, 2, 3, 4].map((n) => new File([String(n)], `${n}.png`, { type: 'image/png' }))
+    await editor.uploadFiles(files)
+    expect(editor.pendingImages).toBe(4); expect(communityApi.upload).not.toHaveBeenCalled()
+    await editor.uploadFiles([files[0]!])
+    expect(editor.error).toContain('还可添加 0 张'); expect(editor.pendingImages).toBe(4)
+    expect(editor.activeImage).toMatchObject({ position: 1, total: 4 })
+    editor.cancelImage(editor.activeImage!.id)
+    expect(editor.activeImage).toMatchObject({ position: 2, total: 4 })
+    for (let i = 1; i < 4; i++) {
+      vi.mocked(communityApi.upload).mockResolvedValueOnce({ id: `file-${i}` })
+      await editor.saveEditedImage(editor.activeImage!.id, files[i]!, `说明${i}`)
+    }
+    expect(editor.images).toEqual([1, 2, 3].map((i) => ({ fileId: `file-${i}`, alt: `说明${i}` })))
+    expect(editor.pendingImages).toBe(0); expect(communityApi.upload).toHaveBeenCalledTimes(3)
+  })
+  it('图片上传失败可同键重试且只插入一次，失败不清空正文', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle(); editor.body = '上传失败仍保留的正文'
+    const file = new File(['pixels'], 'retry.png', { type: 'image/png' })
+    await editor.uploadFiles([file]); const id = editor.activeImage!.id
+    vi.mocked(communityApi.upload).mockRejectedValueOnce(new Error('网络断开')).mockResolvedValueOnce({ id: 'new-file' })
+    await expect(editor.saveEditedImage(id, file, '说明')).rejects.toThrow('网络断开')
+    expect(editor.images).toEqual([]); expect(editor.body).toContain('仍保留')
+    expect(await editor.saveEditedImage(id, file, '说明')).toBe(true)
+    expect(await editor.saveEditedImage(id, file, '说明')).toBe(false)
+    const calls = vi.mocked(communityApi.upload).mock.calls
+    expect(calls[0]![1]!.key).toBe(calls[1]![1]!.key)
+    expect(editor.images).toEqual([{ fileId: 'new-file', alt: '说明' }])
+  })
+  it('重新编辑成功才替换引用，取消保留顺序和说明；移除只解除草稿引用', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer({ contentBlocks: [{ type: 'paragraph', text: '正文' }, { type: 'image', fileId: 'a', alt: '甲' }, { type: 'image', fileId: 'b', alt: '乙' }] }); await settle()
+    editor.editImage('a'); expect(editor.activeImage).toMatchObject({ fileId: 'a', alt: '甲' })
+    editor.cancelImage(editor.activeImage!.id)
+    expect(editor.images.map((image) => image.fileId)).toEqual(['a', 'b'])
+    editor.richBlocks = editor.blocks; editor.editImage('a')
+    vi.mocked(communityApi.upload).mockResolvedValueOnce({ id: 'a-edited' })
+    await editor.saveEditedImage(editor.activeImage!.id, new File(['x'], 'edited.png', { type: 'image/png' }), '甲')
+    expect(editor.images).toEqual([{ fileId: 'a-edited', alt: '甲' }, { fileId: 'b', alt: '乙' }])
+    expect(editor.richBlocks.filter((block) => block.type === 'image').map((block) => block.fileId)).toEqual(['a-edited', 'b'])
+    editor.removeImage('a-edited'); expect(editor.images).toEqual([{ fileId: 'b', alt: '乙' }])
+    expect(editor.richBlocks.some((block) => block.type === 'image' && block.fileId === 'a-edited')).toBe(false)
+  })
+  it('待处理图片阻止发布和高级切换，正文照常自动保存，刷新提醒重新选择', async () => {
+    const view = setupComponent<{ advanced: () => void }>(CommunityQuickComposer)
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle(); editor.body = '可恢复正文'
+    editor.images = [{ fileId: 'uploaded', alt: '已上传说明' }]
+    await editor.uploadFiles([new File(['x'], 'local.png', { type: 'image/png' })]); await settle()
+    view.state.advanced(); expect(store.composerMode).toBe('quick')
+    expect(await editor.save()).toBe(false); expect(communityApi.save).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(communityApi.saveDraft).toHaveBeenCalled(); expect(editor.dirty).toBe(true)
+    const copy = JSON.parse(storage.get(key('owner-a'))!)
+    expect(copy.pendingImages).toBe(true)
+    expect(copy.input.contentBlocks).toEqual([{ type: 'paragraph', text: '可恢复正文' }, { type: 'image', fileId: 'uploaded', alt: '已上传说明' }])
+    expect(storage.get(key('owner-a'))).not.toMatch(/blob:|local\.png|pixels/)
+    store.composerOpen = false; store.openComposer(); await settle()
+    expect(editor.pendingImages).toBe(0); expect(editor.imageNotice).toContain('重新选择')
+    expect(editor.body).toBe('可恢复正文'); expect(editor.images).toEqual([{ fileId: 'uploaded', alt: '已上传说明' }])
+    view.unmount()
+  })
+  it('关闭再打开同账号发布器，旧上传回调不能写进新草稿', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle()
+    const file = new File(['x'], 'one.png', { type: 'image/png' })
+    await editor.uploadFiles([file])
+    let done!: (row: { id: string }) => void
+    vi.mocked(communityApi.upload).mockReturnValueOnce(new Promise((resolve) => { done = resolve }))
+    const uploading = editor.saveEditedImage(editor.activeImage!.id, file, '旧图')
+    const signal = vi.mocked(communityApi.upload).mock.calls[0]![1]!.signal
+    editor.discard(); store.openComposer(); await settle(); editor.body = '新草稿'
+    done({ id: 'late' }); expect(await uploading).toBe(false)
+    expect(signal!.aborted).toBe(true); expect(editor.images).toEqual([]); expect(editor.body).toBe('新草稿')
+  })
+  it('已选择同一文件可以再次选择；批次中任一文件超限则明确拒绝整批', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle()
+    const file = new File(['x'], 'one.png', { type: 'image/png' })
+    const target = { files: [file], value: 'one.png' }
+    await editor.upload({ target } as unknown as Event); expect(target.value).toBe('')
+    editor.cancelImage(editor.activeImage!.id); target.value = 'one.png'
+    await editor.upload({ target } as unknown as Event); expect(editor.pendingImages).toBe(1)
+    await editor.uploadFiles([file, new File(['bad'], 'file.gif', { type: 'image/gif' })])
+    expect(editor.error).toContain('PNG'); expect(editor.pendingImages).toBe(1)
+  })
   it('替代退出前立即保存最新输入，停止自动同步，原账号可恢复且不串号', async () => {
     const editor = useCommunityDraft(), store = useCommunityStore()
     store.openComposer(); await settle()
@@ -317,7 +406,9 @@ describe('共享发布器与草稿账号隔离', () => {
     vi.mocked(communityApi.bindingContext).mockReturnValue(new Promise((resolve) => { bindingDone = resolve }))
     store.openComposer(); await settle()
     editor.bindingId = 'course-a'
-    const binding = editor.addBinding(), upload = editor.uploadFiles([new File(['test'], 'one.png', { type: 'image/png' })])
+    const binding = editor.addBinding(), file = new File(['test'], 'one.png', { type: 'image/png' })
+    await editor.uploadFiles([file])
+    const upload = editor.saveEditedImage(editor.activeImage!.id, file, '学习图片')
     store.clear(); account.user = { id: 'owner-b' }; await settle()
     bindingDone({ binding: { title: '前账号课程' }, topicIds: ['old-topic'] } as Awaited<ReturnType<typeof communityApi.bindingContext>>); uploadDone({ id: 'old-image' })
     await Promise.all([binding, upload])

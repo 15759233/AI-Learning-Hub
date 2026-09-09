@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import CommunityImageGallery from './CommunityImageGallery.vue'
 import AppIcon from '../components/base/AppIcon.vue'
 import { storeToRefs } from 'pinia'
 import { useCommunityDraft } from './composables/useCommunityDraft'
 import { useCommunityAccess } from './composables/useCommunityAccess'
 const props = defineProps<{ panel: 'images' | 'binding' | 'topics' }>()
 const editor = useCommunityDraft()
-const { availability, decision } = useCommunityAccess()
+const { availability, decision, requireWrite } = useCommunityAccess()
+const filePicker = ref<HTMLInputElement>()
+const chooseImages = () => { if (requireWrite('upload')) filePicker.value?.click() }
+const editImage = (fileId: string) => { if (requireWrite('upload')) editor.editImage(fileId) }
 const uploadDecision = computed(() => decision('upload'))
 const { images, saving, form, topics, topicsLoading, advanced, bindingType, source, bindingSearch, bindingLoading, bindingId, bindingOptions, bindingTitles } = storeToRefs(editor)
 watch(() => props.panel, (panel) => { if (panel === 'topics') void editor.loadTopics(); if (panel === 'binding') void editor.loadOptions() }, { immediate: true })
@@ -14,9 +18,12 @@ watch(() => props.panel, (panel) => { if (panel === 'topics') void editor.loadTo
 <template>
   <div class="composer-tool-panel">
     <template v-if="panel === 'images'">
-      <label>学习图片（最多 4 张，每张 5MB）<input type="file" multiple accept="image/png,image/jpeg,image/webp" :disabled="saving || !uploadDecision.allowed" @change="editor.upload" /></label>
+      <input ref="filePicker" hidden type="file" multiple accept="image/png,image/jpeg,image/webp" @change="editor.upload" />
+      <button class="text-link" type="button" :disabled="saving" @click="chooseImages">添加学习图片（最多 4 张，每张 5MB）</button>
       <p v-if="!uploadDecision.allowed" class="community-notice">{{ uploadDecision.message }}<span v-if="availability('upload')">{{ availability('upload') }}</span><RouterLink v-if="uploadDecision.nextAction" class="text-link" :to="uploadDecision.nextAction.route">{{ uploadDecision.nextAction.label }}</RouterLink></p>
-      <div v-for="(image, index) in images" :key="image.fileId" class="composer-row"><input v-model="image.alt" aria-label="图片说明" maxlength="200" /><button class="text-link" type="button" @click="images.splice(index, 1)">移除</button></div>
+      <CommunityImageGallery v-if="images.length" :images="images" editable @edit="editImage" @remove="editor.removeImage" />
+      <p v-if="editor.pendingImages" role="status">请先保存或取消待处理图片，再发布。未保存的本地图片无法跨刷新恢复。</p>
+      <p v-if="editor.imageNotice" role="status">{{ editor.imageNotice }}</p>
     </template>
     <template v-else-if="panel === 'binding'">
       <p class="muted">查找已发布学习内容，最多关联 {{ advanced ? 8 : 1 }} 项。</p>

@@ -21,6 +21,7 @@ import { CommentQueryDto, OnboardingDto, SearchDto, UsernameDto } from './commun
 import { CommunitySearchService } from './search.service'
 import type { CommunityDraftDto, CommunityPostInput } from '@ai-learning-hub/contracts'
 import { createHash } from 'node:crypto'
+import { inspectMediaImage } from '../media/image-validation'
 import { reserveIdempotency } from '../../common/persistence'
 
 @Controller('community')
@@ -154,9 +155,7 @@ export class CommunityController {
   @UseInterceptors(ReservedUpload('image', 5 * 1024 * 1024))
   async upload(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File, @Headers('idempotency-key') key?: string) {
     if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) throw new BadRequestException('仅支持 PNG、JPEG、WebP 图片')
-    const bytes = file.buffer
-    const valid = file.mimetype === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) : file.mimetype === 'image/jpeg' ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'
-    if (!valid) throw new BadRequestException('图片内容与 MIME 不匹配')
+    await inspectMediaImage(file, false, 1)
     const request = await reserveIdempotency(this.prisma, user.id, 'community-media-upload', key, { name: file.originalname, mimeType: file.mimetype, size: file.size, checksum: createHash('sha256').update(file.buffer).digest('hex') })
     if (request.resourceId) {
       const existing = await this.prisma.fileRecord.findFirst({ where: { id: request.resourceId, uploadedBy: user.id } })

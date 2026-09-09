@@ -61,11 +61,11 @@ export const communityApi = {
   read: (id?: string) => call(id ? `/notifications/${id}/read` : '/notifications/read-all', 'POST'),
   signals: (input: CommunitySignalInput) => call('/signals', 'POST', input),
   impressions: (items: Array<{ requestId: string; postId: string; dwellMs?: number }>, dwell = false) => call(`/feed/${dwell ? 'dwell' : 'impressions'}`, 'POST', { items }),
-  async upload(file: File) {
+  async upload(file: File, options: { key?: string; signal?: AbortSignal } = {}) {
     if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !/\.(png|jpe?g|webp)$/i.test(file.name)) throw new Error('请选择不超过 5MB 的 PNG、JPEG 或 WebP 图片')
     if (dataMode === 'mock') { assertMockCommunityWrite('upload'); const id = `demo-image-${randomId()}`; demoImages.set(id, file); return { id } }
     const form = new FormData(); form.append('file', file)
-    return request<{ id: string }>('/community/media', { method: 'POST', body: form, headers: { 'idempotency-key': randomId() } })
+    return request<{ id: string }>('/community/media', { method: 'POST', body: form, signal: options.signal, headers: { 'idempotency-key': options.key || randomId() } })
   },
   async profileImage(file: File, kind: 'avatar' | 'banner', expectedUserRevision: number, expectedProfileRevision: number) {
     const limit = kind === 'avatar' ? 5 : 8
@@ -78,14 +78,17 @@ export const communityApi = {
     return request<CommunityProfileUpdateDto>(`/community/profile/${kind}`, { method: 'POST', body: form, headers: { 'idempotency-key': randomId() } })
   },
   removeProfileImage: (kind: 'avatar' | 'banner', expectedUserRevision: number, expectedProfileRevision: number) => call<CommunityProfileUpdateDto>(`/profile/${kind}`, 'DELETE', { expectedUserRevision, expectedProfileRevision }),
-  async image(id: string) {
-    if (dataMode === 'mock') { const file = demoImages.get(id); if (!file) throw new Error('演示图片仅保存在当前浏览器会话'); return URL.createObjectURL(file) }
+  async imageBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+    if (dataMode === 'mock') { const file = demoImages.get(id); if (!file) throw new Error('演示图片仅保存在当前浏览器会话'); return file }
     const { url } = await call<{ url: string }>(`/media/${id}/url`)
     const source = url.startsWith('/api/') && import.meta.env.VITE_API_BASE_URL?.startsWith('http') ? new URL(url, import.meta.env.VITE_API_BASE_URL).href : url
     const token = studentSession.token()
-    const response = await fetch(source, { signal: studentSession.signal, headers: url.startsWith('/api/') ? { authorization: `Bearer ${token || ''}` } : {} })
+    const response = await fetch(source, { signal: signal ? AbortSignal.any([signal, studentSession.signal]) : studentSession.signal, headers: url.startsWith('/api/') ? { authorization: `Bearer ${token || ''}` } : {} })
     if (response.status === 401 && (await response.clone().json().catch(() => null))?.errorCode === SESSION_REPLACED) studentSession.end(SESSION_REPLACED, token)
     if (!response.ok) throw new Error('图片不可见或已失效')
-    return URL.createObjectURL(await response.blob())
+    return response.blob()
+  },
+  async image(id: string): Promise<string> {
+    return URL.createObjectURL(await communityApi.imageBlob(id))
   },
 }
