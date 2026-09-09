@@ -56,8 +56,10 @@ async function responseFor(path: string, init: RequestInit = {}, retry = true): 
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const generation = adminSession.generation
   const response = await responseFor(path, init, retry)
   const body = await response.json().catch(() => null) as ApiEnvelope<T> | null
+  if (generation !== adminSession.generation) throw new ApiError('会话已变化，请重新操作', 401)
   if (!response.ok || !body || body.code !== 0) throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status)
   return body.data
 }

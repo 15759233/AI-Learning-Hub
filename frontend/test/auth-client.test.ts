@@ -46,6 +46,20 @@ describe('真实HTTP客户端会话边界', () => {
     await expect(pending).rejects.toMatchObject({ status: 401 })
     expect(studentSession.token()).toBe('new-account-session'); expect(studentSession.ended).toBeNull()
   })
+  it.each(['student', 'admin'])('%s 旧响应体延迟完成时不能带入新账号', async client => {
+    const state = client === 'student' ? studentSession : adminSession
+    state.accept(client + '-old-account')
+    let finish!: (value: unknown) => void
+    let started!: () => void
+    const reading = new Promise<void>(resolve => { started = resolve })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: () => new Promise(resolve => { finish = resolve; started() }) })))
+    const pending = (client === 'student' ? request : adminApi)('/me')
+    await reading
+    state.accept(client + '-new-account')
+    finish({ code: 0, data: { id: 'old-account' } })
+    await expect(pending).rejects.toMatchObject({ status: 401 })
+    expect(state.token()).toBe(client + '-new-account'); expect(state.ended).toBeNull()
+  })
   it.each(['student', 'admin'])('%s 刷新携带旧设备身份，账号已变化时不重试原写请求', async client => {
     stored.set('admin-access-token', 'admin-test-token')
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ code: 40101, message: '账号已变化', data: null }), { status: 401 }))
