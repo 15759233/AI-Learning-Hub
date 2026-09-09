@@ -32,6 +32,7 @@
 .quick-editor .community-error { margin: 0; }
 .quick-dialog { min-height: 0; margin: 0; padding: 0; border: 0; background: var(--amc-surface); box-shadow: none; }
 .composer-row { display: flex; gap: 12px; align-items: end; min-width: 0; }
+.composer-row.auth-options { align-items: center; }
 .composer-row > label, .composer-row input:not([type="checkbox"]), .composer-row select { flex: 1; min-width: 0; max-width: 100%; }
 .composer-row > button { flex-shrink: 0; }
 .composer-form fieldset { border: 1px solid var(--amc-border); border-radius: var(--amc-radius-control); margin: 0; padding: 14px; }

@@ -36,6 +36,8 @@ CommonJS 运行入口为 `dist/manifest.js`，声明入口为 `dist/manifest.d.t
 
 未知名称返回中性 `missing` 图标；开发环境警告由页面 `AppIcon` 统一处理。正式 SVG 不含位图、Base64、脚本或外部引用。
 
+侧栏与信息流工具按钮使用 hanabizh 的[无风格化icon 图标集](https://www.iconfont.cn/collections/detail?cid=53651)：菜单 `46962277`、加载 `46962308`、搜索 `46962314`，分别映射 `sidebar-menu`、`feed-refresh`、`feed-search`；保留原始路径，仅统一为 `currentColor`。
+
 ## 生成来源
 
 图片均通过内置 `image_gen` 按素材独立生成，选定后仅执行尺寸与 WebP 生产转换。图标使用两张独立生成造型参考，再由代码重绘为真正 SVG。提示词、原图位置、选择记录与源/正式哈希保存在仓库外审查证据，不依赖这些证据目录运行。
