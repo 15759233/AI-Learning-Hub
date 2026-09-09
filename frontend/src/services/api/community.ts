@@ -1,5 +1,6 @@
 import type { CommunityAuthorDto, CommunityBindingInput, CommunityBindingContextDto, CommunityCommentDto, CommunityCommentPageDto, CommunityCommentQuery, CommunityCommentInput, CommunityContextDto, CommunityEligibilityDto, CommunityFeedDto, CommunityFeedMode, CommunityNotificationDto, CommunityPostDetailDto, CommunityPostInput, CommunityPostType, CommunityProfileDto, CommunityProfileInput, CommunityProfileRelationsDto, CommunityProfileTab, CommunityProfileTimelineDto, CommunityProfileUpdateDto, CommunitySignalInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
-import { dataMode, request, writeRequest } from './client'
+import { dataMode, request, writeRequest, studentSession } from './client'
+import { SESSION_REPLACED } from '@ai-learning-hub/contracts'
 import { assertMockCommunityWrite, mockCommunity } from './community.mock'
 import { randomId } from './random-id'
 import type { GovernanceAppealInput, GovernanceMineDto, GovernanceReportInput, GovernanceTarget } from '@ai-learning-hub/contracts'
@@ -79,7 +80,9 @@ export const communityApi = {
     if (dataMode === 'mock') { const file = demoImages.get(id); if (!file) throw new Error('演示图片仅保存在当前浏览器会话'); return URL.createObjectURL(file) }
     const { url } = await call<{ url: string }>(`/media/${id}/url`)
     const source = url.startsWith('/api/') && import.meta.env.VITE_API_BASE_URL?.startsWith('http') ? new URL(url, import.meta.env.VITE_API_BASE_URL).href : url
-    const response = await fetch(source, { headers: url.startsWith('/api/') ? { authorization: `Bearer ${sessionStorage.getItem('student-access-token') || ''}` } : {} })
+    const token = studentSession.token()
+    const response = await fetch(source, { signal: studentSession.signal, headers: url.startsWith('/api/') ? { authorization: `Bearer ${token || ''}` } : {} })
+    if (response.status === 401 && (await response.clone().json().catch(() => null))?.errorCode === SESSION_REPLACED) studentSession.end(SESSION_REPLACED, token)
     if (!response.ok) throw new Error('图片不可见或已失效')
     return URL.createObjectURL(await response.blob())
   },

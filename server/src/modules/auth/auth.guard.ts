@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service'
 import { authUserDto, authUserInclude } from './auth.mapper'
 import { availableAccount } from '../community/governance-policy'
 import { assertAdminNetwork } from '../../common/deployment-security'
+import { assertNotReplaced } from './session-revocation'
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -15,9 +16,9 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthRequest>()
     const token = request.headers.authorization?.match(/^Bearer (.+)$/)?.[1]
     if (!token) throw new UnauthorizedException('请先登录')
-    let payload: AuthUser
+    let payload: AuthUser & { exp?: number }
     try {
-      payload = await this.jwt.verifyAsync<AuthUser>(token, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'] })
+      payload = await this.jwt.verifyAsync<AuthUser>(token, { secret: this.config.getOrThrow('JWT_SECRET'), algorithms: ['HS256'], ignoreExpiration: true })
       if (!payload.id || !payload.sessionId || !['student', 'admin'].includes(payload.sessionClient || '')) throw new UnauthorizedException()
     } catch {
       throw new UnauthorizedException('登录状态已失效')
@@ -28,6 +29,8 @@ export class AuthGuard implements CanActivate {
     if ((payload.sessionVersion || 0) !== user.sessionVersion) throw new UnauthorizedException('会话已撤销，请重新登录')
     if (payload.sessionClient === 'student' && authUserDto(user).permissions.length) throw new UnauthorizedException('权限已变化，请通过管理后台完成 MFA')
     const session = await this.prisma.refreshToken.findUnique({ where: { id: payload.sessionId } })
+    if (session?.userId === user.id && session.client === payload.sessionClient) assertNotReplaced(session)
+    if (!payload.exp || payload.exp <= Date.now() / 1000) throw new UnauthorizedException('登录状态已失效')
     if (!session || session.userId !== user.id || session.client !== payload.sessionClient || session.revokedAt || session.expiresAt <= new Date()) throw new UnauthorizedException('设备会话已撤销，请重新登录')
     if (session.client === 'admin') {
       assertAdminNetwork(this.config, request.ip)

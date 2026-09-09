@@ -16,6 +16,7 @@ import { generate, generateSecret, generateURI, verify } from 'otplib'
 import type { DeviceSessionDto, MfaChallengeDto, ReauthenticateInput, SessionClient } from '@ai-learning-hub/contracts'
 import { decryptMfa, encryptMfa } from './mfa-crypto'
 import { assertAdminNetwork } from '../../common/deployment-security'
+import { assertNotReplaced } from './session-revocation'
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 type SessionOptions = { client?: SessionClient; mfaVerified?: boolean; device?: string; sessionId?: string }
@@ -56,7 +57,7 @@ export class AuthService {
       return payload.sub
     } catch { throw new UnauthorizedException('恢复凭据已失效，请重新验证账号') }
   }
-  async login(identifier: string, password: string, clientKey: string, ip: string, client: SessionClient = 'student', device = '未知设备') {
+  async login(identifier: string, password: string, clientKey: string, ip: string, client: SessionClient = 'student', device = '未知设备', existingToken?: string) {
     if (client === 'admin') assertAdminNetwork(this.config, ip)
     if (Buffer.byteLength(password, 'utf8') > 72) throw new BadRequestException('密码不能超过72个UTF-8字节（汉字通常占3字节）')
     identifier = identifier.trim()
@@ -99,7 +100,8 @@ export class AuthService {
         return this.beginMfa(fresh, tx)
       }
       if (!profile.roles.includes('student')) throw new ForbiddenException('请使用管理后台登录入口')
-      return { user: profile, ...(await this.createSession(profile, tx, { client, device })) }
+      const existing = existingToken ? await tx.refreshToken.findFirst({ where: { userId: user.id, client, tokenHash: hashToken(existingToken), revokedAt: null, expiresAt: { gt: new Date() } } }) : null
+      return { user: profile, ...(await this.createSession(profile, tx, { client, device, sessionId: existing?.id })) }
     })
   }
 
@@ -113,6 +115,16 @@ export class AuthService {
     const client = options.client || 'student'
     if (client === 'student' && user.permissions.length) throw new ForbiddenException('管理账号请使用管理后台完成 MFA')
     if (client === 'admin' && (!options.mfaVerified || !current.mfaEnabledAt || !user.permissions.length)) throw new ForbiddenException('管理员需要完成 MFA')
+    if (options.sessionId) {
+      const session = await tx.refreshToken.findUnique({ where: { id: options.sessionId } })
+      if (session?.userId === user.id && session.client === client) assertNotReplaced(session)
+      if (!session || session.userId !== user.id || session.client !== client || session.revokedAt || session.expiresAt <= new Date()) throw new UnauthorizedException('刷新凭据已失效')
+    } else {
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, client, revokedAt: null, expiresAt: { gt: new Date() } },
+        data: { revokedAt: new Date(), revocationReason: 'replaced_by_login' },
+      })
+    }
     const accessTtl = this.config.get<string>('ACCESS_TOKEN_TTL') || '15m'
     const refreshToken = randomBytes(48).toString('base64url')
     const ttl = this.config.get('REFRESH_TOKEN_TTL') || `${this.config.get('REFRESH_TOKEN_DAYS') || '7'}d`
@@ -141,6 +153,7 @@ export class AuthService {
         },
       },
     })
+    if (stored?.client === client) assertNotReplaced(stored)
     if (!stored || stored.client !== client || stored.revokedAt || stored.expiresAt <= new Date() || stored.user.status !== 'active') {
       throw new UnauthorizedException('刷新凭据已失效')
     }
@@ -154,6 +167,7 @@ export class AuthService {
     return this.prisma.$transaction(async (tx) => {
       await lockUser(tx, stored.userId)
       const current = await tx.refreshToken.findUnique({ where: { id: stored.id }, include: { user: { include: authUserInclude } } })
+      if (current?.client === client) assertNotReplaced(current)
       if (!current || current.tokenHash !== hashToken(refreshToken) || current.client !== client || current.revokedAt || current.expiresAt <= new Date() || current.user.status !== 'active') throw new UnauthorizedException('刷新凭据已失效')
       return this.createSession(authUserDto(current.user), tx, { client, mfaVerified: current.mfaVerified, device: current.device, sessionId: current.id })
     })
@@ -174,7 +188,7 @@ export class AuthService {
     if (!row) return !bearer
     await this.prisma.$transaction(async (tx) => {
       await lockUser(tx, row.userId)
-      await tx.refreshToken.updateMany({ where: { id: row.id, client, revokedAt: null }, data: { revokedAt: new Date() } })
+      await tx.refreshToken.updateMany({ where: { id: row.id, client, revokedAt: null }, data: { revokedAt: new Date(), revocationReason: 'manual_logout' } })
     })
     return !refreshToken || row.tokenHash === hashToken(refreshToken)
   }
@@ -223,7 +237,7 @@ export class AuthService {
     await tx.user.update({ where: { id: user.id }, data: { mfaLastTimeStep: result.timeStep } })
   }
 
-  async verifyMfa(challenge: string, code: string, ip: string, device: string) {
+  async verifyMfa(challenge: string, code: string, ip: string, device: string, existingToken?: string) {
     assertAdminNetwork(this.config, ip)
     await rateLimit(this.prisma, ip, 'mfa:ip', 60, 15 * 60000)
     const payload = await this.readMfaChallenge(challenge)
@@ -236,7 +250,8 @@ export class AuthService {
       const recoveryCodes = user.mfaEnabledAt ? undefined : Array.from({ length: 10 }, () => randomBytes(16).toString('hex'))
       await tx.user.update({ where: { id: user.id }, data: { mfaChallengeHash: null, mfaEnabledAt: user.mfaEnabledAt || new Date(), ...(recoveryCodes ? { mfaRecoveryHashes: recoveryCodes.map(hashToken) } : {}) } })
       await actionEvent(tx, user.id, 'admin_mfa_verified', 'user', user.id)
-      return { user: authUserDto(user), ...await this.createSession(authUserDto(user), tx, { client: 'admin', mfaVerified: true, device }), ...(recoveryCodes ? { recoveryCodes } : {}) }
+      const existing = existingToken ? await tx.refreshToken.findFirst({ where: { userId: user.id, client: 'admin', tokenHash: hashToken(existingToken), revokedAt: null, expiresAt: { gt: new Date() } } }) : null
+      return { user: authUserDto(user), ...await this.createSession(authUserDto(user), tx, { client: 'admin', mfaVerified: true, device, sessionId: existing?.id }), ...(recoveryCodes ? { recoveryCodes } : {}) }
     })
   }
 

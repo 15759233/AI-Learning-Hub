@@ -8,7 +8,7 @@ import { authApi } from '../src/services/api/auth'
 import AuthDialog from '../src/components/AuthDialog.vue'
 const mode = vi.hoisted(() => ({ value: 'mock' }))
 const dialogState = vi.hoisted(() => ({ closeOnBackdrop: undefined as boolean | undefined }))
-vi.mock('../src/services/api/client', () => ({ get dataMode() { return mode.value }, restoreRefresh: vi.fn().mockResolvedValue(true), ApiError: class extends Error { constructor(message: string, public status: number) { super(message) } } }))
+vi.mock('../src/services/api/client', () => ({ get dataMode() { return mode.value }, studentSession: { generation: 0 }, restoreRefresh: vi.fn().mockResolvedValue(true), ApiError: class extends Error { constructor(message: string, public status: number) { super(message) } } }))
 vi.mock('../src/services/api/auth', () => ({ authApi: { me: vi.fn(), login: vi.fn(), logout: vi.fn(), registrationConfig: vi.fn() } }))
 vi.mock('../src/stores/community', () => ({ useCommunityStore: () => ({ clear: vi.fn() }) }))
 vi.mock('../src/stores/learning', () => ({ useLearningStore: () => ({ clearAccountState: vi.fn(), syncFromApi: vi.fn().mockResolvedValue(undefined) }) }))

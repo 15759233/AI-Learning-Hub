@@ -52,6 +52,15 @@ const hub = (prisma: object = {}, visibility: object = {}, detection: object = {
 )
 
 describe('资源播放交付', () => {
+  it.each(['play', 'media', 'attachment'] as const)('被新登录替代后 %s 链接立即返回稳定错误码', async purpose => {
+    const service = hub({ refreshToken: { findUnique: vi.fn(async () => ({ userId: 'student-a', revokedAt: new Date(), revocationReason: 'replaced_by_login' })) } })
+    const signing = service as unknown as { sign(p: string, id: string, user: string, expires: number): string }
+    const token = signing.sign(purpose, 'bound-file', 'student-a', Math.floor(Date.now() / 1000) + 60)
+    const read = purpose === 'play' ? () => service.playbackFile('bound-file', token) : purpose === 'media' ? () => service.mediaFile('bound-file', token) : () => service.attachmentFile('bound-file', token)
+    const error = await read().catch(error => error)
+    expect(error.getStatus()).toBe(401)
+    expect(error.getResponse()).toMatchObject({ errorCode: 'SESSION_REPLACED', message: '你的账号已在其他设备登录，当前设备已退出。' })
+  })
   it.each(['revoked', 'expired', 'foreign', 'version', 'disabled', 'admin_without_mfa', 'admin_network'])('媒体凭据拒绝失效设备及后台旁路：%s', async (failure) => {
     const session = {
       userId: 'student-a', client: 'student', revokedAt: null as Date | null, expiresAt: new Date(Date.now() + 60000), mfaVerified: false,

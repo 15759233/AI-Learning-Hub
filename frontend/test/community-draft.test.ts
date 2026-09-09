@@ -35,6 +35,20 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('共享发布器与草稿账号隔离', () => {
+  it('替代退出前立即保存最新输入，停止自动同步，原账号可恢复且不串号', async () => {
+    const editor = useCommunityDraft(), store = useCommunityStore()
+    store.openComposer(); await settle()
+    editor.body = '刚输入尚未来得及自动保存的正文'; editor.form.title = '会话恢复标题'
+    editor.preserveSession()
+    expect(JSON.parse(storage.get(key('owner-a'))!).input.contentBlocks).toEqual([{ type: 'paragraph', text: '刚输入尚未来得及自动保存的正文' }])
+    expect(JSON.parse(storage.get(key('owner-a'))!).unconfirmed).toBeUndefined()
+    account.user = null; store.clear(); await settle(); await vi.advanceTimersByTimeAsync(12000)
+    expect(communityApi.save).not.toHaveBeenCalled(); expect(communityApi.saveDraft).not.toHaveBeenCalled()
+    account.user = { id: 'owner-b', communityWriteEnabled: true }; store.openComposer(); await settle()
+    expect(editor.body).toBe(''); expect(storage.has(key('owner-b'))).toBe(false)
+    store.clear(); account.user = { id: 'owner-a', communityWriteEnabled: true }; store.openComposer(); await settle()
+    expect(editor.body).toBe('刚输入尚未来得及自动保存的正文'); expect(editor.savedAt).toContain('尚未同步')
+  })
   it('关闭编辑器后草稿箱刷新，继续编辑使用最新封面及版本', async () => {
     const view = setupComponent<{ drafts: unknown[] }>(CommunityDraftsView)
     await settle()

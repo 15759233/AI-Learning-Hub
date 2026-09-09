@@ -2,6 +2,7 @@ FROM node:22.14.0-bookworm-slim@sha256:1c18d9ab3af4585870b92e4dbc5cac5a0dc77dd13
 WORKDIR /workspace
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contracts/src packages/contracts/src
+COPY packages/contracts/browser packages/contracts/browser
 COPY packages/demo-fixtures/package.json packages/demo-fixtures/package.json
 COPY packages/demo-fixtures/src packages/demo-fixtures/src
 COPY packages/catalog-assets packages/catalog-assets

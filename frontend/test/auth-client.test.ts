@@ -1,16 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, AUTH_SESSION_CLEARED_EVENT, request, restoreRefresh } from '../src/services/api/client'
+import { ApiError, AUTH_SESSION_CLEARED_EVENT, request, restoreRefresh, studentSession } from '../src/services/api/client'
 import { authApi } from '../src/services/api/auth'
 import { assessmentApi } from '../src/services/api/assessments'
-import { api as adminApi } from '../../admin-web/src/services/api'
+import { api as adminApi, adminSession } from '../../admin-web/src/services/api'
 const stored = new Map<string, string>()
 beforeEach(() => {
   stored.clear(); stored.set('student-access-token', 'local-test-token')
   vi.stubGlobal('sessionStorage', { getItem: (key: string) => stored.get(key) || null, setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) })
   vi.stubGlobal('window', new EventTarget())
+  vi.stubGlobal('navigator', { locks: { request: (_name: string, callback: () => unknown) => callback() } })
 })
 afterEach(() => vi.unstubAllGlobals())
 describe('真实HTTP客户端会话边界', () => {
+  it.each(['student', 'admin'])('%s 替代错误只通知一次，不刷新、不重放写请求且先保稿后清空', async client => {
+    const state = client === 'student' ? studentSession : adminSession
+    state.accept(client + '-replaced-token')
+    const submit = client === 'student' ? request : adminApi
+    const saved = vi.fn(() => expect(state.token()).toBe(client + '-replaced-token'))
+    const ended = vi.fn(() => expect(state.token()).toBeNull())
+    window.addEventListener(client + '-auth-before-clear', saved)
+    window.addEventListener(client + '-auth-session-cleared', ended)
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ code: 40101, errorCode: 'SESSION_REPLACED', message: '你的账号已在其他设备登录，当前设备已退出。' }), { status: 401 }))
+    vi.stubGlobal('fetch', fetcher)
+    const results = await Promise.allSettled([submit('/comments', { method: 'POST', body: '{}' }), submit('/me')])
+    expect(results.every(row => row.status === 'rejected')).toBe(true)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes('refresh'))).toBe(false)
+    expect(saved).toHaveBeenCalledOnce(); expect(ended).toHaveBeenCalledOnce()
+    await expect(submit('/comments', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 401 })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+  it('刷新接口明确返回替代原因时保留错误码，不重放原请求', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errorCode: 'SESSION_REPLACED' }), { status: 401 })))
+    await expect(request('/comment', { method: 'POST' })).rejects.toMatchObject({ code: 'SESSION_REPLACED', status: 401 })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+  it('迟到的旧请求不能清掉随后登录的新账号', async () => {
+    let complete!: (value: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { complete = resolve })))
+    const pending = request('/me')
+    studentSession.accept('new-account-session')
+    complete(new Response(JSON.stringify({ errorCode: 'SESSION_REPLACED' }), { status: 401 }))
+    await expect(pending).rejects.toMatchObject({ status: 401 })
+    expect(studentSession.token()).toBe('new-account-session'); expect(studentSession.ended).toBeNull()
+  })
   it.each(['student', 'admin'])('%s 刷新携带旧设备身份，账号已变化时不重试原写请求', async client => {
     stored.set('admin-access-token', 'admin-test-token')
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ code: 40101, message: '账号已变化', data: null }), { status: 401 }))

@@ -98,7 +98,15 @@ export const useCommunityDraft = defineStore('community-draft', () => {
       savedAt.value = auth.dataMode === 'api' ? '尚未同步到服务器' : '本地演示草稿已保存'
     } catch { savedAt.value = '浏览器无法保存恢复副本，请同步到服务器' }
   }
+  const preserveSession = () => {
+    clearTimeout(timer); clearTimeout(remoteTimer)
+    if (!auth.user || !store.composerOpen || !hasContent()) return
+    // 被替代后仅恢复文字，不能在下次登录时自动重放未确认的发布操作。
+    unconfirmed = undefined; requestKey = ''; requestBody = ''
+    localSave()
+  }
   const save = (asDraft = false): Promise<boolean> => {
+    if (!auth.user) return Promise.resolve(false)
     if (pending) return pending
     if (saving.value) return Promise.resolve(false)
     const epoch = store.epoch, owner = auth.user?.id
@@ -193,5 +201,5 @@ export const useCommunityDraft = defineStore('community-draft', () => {
   }
   const keepCopy = () => { store.editingId = undefined; draftId.value = undefined; form.value.expectedRevision = undefined; conflict.value = false; draftUnavailable.value = false; requestKey = ''; requestBody = ''; unconfirmed = undefined; error.value = ''; dirty.value = true; localSave() }
   onScopeDispose(() => { clearTimeout(timer); clearTimeout(remoteTimer) })
-  return { form, body, code, language, quote, images, richBlocks, richError, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, draftUnavailable, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
+  return { form, body, code, language, quote, images, richBlocks, richError, topics, bindingType, bindingId, bindingSearch, bindingTitles, bindingOptions, source, preview, saving, bindingLoading, topicsLoading, error, savedAt, closePrompt, dirty, draftId, blocks, advanced, conflict, draftUnavailable, preserveSession, readServer, keepCopy, loadTopics, loadOptions, addBinding, upload, uploadFiles, save, restore, close, discard, saveAndClose }
 })

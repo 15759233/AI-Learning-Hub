@@ -52,7 +52,7 @@ export class AuthController {
   @Post(['auth/login', 'admin-auth/login'])
   async login(@Body() input: LoginDto, @Ip() ip: string, @Res({ passthrough: true }) response: Response, @Req() request: Request) {
     const client = clientOf(request)
-    const result = await this.auth.login(input.identifier, input.password, ip + ':' + input.identifier.toLowerCase(), ip, client, deviceLabel(request.get('user-agent')))
+    const result = await this.auth.login(input.identifier, input.password, ip + ':' + input.identifier.toLowerCase(), ip, client, deviceLabel(request.get('user-agent')), request.cookies?.[client + '_refresh'])
     response.setHeader('Cache-Control', 'no-store')
     if ('mfaRequired' in result) return result
     this.setRefreshCookie(response, result.refreshToken, input.remember, client)
@@ -61,7 +61,7 @@ export class AuthController {
 
   @Post('admin-auth/mfa')
   async mfa(@Body() input: MfaVerifyDto, @Ip() ip: string, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    const result = await this.auth.verifyMfa(input.challenge, input.code, ip, deviceLabel(request.get('user-agent')))
+    const result = await this.auth.verifyMfa(input.challenge, input.code, ip, deviceLabel(request.get('user-agent')), request.cookies?.admin_refresh)
     this.setRefreshCookie(response, result.refreshToken, input.remember, 'admin')
     return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn, recoveryCodes: result.recoveryCodes }
   }

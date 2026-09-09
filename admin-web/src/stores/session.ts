@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { api } from '../services/api'
+import { api, ApiError, adminSession } from '../services/api'
 
 import type { AuthUser as AdminUser, MfaChallengeDto } from '@ai-learning-hub/contracts'
 
@@ -9,17 +9,30 @@ export const useSessionStore = defineStore('session', {
     initialized: false,
     loading: false,
     error: '',
+    sessionNotice: '', connectionError: '',
     mfa: null as MfaChallengeDto | null,
     recoveryCodes: [] as string[],
   }),
   actions: {
+    clearSession(message = '') {
+      this.user = null; this.mfa = null; this.recoveryCodes = []; this.sessionNotice = message; this.connectionError = ''
+      sessionStorage.removeItem('admin-access-token'); sessionStorage.removeItem('admin-user')
+    },
+    async checkSession() {
+      if (!this.user) return
+      const generation = adminSession.generation
+      try { await api<AdminUser>('/me'); this.connectionError = '' }
+      catch (error) { if (generation !== adminSession.generation) return; if (!(error instanceof ApiError) || error.status !== 401) this.connectionError = '连接暂时异常，未提交内容已保留'; else if (!adminSession.ended) adminSession.end(error.code) }
+    },
     async restore() {
+      const generation = adminSession.generation
       try {
         const user = await api<AdminUser>('/me')
         this.user = user.permissions.length && user.sessionClient === 'admin' && user.mfaVerified ? user : null
-      } catch {
-        this.user = null
-        sessionStorage.removeItem('admin-access-token')
+      } catch (error) {
+        if (generation !== adminSession.generation) return
+        if (error instanceof ApiError && error.status === 401) this.clearSession(this.sessionNotice)
+        else this.connectionError = '连接暂时异常，请重新连接'
       } finally {
         this.initialized = true
       }
@@ -45,7 +58,7 @@ export const useSessionStore = defineStore('session', {
       try {
         const result = await api<{ user: AdminUser; accessToken: string; recoveryCodes?: string[] }>('/admin-auth/mfa', { method: 'POST', body: JSON.stringify({ challenge: this.mfa.challenge, code }) }, false)
         this.user = result.user; this.mfa = null; this.recoveryCodes = result.recoveryCodes || []
-        sessionStorage.setItem('admin-access-token', result.accessToken)
+        adminSession.accept(result.accessToken); this.sessionNotice = ''; this.connectionError = ''
       } catch (error) { this.error = error instanceof Error ? error.message : 'MFA 验证失败'; throw error }
       finally { this.loading = false }
     },

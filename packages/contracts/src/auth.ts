@@ -1,3 +1,7 @@
+export const SESSION_REPLACED = 'SESSION_REPLACED'
+export const SESSION_REPLACED_MESSAGE = '你的账号已在其他设备登录，当前设备已退出。'
+export type SessionRevocationReason = 'replaced_by_login' | 'manual_logout' | 'security_revoke'
+
 export interface AuthUser {
   sessionId?: string
   sessionClient?: import('./account-security').SessionClient

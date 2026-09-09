@@ -1,5 +1,5 @@
 import 'reflect-metadata'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { createServer, type Server } from 'node:net'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
@@ -29,6 +29,7 @@ const { bootstrapDatabase } = runtime('../dist/modules/persistence/bootstrap.js'
 const { encryptIdentity, identityFingerprint } = runtime('../dist/modules/users/identity-data.js')
 const { ContentReferenceService } = runtime('../dist/common/content-reference/content-reference.service.js')
 const { STORAGE_SERVICE } = runtime('../dist/modules/storage/storage.types.js')
+const { AuthService } = runtime('../dist/modules/auth/auth.service.js')
 const db = new PrismaClient(), password = 'Verify8!' + randomBytes(12).toString('hex')
 const prefix = 'cs_' + randomBytes(5).toString('hex'), messages: string[] = []
 const origin = 'http://127.0.0.1:8088', adminOrigin = 'http://127.0.0.1:8089'
@@ -42,7 +43,7 @@ async function request(path: string, options: { token?: string; method?: string;
   if (options.cookie) headers.cookie = options.cookie
   const response = await fetch(base + path, { method: options.method || 'GET', headers, ...(options.input === undefined ? {} : { body: JSON.stringify(options.input) }) })
   const payload = await response.json()
-  return { status: response.status, data: payload.data, message: payload.message as string, cookies: response.headers.getSetCookie() }
+  return { status: response.status, data: payload.data, errorCode: payload.errorCode, message: payload.message as string, cookies: response.headers.getSetCookie() }
 }
 function cookie(result: Awaited<ReturnType<typeof request>>, client = 'student') {
   return result.cookies.find(value => value.startsWith(client + '_refresh='))?.split(';')[0] || ''
@@ -154,7 +155,8 @@ describe('校园部署：真实数据库与认证执行链', () => {
       expect((await request('/admin-auth/mfa', { method: 'POST', input: { challenge: next.challenge, code: await generate({ secret: mfaSecret, epoch: row.mfaLastTimeStep! * 30 }) } })).status).toBe(401)
     } else expect(replay.status).toBe(401)
     const next = await adminChallenge()
-    expect((await request('/admin-auth/mfa', { method: 'POST', input: { challenge: next.challenge, code: recoveryCodes[0] } })).status).toBe(201)
+    const latest = await request('/admin-auth/mfa', { method: 'POST', input: { challenge: next.challenge, code: recoveryCodes[0] } })
+    expect(latest.status).toBe(201); adminToken = latest.data.accessToken
     const again = await adminChallenge()
     expect((await request('/admin-auth/mfa', { method: 'POST', input: { challenge: again.challenge, code: recoveryCodes[0] } })).status).toBe(401)
   })
@@ -218,7 +220,7 @@ describe('校园部署：真实数据库与认证执行链', () => {
     expect((await db.communityPost.findUniqueOrThrow({ where: { id: saved.data.id } })).visibility).toBe('public')
   })
   it('真实附件接口绑定设备，注销、撤销和后台网络边界同时约束旧媒体地址', async () => {
-    const first = await login(), second = await login()
+    const first = await login()
     const content = Buffer.from('隔离设备媒体授权验收')
     const file = await app.get(STORAGE_SERVICE).upload({ originalname: 'session-check.txt', mimetype: 'text/plain', size: content.length, buffer: content }, { uploadedBy: studentId, visibility: 'private' })
     const saved = await request('/community/posts', { method: 'POST', token: first.data.accessToken, input: {
@@ -237,13 +239,16 @@ describe('校园部署：真实数据库与认证执行链', () => {
       await response.arrayBuffer()
       return response
     }
-    const firstUrl = await download(first.data.accessToken), secondUrl = await download(second.data.accessToken)
+    const firstUrl = await download(first.data.accessToken)
     const initial = await read(firstUrl)
     expect(initial.status).toBe(200)
     expect(initial.headers.get('content-disposition')).toMatch(/^attachment;/)
     expect(initial.headers.get('content-security-policy')).toContain('sandbox')
+    const second = await login(), secondUrl = await download(second.data.accessToken)
+    const replaced = await fetch(firstUrl)
+    expect(replaced.status).toBe(401); expect((await replaced.json()).errorCode).toBe('SESSION_REPLACED')
     expect((await request('/auth/logout', { method: 'POST', token: first.data.accessToken })).status).toBe(201)
-    expect((await read(firstUrl)).status).toBe(403)
+    expect((await read(firstUrl)).status).toBe(401)
     expect((await read(secondUrl)).status).toBe(200)
     expect((await request('/me/sessions/' + sessionId(second.data.accessToken), { method: 'DELETE', token: second.data.accessToken })).status).toBe(200)
     expect((await read(secondUrl)).status).toBe(403)
@@ -316,7 +321,7 @@ describe('校园部署：真实数据库与认证执行链', () => {
     await db.user.update({ where: { id: otherId }, data: { status: 'active' } })
   })
   it('换邮箱必须重新认证并确认新地址，确认前保持原邮箱，之后撤销校园认证和所有会话', async () => {
-    const student = await login(), other = await login()
+    const other = await login(), student = await login()
     const original = await db.user.findUniqueOrThrow({ where: { id: studentId } }), email = prefix + 'new@example.invalid'
     expect((await request('/me/email', { method: 'POST', token: student.data.accessToken, input: { email, currentPassword: 'wrong-password' } })).status).toBe(401)
     expect((await request('/me/email', { method: 'POST', token: student.data.accessToken, input: { email, currentPassword: password } })).status).toBe(201)
@@ -332,7 +337,7 @@ describe('校园部署：真实数据库与认证执行链', () => {
     expect((await request('/auth/email/verify', { method: 'POST', input: { token } })).status).toBe(400)
   })
   it('改密保护72字节边界，旧 bcrypt 可登录，弱口令拒绝，成功后所有 Access/Refresh 失效', async () => {
-    const first = await login(), second = await login(), nextPassword = 'NewCampus7!' + randomBytes(10).toString('hex')
+    const second = await login(), first = await login(), nextPassword = 'NewCampus7!' + randomBytes(10).toString('hex')
     for (const next of ['Password123456', '学'.repeat(24) + 'A1']) expect((await request('/me/password', { method: 'POST', token: first.data.accessToken, input: { currentPassword: password, password: next } })).status).toBe(400)
     expect((await request('/me/password', { method: 'POST', token: first.data.accessToken, input: { currentPassword: 'wrong-password', password: nextPassword } })).status).toBe(401)
     expect((await request('/me/password', { method: 'POST', token: first.data.accessToken, input: { currentPassword: password, password: nextPassword } })).status).toBe(201)
@@ -343,5 +348,63 @@ describe('校园部署：真实数据库与认证执行链', () => {
     const fresh = await login(studentId, nextPassword)
     expect((await request('/me/sessions/all', { method: 'DELETE', token: fresh.data.accessToken })).status).toBe(200)
     expect((await request('/me', { token: fresh.data.accessToken })).status).toBe(401)
+  })
+  it('新登录原子替代、失败回滚、并发收敛，同浏览器继续使用原设备会话', async () => {
+    const role = await db.role.findUniqueOrThrow({ where: { code: 'student' } })
+    const user = await db.user.create({ data: { username: prefix + 'replace', email: prefix + 'replace@example.invalid', displayName: '会话隔离测试', passwordHash: await hash(password, 4), userRoles: { create: { roleId: role.id } } } })
+    const first = await login(user.id)
+    const failed = await request('/auth/login', { method: 'POST', input: { identifier: user.username, password: 'InvalidPassword123!' } })
+    expect(failed.status).toBe(401)
+    expect((await request('/me', { token: first.data.accessToken })).status).toBe(200)
+    const before = await db.refreshToken.findMany({ where: { userId: user.id } })
+    const signer = vi.spyOn(app.get(JwtService), 'signAsync').mockRejectedValueOnce(new Error('isolated signing failure'))
+    try {
+      const broken = await request('/auth/login', { method: 'POST', input: { identifier: user.username, password } })
+      expect(broken.status).toBe(500)
+    } finally { signer.mockRestore() }
+    expect(await db.refreshToken.findMany({ where: { userId: user.id } })).toEqual(before)
+    expect((await request('/me', { token: first.data.accessToken })).status).toBe(200)
+    const second = await login(user.id)
+    for (const result of [await request('/me', { token: first.data.accessToken }), await request('/auth/refresh', { method: 'POST', token: first.data.accessToken, cookie: cookie(first) })]) {
+      expect(result.status).toBe(401); expect(result.errorCode).toBe('SESSION_REPLACED')
+    }
+    // 内部刷新入口同样不可重新激活已经被替代的行。
+    const profile = (await request('/me', { token: second.data.accessToken })).data
+    await expect(app.get(AuthService).createSession(profile, undefined, { sessionId: sessionId(first.data.accessToken) })).rejects.toThrow('其他设备登录')
+    const sameBrowser = await request('/auth/login', { method: 'POST', cookie: cookie(second), input: { identifier: user.username, password } })
+    expect(sameBrowser.status).toBe(201); expect(sessionId(sameBrowser.data.accessToken)).toBe(sessionId(second.data.accessToken))
+    expect((await request('/me', { token: second.data.accessToken })).status).toBe(200)
+    const refreshed = await request('/auth/refresh', { method: 'POST', token: second.data.accessToken, cookie: cookie(sameBrowser) })
+    expect(refreshed.status).toBe(201); expect(sessionId(refreshed.data.accessToken)).toBe(sessionId(second.data.accessToken))
+    const concurrent = await Promise.all([login(user.id), login(user.id), login(user.id)])
+    const valid = await db.refreshToken.findMany({ where: { userId: user.id, client: 'student', revokedAt: null, expiresAt: { gt: new Date() } } })
+    expect(valid).toHaveLength(1)
+    for (const row of concurrent) {
+      const result = await request('/me', { token: row.data.accessToken })
+      expect(result.status).toBe(sessionId(row.data.accessToken) === valid[0].id ? 200 : 401)
+      if (result.status === 401) expect(result.errorCode).toBe('SESSION_REPLACED')
+    }
+    const last = concurrent.find(row => sessionId(row.data.accessToken) === valid[0].id)!
+    const [racingRefresh, finalLogin] = await Promise.all([
+      request('/auth/refresh', { method: 'POST', cookie: cookie(last), token: last.data.accessToken }), login(user.id),
+    ])
+    expect([201, 401]).toContain(racingRefresh.status)
+    expect((await request('/me', { token: last.data.accessToken })).errorCode).toBe('SESSION_REPLACED')
+    expect((await request('/me', { token: finalLogin.data.accessToken })).status).toBe(200)
+    expect(await db.refreshToken.count({ where: { userId: user.id, client: 'student', revokedAt: null, expiresAt: { gt: new Date() } } })).toBe(1)
+  })
+  it('管理端只有完成 MFA 才替代旧设备，client 分区不撤销另一入口会话', async () => {
+    const old = adminToken, challenge = await adminChallenge()
+    expect((await request('/me', { token: old })).status).toBe(200)
+    expect((await request('/admin-auth/mfa', { method: 'POST', input: { challenge: challenge.challenge, code: 'invalid-code' } })).status).not.toBe(201)
+    expect((await request('/me', { token: old })).status).toBe(200)
+    // 当前系统限制管理角色从 student 入口登录；仅建立隔离行来验证撤销 SQL 的 client 边界。
+    const sibling = await db.refreshToken.create({ data: { userId: adminId, client: 'student', tokenHash: sha(randomUUID()), expiresAt: new Date(Date.now() + 60000) } })
+    const fresh = await request('/admin-auth/mfa', { method: 'POST', input: { challenge: challenge.challenge, code: recoveryCodes[1] } })
+    expect(fresh.status).toBe(201)
+    expect((await request('/me', { token: old })).errorCode).toBe('SESSION_REPLACED')
+    expect((await request('/me', { token: fresh.data.accessToken })).status).toBe(200)
+    expect((await db.refreshToken.findUniqueOrThrow({ where: { id: sibling.id } })).revokedAt).toBeNull()
+    adminToken = fresh.data.accessToken
   })
 })

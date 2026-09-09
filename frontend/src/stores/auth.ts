@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { authApi, type StudentUser } from '../services/api/auth'
-import { ApiError, dataMode, restoreRefresh } from '../services/api/client'
+import { ApiError, dataMode, restoreRefresh, studentSession } from '../services/api/client'
 import type { AuthUser, RegisterInput, RegistrationConfigDto } from '@ai-learning-hub/contracts'
 import { passwordProblem } from '@ai-learning-hub/contracts'
 import { useLearningStore } from './learning'
@@ -22,24 +22,34 @@ export const useAuthStore = defineStore('auth', {
     dataMode,
     initialized: false,
     authState: 'idle' as AuthState, restoreError: '', lastRestoreAt: 0,
+    sessionNotice: '', connectionError: '',
     restorePromise: null as Promise<void> | null,
     registrationConfig: null as RegistrationConfigDto | null,
   }),
   actions: {
-    clearSession() {
+    clearSession(clearAction = true) {
+      if (this.user) window.dispatchEvent(new CustomEvent('student-auth-before-clear'))
       sessionStorage.removeItem('student-access-token')
       sessionStorage.removeItem('student-user')
       sessionStorage.removeItem('student-after-onboarding')
       useAuthUiStore().afterOnboardingAction = null
+      if (clearAction) useAuthUiStore().action = null
       this.user = null
       this.authState = 'anonymous'
       useCommunityStore().clear()
       useLearningStore().clearAccountState()
     },
+    async checkSession() {
+      if (!this.user || dataMode !== 'api') return
+      const generation = studentSession.generation
+      try { await authApi.me(); this.connectionError = '' }
+      catch (error) { if (generation !== studentSession.generation) return; if (!(error instanceof ApiError) || error.status !== 401) this.connectionError = '连接暂时异常，未提交内容已保留'; else if (!studentSession.ended) studentSession.end(error.code) }
+    },
     restore(force = false): Promise<void> {
       if (this.restorePromise) return this.restorePromise
       if (!force && ['authenticated', 'anonymous'].includes(this.authState)) return Promise.resolve()
       this.authState = 'restoring'; this.restoreError = ''
+      const generation = studentSession.generation
       this.restorePromise = Promise.resolve().then(async () => {
         try {
           if (dataMode === 'mock') {
@@ -52,6 +62,7 @@ export const useAuthStore = defineStore('auth', {
           }
           this.authState = this.user ? 'authenticated' : 'anonymous'; this.initialized = true
         } catch (error) {
+          if (generation !== studentSession.generation) return
           if (error instanceof ApiError && error.status === 401) this.clearSession()
           else { this.authState = 'error'; this.restoreError = error instanceof Error ? error.message : '网络暂时不可用，请重新连接'; this.initialized = false }
         } finally { this.lastRestoreAt = Date.now(); this.restorePromise = null }
@@ -71,7 +82,7 @@ export const useAuthStore = defineStore('auth', {
           this.user = { ...demoUser(), username: demoUsername(input.username), displayName: input.displayName, email: input.email.trim().toLowerCase(), onboardingCompleted: false, identityVerificationStatus: 'unsubmitted', communityWriteEnabled: false }
           localStorage.setItem('community-demo-user', JSON.stringify(this.user)); sessionStorage.setItem('community-demo-login', 'true')
         } else this.user = await authApi.register(input)
-        this.authState = 'authenticated'; this.initialized = true
+        this.authState = 'authenticated'; this.initialized = true; this.sessionNotice = ''; this.connectionError = ''
         if (dataMode === 'api') void useLearningStore().syncFromApi().catch(() => window.dispatchEvent(new CustomEvent('api-error', { detail: { message: '账号已创建，学习资料暂未同步，请稍后重试' } })))
       } catch (error) { this.error = error instanceof Error ? error.message : '注册失败'; throw error }
       finally { this.loading = false }
@@ -79,7 +90,7 @@ export const useAuthStore = defineStore('auth', {
     async login(identifier: string, password: string, remember = true) {
       this.loading = true
       this.error = ''
-      if (dataMode === 'api') this.clearSession()
+      if (dataMode === 'api') this.clearSession(!!this.user)
       try {
         if (dataMode === 'mock') { this.user = JSON.parse(localStorage.getItem('community-demo-user') || 'null') || demoUser(); this.authState = 'authenticated'; this.initialized = true; sessionStorage.setItem('community-demo-login', 'true'); return }
         this.user = await authApi.login(identifier, password, remember)
@@ -89,7 +100,7 @@ export const useAuthStore = defineStore('auth', {
           throw new Error('该账号不是学生账号')
         }
         sessionStorage.setItem('student-user', JSON.stringify(this.user))
-        this.authState = 'authenticated'; this.initialized = true
+        this.authState = 'authenticated'; this.initialized = true; this.sessionNotice = ''; this.connectionError = ''
       } catch (error) {
         this.error = error instanceof Error ? error.message : '登录失败'
         throw error

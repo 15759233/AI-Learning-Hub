@@ -1,11 +1,11 @@
-import { request, writeRequest } from './client'
+import { request, writeRequest, studentSession } from './client'
 import type { AuthSessionDto, AuthUser, RegisterInput, RegistrationConfigDto } from '@ai-learning-hub/contracts'
 export type StudentUser = AuthUser
 
 export const authApi = {
   async login(identifier: string, password: string, remember = true) {
     const result = await request<{ user: StudentUser; accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ identifier, password, remember }) }, false)
-    sessionStorage.setItem('student-access-token', result.accessToken)
+    studentSession.accept(result.accessToken)
     return result.user
   },
   async logout() {
@@ -16,7 +16,7 @@ export const authApi = {
   registrationConfig: () => request<RegistrationConfigDto>('/auth/registration-config', {}, false),
   async register(input: RegisterInput) {
     const result = await writeRequest<AuthSessionDto & { notice?: string }>('/auth/register', 'POST', input, undefined, false)
-    sessionStorage.setItem('student-access-token', result.accessToken)
+    studentSession.accept(result.accessToken)
     if (result.notice) window.dispatchEvent(new CustomEvent('api-error', { detail: { message: result.notice } }))
     return result.user
   },

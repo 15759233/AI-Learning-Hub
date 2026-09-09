@@ -1,5 +1,6 @@
 import type { CreatorContentSummaryDto, ResourceHubCreatorDto, LearningCollectionDto, LearningCollectionInput, LearningCollectionSummaryDto, ResourceContributionDetailDto, ResourceHubCategoryDto, ResourceHubHomeDto, ResourceHubListDto, VideoAssetDto, VideoPlaybackDto, WatchProgressInput } from '@ai-learning-hub/contracts'
-import { ApiError, dataMode, request, restoreRefresh, writeRequest } from './client'
+import { ApiError, dataMode, request, restoreRefresh, writeRequest, studentSession } from './client'
+import { SESSION_REPLACED, SESSION_REPLACED_MESSAGE } from '@ai-learning-hub/contracts'
 import { mockResourceHub } from './resourceHub.mock'
 import { randomId } from './random-id'
 import type { CollectionPageQuery, CreatorContentSection, ResourceHubPageDto } from '@ai-learning-hub/contracts'
@@ -17,9 +18,14 @@ const upload = <T>(path: string, file: File, progress: (percentage: number) => v
   }
   let active: XMLHttpRequest | null = null
   let cancelled = false
+  const generation = studentSession.generation
+  const signal = studentSession.signal
+  const cancel = () => { cancelled = true; active?.abort() }
+  signal.addEventListener('abort', cancel, { once: true })
   const idempotencyKey = randomId()
   const promise = new Promise<T>((resolve, reject) => {
     const run = (retry: boolean) => {
+      if (cancelled || studentSession.ended) { reject(new ApiError('会话已失效，请重新登录后手动上传', 401)); return }
       const xhr = active = new XMLHttpRequest()
       xhr.open('POST', `${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/resource-hub${path}`)
       xhr.withCredentials = true
@@ -30,6 +36,13 @@ const upload = <T>(path: string, file: File, progress: (percentage: number) => v
       xhr.onerror = () => reject(new Error('上传连接中断，请重试'))
       xhr.onabort = () => { if (cancelled) reject(new Error('已取消上传')) }
       xhr.onload = async () => {
+        if (cancelled || generation !== studentSession.generation) { reject(new ApiError('会话已变化，请重新登录后手动上传', 401)); return }
+        let failure: { errorCode?: string } | null = null
+        try { failure = JSON.parse(xhr.responseText || 'null') } catch { /* 非 JSON 错误交给下方统一处理。 */ }
+        if (xhr.status === 401 && failure?.errorCode === SESSION_REPLACED) {
+          studentSession.end(SESSION_REPLACED, token)
+          reject(new ApiError(SESSION_REPLACED_MESSAGE, 401, SESSION_REPLACED)); return
+        }
         if (xhr.status === 401 && retry) {
           try {
             if (await restoreRefresh()) { if (!cancelled) run(false); return }
@@ -45,7 +58,7 @@ const upload = <T>(path: string, file: File, progress: (percentage: number) => v
     }
     run(true)
   })
-  return { promise, cancel: () => { cancelled = true; active?.abort() } }
+  return { promise: promise.finally(() => signal.removeEventListener('abort', cancel)), cancel }
 }
 
 export const resourceHubApi = {

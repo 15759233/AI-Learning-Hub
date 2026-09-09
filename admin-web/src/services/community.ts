@@ -1,5 +1,6 @@
 import type { AdminCommunityPostQueryDto, PageResult, CommunityAdminInspectionDto, CommunityAdminReportDto, CommunityAdminSummaryDto, CommunityAuthorDto, CommunityEligibilityPolicyDto, CommunityFeedPolicyDto, CommunityModerationInput, CommunityOperationRestrictionDto, CommunityPostDetailDto, CommunityPostInput, CommunityTopicDto } from '@ai-learning-hub/contracts'
-import { api } from './api'
+import { api, adminSession } from './api'
+import { SESSION_REPLACED } from '@ai-learning-hub/contracts'
 import { communityModerationPayload } from './community-payload'
 import { userQueryString } from './users'
 import type { GovernanceDecisionInput, GovernanceRestrictionInput, GovernanceTarget, GovernanceTargetDto, GovernanceQueueDto, GovernanceAppealDto, GovernanceActionDto, GovernanceReviewDto } from '@ai-learning-hub/contracts'
@@ -47,7 +48,9 @@ export const communityAdminApi = {
   async image(id: string) {
     const { url } = await call<{ url: string }>(`/media/${id}`)
     const source = url.startsWith('/api/') && import.meta.env.VITE_API_BASE_URL?.startsWith('http') ? new URL(url, import.meta.env.VITE_API_BASE_URL).href : url
-    const result = await fetch(source, { headers: url.startsWith('/api/') ? { authorization: `Bearer ${sessionStorage.getItem('admin-access-token') || ''}` } : {} })
+    const token = adminSession.token()
+    const result = await fetch(source, { signal: adminSession.signal, headers: url.startsWith('/api/') ? { authorization: `Bearer ${token || ''}` } : {} })
+    if (result.status === 401 && (await result.clone().json().catch(() => null))?.errorCode === SESSION_REPLACED) adminSession.end(SESSION_REPLACED, token)
     if (!result.ok) throw new Error('图片读取失败')
     return URL.createObjectURL(await result.blob())
   },

@@ -74,7 +74,7 @@ describe('Cookie、后台网络与请求来源', () => {
     await expect(auth.refresh('cookie-b', 'student', '127.0.0.1', expired)).rejects.toThrow('账号或设备已变化')
     expect(database.$transaction).not.toHaveBeenCalled()
     await expect(auth.logout('cookie-b', 'student', expired)).resolves.toBe(false)
-    expect(revoked).toHaveBeenCalledWith({ where: { id: 'device-a', client: 'student', revokedAt: null }, data: { revokedAt: expect.any(Date) } })
+    expect(revoked).toHaveBeenCalledWith({ where: { id: 'device-a', client: 'student', revokedAt: null }, data: { revokedAt: expect.any(Date), revocationReason: 'manual_logout' } })
     revoked.mockClear()
     await expect(auth.logout('cookie-b', 'student', expired + 'tampered')).rejects.toThrow('退出凭据无效')
     expect(revoked).not.toHaveBeenCalled()

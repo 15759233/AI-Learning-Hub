@@ -1,4 +1,5 @@
 import { activeSanction, availableAccount, visibleCollection, visibleComment } from '../community/governance-policy'
+import { assertNotReplaced } from '../auth/session-revocation'
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common'
 import { REQUEST } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
@@ -933,6 +934,7 @@ export class ResourceHubService {
     const [tokenPurpose, tokenTarget, userId, expiresValue, sessionId, sessionVersion] = fields
     if (fields.length !== 6 || !userId || !sessionId || !/^\d+$/.test(sessionVersion) || !/^\d+$/.test(expiresValue) || !Number.isSafeInteger(Number(expiresValue)) || tokenPurpose !== purpose || tokenTarget !== targetId || Number(expiresValue) <= Math.floor(Date.now() / 1000)) throw new ForbiddenException('播放凭据已失效')
     const session = await this.prisma.refreshToken.findUnique({ where: { id: sessionId }, include: { user: { include: authUserInclude } } })
+    if (session?.userId === userId) assertNotReplaced(session)
     if (!session || session.userId !== userId || session.revokedAt || session.expiresAt <= new Date() || session.user.status !== 'active' || session.user.sessionVersion !== Number(sessionVersion)) throw new ForbiddenException('媒体所属设备会话已失效')
     const administrative = authUserDto(session.user).permissions.length > 0
     if (session.client === 'admin' || administrative) {
