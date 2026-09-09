@@ -261,7 +261,16 @@ describe('校园部署：真实数据库与认证执行链', () => {
     const session = await login()
     const sharp = (await import('sharp')).default
     const bytes = await sharp({ create: { width: 320, height: 180, channels: 3, background: '#304c70' } }).png().toBuffer()
-    const upload = (name: string) => app.get(STORAGE_SERVICE).upload({ originalname: name, mimetype: 'image/png', size: bytes.length, buffer: bytes }, { uploadedBy: studentId, visibility: 'public' })
+    const upload = async (name: string) => {
+      const form = new FormData()
+      form.append('file', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), name)
+      const response = await fetch(base + '/community/media', { method: 'POST', headers: { authorization: 'Bearer ' + session.data.accessToken, origin }, body: form })
+      expect(response.status).toBe(201)
+      const { data } = await response.json()
+      expect((await db.fileRecord.findUniqueOrThrow({ where: { id: data.id } })).visibility).toBe('private')
+      expect((await fetch(base + '/resource-hub/covers/' + data.id)).status).toBe(404)
+      return data
+    }
     const cover = await upload('public-cover.png'), bodyImage = await upload('body-only.png')
     const saved = await request('/community/posts', { method: 'POST', token: session.data.accessToken, input: {
       type: 'general', title: prefix + '公开封面', contentBlocks: [{ type: 'paragraph', text: '仅公开预览封面 ' + randomUUID() }, { type: 'image', fileId: bodyImage.id, alt: '正文图片' }],

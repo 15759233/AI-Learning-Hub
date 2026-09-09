@@ -532,7 +532,8 @@ export class ResourceHubService {
 
   async publicCover(fileId: string) {
     const file = await this.prisma.fileRecord.findUnique({ where: { id: fileId } })
-    if (!file || file.quarantinedAt || file.visibility !== 'public' || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.mimeType)) throw new NotFoundException('封面不存在')
+    if (!file || file.quarantinedAt || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.mimeType)) throw new NotFoundException('封面不存在')
+    // 社区上传默认私有；是否可预览由下方已发布公开作品的实际封面绑定决定。
     const scope = await this.visibility.publicPostsSql('')
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT p.id FROM community_posts p JOIN resource_contributions c ON c.post_id = p.id
